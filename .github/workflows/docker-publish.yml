@@ -1,27 +1,82 @@
-name: Build and Push Docker Image to GHCR
+name: Release and Publish Docker Image
 
 on:
   push:
-    tags:
-      - "v*"
     branches:
       - main
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
   workflow_dispatch:
+    inputs:
+      custom_version:
+        description: "Custom SemVer version (e.g. 1.0.0, 1.2.3-beta.1). Leave empty to use package.json / auto-increment"
+        required: false
+        default: ""
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  release-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js (for package.json inspection)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Determine Semantic Version (SemVer)
+        id: versioning
+        run: |
+          if [ -n "${{ github.event.inputs.custom_version }}" ]; then
+            RAW_VER="${{ github.event.inputs.custom_version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RAW_VER="${GITHUB_REF#refs/tags/}"
+          else
+            # Read base version from package.json
+            PKG_VER=$(node -p "require('./package.json').version")
+            
+            git fetch --tags --force 2>/dev/null || true
+
+            # Check if tag already exists in repository
+            if git rev-parse "v${PKG_VER}" >/dev/null 2>&1; then
+              MAJOR_MINOR=$(echo "$PKG_VER" | cut -d. -f1,2)
+              LATEST_TAG=$(git tag -l "v${MAJOR_MINOR}.*" | grep -E "^v${MAJOR_MINOR}\.[0-9]+$" | sort -V | tail -n 1)
+              
+              if [ -n "$LATEST_TAG" ]; then
+                CURRENT_PATCH=$(echo "$LATEST_TAG" | sed -E "s/^v${MAJOR_MINOR}\.([0-9]+)$/\1/")
+                NEXT_PATCH=$((CURRENT_PATCH + 1))
+                RAW_VER="${MAJOR_MINOR}.${NEXT_PATCH}"
+              else
+                RAW_VER="${PKG_VER}.1"
+              fi
+            else
+              RAW_VER="${PKG_VER}"
+            fi
+          fi
+
+          CLEAN_VER="${RAW_VER#v}"
+          TAG_NAME="v${CLEAN_VER}"
+          IS_PRERELEASE="false"
+          if [[ "$CLEAN_VER" == *-* ]]; then
+            IS_PRERELEASE="true"
+          fi
+
+          echo "VERSION=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "CLEAN_VERSION=${CLEAN_VER}" >> $GITHUB_OUTPUT
+          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+          echo "Resolved SemVer: ${TAG_NAME} (Clean: ${CLEAN_VER}, Pre-release: ${IS_PRERELEASE})"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -36,17 +91,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
+      - name: Build Docker Tags & Metadata (SemVer)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ steps.versioning.outputs.IS_PRERELEASE == 'false' }}
+            type=semver,pattern={{version}},value=${{ steps.versioning.outputs.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.versioning.outputs.VERSION }},enable=${{ steps.versioning.outputs.IS_PRERELEASE == 'false' }}
+            type=semver,pattern={{major}},value=${{ steps.versioning.outputs.VERSION }},enable=${{ steps.versioning.outputs.IS_PRERELEASE == 'false' }}
+            type=raw,value=${{ steps.versioning.outputs.CLEAN_VERSION }}
+            type=raw,value=${{ steps.versioning.outputs.VERSION }}
 
-      - name: Build and push multi-arch Docker image
+      - name: Build and push Multi-Arch Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -56,3 +114,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release with Changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.versioning.outputs.VERSION }}
+          IS_PRERELEASE: ${{ steps.versioning.outputs.IS_PRERELEASE }}
+        run: |
+          echo "Publishing GitHub Release for tag: ${TAG_NAME} (prerelease: ${IS_PRERELEASE})"
+          
+          PRERELEASE_FLAG=""
+          if [ "${IS_PRERELEASE}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "${TAG_NAME}" \
+            --target "${GITHUB_SHA}" \
+            --title "Kotonoba ${TAG_NAME}" \
+            --generate-notes \
+            ${PRERELEASE_FLAG}
+
+

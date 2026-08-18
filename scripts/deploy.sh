@@ -6,7 +6,7 @@ IMAGE_TAG="${1:-latest}"
 HEALTH_TIMEOUT=45
 HEALTH_INTERVAL=3
 
-echo "=== Starting BlogForge Blue-Green Deployment ==="
+echo "=== Starting Kotonoba Blue-Green Deployment ==="
 echo "Target Image Tag: ${IMAGE_TAG}"
 
 if grep -q "app-blue" nginx/conf.d/upstream.conf; then

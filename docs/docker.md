@@ -138,3 +138,31 @@ To route multiple domains/subdomains to separate blogs hosted on the same instan
 1. Point your DNS A/CNAME records (e.g. `blog.company.com`, `tech.domain.org`) to your Docker host IP.
 2. In the Admin Dashboard (`/admin/sites`), create a new blog instance and set the **Domain** field to match the host header.
 3. The internal Next.js `proxy.ts` automatically isolates data, categories, and articles per domain.
+
+---
+
+## 6. Docker Tagging & Automated Semantic Releases (SemVer)
+
+When changes are pushed or merged to the `main` branch or a Git tag (`v*.*.*`) is published, the GitHub Actions workflow automatically builds multi-arch images (`linux/amd64`, `linux/arm64`), creates a GitHub Release with an automated changelog, and pushes the corresponding tags to GitHub Container Registry (GHCR):
+
+| Tag Format | Example | Purpose |
+| :--- | :--- | :--- |
+| `latest` | `ghcr.io/owner/kotonoba:latest` | Points to the latest stable release (omitted for pre-releases) |
+| `MAJOR.MINOR.PATCH` | `ghcr.io/owner/kotonoba:1.2.3` | Immutable exact release version |
+| `MAJOR.MINOR` | `ghcr.io/owner/kotonoba:1.2` | Rolling minor tag pointing to latest patch |
+| `MAJOR` | `ghcr.io/owner/kotonoba:1` | Rolling major tag pointing to latest minor/patch |
+| `MAJOR.MINOR.PATCH-TAG.NUM` | `ghcr.io/owner/kotonoba:1.0.0-rc.1` | Pre-release and testing builds |
+| `vMAJOR.MINOR.PATCH` | `ghcr.io/owner/kotonoba:v1.2.3` | Full Git release tag |
+
+### Pulling Releases
+
+```bash
+# Pull latest stable version
+docker pull ghcr.io/your-username/kotonoba:latest
+
+# Pin to an exact semantic version
+docker pull ghcr.io/your-username/kotonoba:1.0.0
+
+# Pin to a pre-release candidate
+docker pull ghcr.io/your-username/kotonoba:1.0.0-rc.1
+```

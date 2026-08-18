@@ -1,4 +1,4 @@
-# BlogForge — Modern Multi-Tenant Blog CMS
+# Kotonoba (言の場) — Modern Multi-Tenant Blog CMS
 
 A high-performance, self-hosted, multi-tenant blog CMS built with **Next.js 16 (App Router)**, **SQLite**, **Tailwind CSS v4**, and **Docker**.
 

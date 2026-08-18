@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "BlogForge",
+    "appName": "Kotonoba",
     "home": "Home",
     "admin": "Admin",
     "dashboard": "Dashboard",
@@ -116,7 +116,7 @@
     "activeSite": "Active Blog"
   },
   "wizard": {
-    "welcomeTitle": "Welcome to BlogForge",
+    "welcomeTitle": "Welcome to Kotonoba",
     "welcomeSubtitle": "Let's set up your new high-performance CMS in just a few simple steps.",
     "step1Title": "Admin Account",
     "step1Desc": "Create the master administrator account for your blog.",
@@ -172,7 +172,7 @@
     "downloadBackupBtn": "Download Backup (.zip)",
     "downloadingBackup": "Generating Archive…",
     "importBackup": "Import & Restore Backup",
-    "importBackupDesc": "Upload a BlogForge .zip archive to restore articles, taxonomy, settings, and media assets.",
+    "importBackupDesc": "Upload a Kotonoba .zip archive to restore articles, taxonomy, settings, and media assets.",
     "selectBackupFile": "Click to select or drop .zip file",
     "restoreMode": "Restoration Strategy",
     "modeMerge": "Merge Content (Preserves existing items and updates matches)",
@@ -196,7 +196,7 @@
   },
   "auth": {
     "signInTitle": "Welcome Back",
-    "signInSubtitle": "Sign in to access your BlogForge dashboard",
+    "signInSubtitle": "Sign in to access your Kotonoba dashboard",
     "emailLabel": "Email Address",
     "passwordLabel": "Password",
     "submit": "Sign In",
