@@ -8,11 +8,6 @@ on:
       - "v*.*.*"
       - "v*.*.*-*"
   workflow_dispatch:
-    inputs:
-      custom_version:
-        description: "Custom SemVer version (e.g. 1.0.0, 1.2.3-beta.1). Leave empty to use package.json / auto-increment"
-        required: false
-        default: ""
 
 env:
   REGISTRY: ghcr.io
@@ -36,37 +31,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Determine Semantic Version (SemVer)
+      - name: Determine Semantic Version (from package.json)
         id: versioning
         run: |
-          if [ -n "${{ github.event.inputs.custom_version }}" ]; then
-            RAW_VER="${{ github.event.inputs.custom_version }}"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            RAW_VER="${GITHUB_REF#refs/tags/}"
-          else
-            # Read base version from package.json
-            PKG_VER=$(node -p "require('./package.json').version")
-            
-            git fetch --tags --force 2>/dev/null || true
+          # Read version directly from package.json as single source of truth
+          PKG_VER=$(node -p "require('./package.json').version")
 
-            # Check if tag already exists in repository
-            if git rev-parse "v${PKG_VER}" >/dev/null 2>&1; then
-              MAJOR_MINOR=$(echo "$PKG_VER" | cut -d. -f1,2)
-              LATEST_TAG=$(git tag -l "v${MAJOR_MINOR}.*" | grep -E "^v${MAJOR_MINOR}\.[0-9]+$" | sort -V | tail -n 1)
-              
-              if [ -n "$LATEST_TAG" ]; then
-                CURRENT_PATCH=$(echo "$LATEST_TAG" | sed -E "s/^v${MAJOR_MINOR}\.([0-9]+)$/\1/")
-                NEXT_PATCH=$((CURRENT_PATCH + 1))
-                RAW_VER="${MAJOR_MINOR}.${NEXT_PATCH}"
-              else
-                RAW_VER="${PKG_VER}.1"
-              fi
-            else
-              RAW_VER="${PKG_VER}"
-            fi
-          fi
-
-          CLEAN_VER="${RAW_VER#v}"
+          CLEAN_VER="${PKG_VER#v}"
           TAG_NAME="v${CLEAN_VER}"
           IS_PRERELEASE="false"
           if [[ "$CLEAN_VER" == *-* ]]; then
@@ -76,7 +47,7 @@ jobs:
           echo "VERSION=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "CLEAN_VERSION=${CLEAN_VER}" >> $GITHUB_OUTPUT
           echo "IS_PRERELEASE=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
-          echo "Resolved SemVer: ${TAG_NAME} (Clean: ${CLEAN_VER}, Pre-release: ${IS_PRERELEASE})"
+          echo "Version from package.json: ${CLEAN_VER} (Tag: ${TAG_NAME}, Pre-release: ${IS_PRERELEASE})"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -115,23 +86,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create GitHub Release with Changelog
+      - name: Create or Update GitHub Release with Changelog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.versioning.outputs.VERSION }}
           IS_PRERELEASE: ${{ steps.versioning.outputs.IS_PRERELEASE }}
         run: |
-          echo "Publishing GitHub Release for tag: ${TAG_NAME} (prerelease: ${IS_PRERELEASE})"
+          echo "Processing GitHub Release for tag: ${TAG_NAME} (prerelease: ${IS_PRERELEASE})"
           
           PRERELEASE_FLAG=""
           if [ "${IS_PRERELEASE}" = "true" ]; then
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          gh release create "${TAG_NAME}" \
-            --target "${GITHUB_SHA}" \
-            --title "Kotonoba ${TAG_NAME}" \
-            --generate-notes \
-            ${PRERELEASE_FLAG}
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} already exists. Updating..."
+            gh release edit "${TAG_NAME}" --title "Kotonoba ${TAG_NAME}" ${PRERELEASE_FLAG}
+          else
+            echo "Creating new release ${TAG_NAME}..."
+            gh release create "${TAG_NAME}" \
+              --target "${GITHUB_SHA}" \
+              --title "Kotonoba ${TAG_NAME}" \
+              --generate-notes \
+              ${PRERELEASE_FLAG}
+          fi
+
 
 
