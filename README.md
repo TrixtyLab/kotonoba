@@ -33,12 +33,12 @@ Open `http://localhost:3000` to complete the initial 5-step setup wizard.
 
 ### 1. Install Dependencies
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Run the Turbopack Dev Server
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Visit `http://localhost:3000`. Database tables and migrations are automatically applied on startup to `./data/blog.db`.
@@ -55,7 +55,7 @@ For complete documentation on zero-downtime blue-green deployments, SQLite volum
 
 | Layer | Technology |
 | :--- | :--- |
-| **Framework** | Next.js 16 (App Router, Turbopack, Standalone) |
+| **Framework** | Next.js 16 (App Router, Turbopack) |
 | **Database & ORM** | SQLite (`better-sqlite3`) + Drizzle ORM |
 | **Styling** | Tailwind CSS v4 (`@theme` CSS-first configuration) |
 | **Editor** | Tiptap (`@tiptap/react`, `@tiptap/starter-kit`, `mermaid`) |
