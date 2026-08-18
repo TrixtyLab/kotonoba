@@ -1,28 +1,17 @@
 services:
   kotonoba:
-    image: ghcr.io/your-username/kotonoba:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: kotonoba
+    image: ghcr.io/TrixtyLab/kotonoba:latest
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - 3000
     environment:
-      - NODE_ENV=production
-      - DB_PATH=/app/data/blog.db
-      - UPLOAD_DIR=/app/data/uploads
-      - JWT_SECRET=replace-with-a-secure-random-32-character-secret-key
-      - SITE_URL=http://localhost:3000
+      NODE_ENV: production
+      DB_PATH: /app/data/blog.db
+      UPLOAD_DIR: /app/data/uploads
+      JWT_SECRET: replace-with-a-secure-random-32-character-secret-key
+      SITE_URL: http://localhost:3000
     volumes:
       - blog_data:/app/data
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
 
 volumes:
-  blog_data:
-    driver: local
+  blog_data: {}
