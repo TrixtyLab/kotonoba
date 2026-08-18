@@ -1,0 +1,71 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: blog-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:rw
+    depends_on:
+      - app-blue
+    networks:
+      - blog-network
+
+  app-blue:
+    image: ${DOCKER_IMAGE:-ghcr.io/your-username/kotonoba:latest}
+    container_name: blog-app-blue
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/blog.db
+      - UPLOAD_DIR=/app/data/uploads
+      - JWT_SECRET=${JWT_SECRET:-replace-with-a-secure-random-32-character-secret-key}
+      - SITE_URL=${SITE_URL:-http://localhost}
+    volumes:
+      - blog_data:/app/data
+    networks:
+      - blog-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  app-green:
+    image: ${DOCKER_IMAGE:-ghcr.io/your-username/kotonoba:latest}
+    container_name: blog-app-green
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/blog.db
+      - UPLOAD_DIR=/app/data/uploads
+      - JWT_SECRET=${JWT_SECRET:-replace-with-a-secure-random-32-character-secret-key}
+      - SITE_URL=${SITE_URL:-http://localhost}
+    volumes:
+      - blog_data:/app/data
+    networks:
+      - blog-network
+    profiles:
+      - standby
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  blog_data:
+    driver: local
+
+networks:
+  blog-network:
+    driver: bridge
