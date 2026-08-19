@@ -126,20 +126,8 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
       isFixed: true,
     };
 
-    const categoryItems: CustomNavItem[] = categories.slice(0, 5).map((c) => ({
-      id: `cat-${c.id}`,
-      label: c.name.toUpperCase(),
-      url: `/category/${c.slug}`,
-    }));
-
-    const archiveItem: CustomNavItem = {
-      id: "archive",
-      label: t("archive").toUpperCase(),
-      url: "/archive",
-    };
-
-    return [defaultHome, ...categoryItems, archiveItem];
-  }, [site.navLinks, categories, t]);
+    return [defaultHome];
+  }, [site.navLinks, t]);
 
   const alignmentClass = useMemo(() => {
     switch (site.navAlignment) {
