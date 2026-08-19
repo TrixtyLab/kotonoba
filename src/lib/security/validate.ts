@@ -85,10 +85,10 @@ export type TagInput = z.infer<typeof tagSchema>;
 
 /** Schema validating blog site parameters, branding, and navigation configuration. */
 export const siteSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().min(1).max(5000),
   domain: z.string().min(1).max(500),
-  subtitle: z.string().max(500).default(""),
-  description: z.string().max(2000).default(""),
+  subtitle: z.string().max(5000).default(""),
+  description: z.string().max(5000).default(""),
   logoUrl: z.string().max(2000).optional().nullable(),
   faviconUrl: z.string().max(2000).optional().nullable(),
   locale: z.string().min(2).max(10).default("en"),
@@ -97,6 +97,7 @@ export const siteSchema = z.object({
   fontFamily: z.string().max(100).default("Inter"),
   navLinks: z.string().default("[]"),
   navAlignment: z.enum(["left", "center", "right"]).default("left"),
+  supportedLocales: z.string().max(2000).optional().nullable(),
 });
 export type SiteInput = z.infer<typeof siteSchema>;
 

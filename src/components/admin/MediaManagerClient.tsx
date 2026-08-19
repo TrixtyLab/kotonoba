@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import { useTranslations } from "next-intl";
 import {
   Upload, Image as ImageIcon, Trash2, Copy, Search, RefreshCw,
   HardDrive, Cloud, ExternalLink, Eye, Folder, FolderPlus,
@@ -64,6 +65,8 @@ export interface MediaManagerClientProps {
 export function MediaManagerClient({
   storageInfo,
 }: MediaManagerClientProps) {
+  const t = useTranslations("media");
+  const tc = useTranslations("common");
   const toast = useToast();
   const [currentFolder, setCurrentFolder] = useState<string>("");
   const [parentFolder, setParentFolder] = useState<string | null>(null);
@@ -103,7 +106,7 @@ export function MediaManagerClient({
         setCurrentStorage(data.storage);
       }
     } catch {
-      toast.error("Error al cargar biblioteca de medios");
+      toast.error(t("loadingMedia"));
     } finally {
       setIsLoading(false);
     }
@@ -135,12 +138,12 @@ export function MediaManagerClient({
           toast.error(`${file.name}: ${data.error}`);
         }
       } catch {
-        toast.error(`Error al subir ${file.name}`);
+        toast.error(t("uploadError"));
       }
     }
 
     if (uploadedCount > 0) {
-      toast.success(`${uploadedCount} archivo(s) subido(s) a /${currentFolder}`);
+      toast.success(t("uploadSuccess", { count: uploadedCount }));
       await fetchMedia(currentFolder);
     }
 
@@ -150,7 +153,7 @@ export function MediaManagerClient({
 
   async function handleCreateFolder() {
     if (!newFolderName.trim()) {
-      toast.error("Ingresa un nombre para la carpeta");
+      toast.error(t("folderNamePlaceholder"));
       return;
     }
 
@@ -167,15 +170,15 @@ export function MediaManagerClient({
 
       const data = await res.json();
       if (data.success) {
-        toast.success(`Carpeta "${newFolderName}" creada`);
+        toast.success(t("folderCreated"));
         setNewFolderName("");
         setNewFolderModalOpen(false);
         await fetchMedia(currentFolder);
       } else {
-        toast.error(data.error || "Error al crear carpeta");
+        toast.error(data.error || t("uploadError"));
       }
     } catch {
-      toast.error("Error de red al crear carpeta");
+      toast.error(t("uploadError"));
     }
   }
 
@@ -196,14 +199,14 @@ export function MediaManagerClient({
 
       const data = await res.json();
       if (data.success) {
-        toast.success(`Archivo movido con éxito`);
+        toast.success(t("fileMoved"));
         setMoveTargetFile(null);
         await fetchMedia(currentFolder);
       } else {
-        toast.error(data.error || "Error al mover archivo");
+        toast.error(data.error || t("uploadError"));
       }
     } catch {
-      toast.error("Error de red al mover archivo");
+      toast.error(t("uploadError"));
     } finally {
       setIsMoving(false);
     }
@@ -232,12 +235,12 @@ export function MediaManagerClient({
         if (previewFile?.path === deleteTarget.path) {
           setPreviewFile(null);
         }
-        toast.success(deleteTarget.isFolder ? "Carpeta eliminada" : "Archivo eliminado");
+        toast.success(deleteTarget.isFolder ? t("folderDeleted") : t("fileDeleted"));
       } else {
-        toast.error(data.error || "Error al eliminar");
+        toast.error(data.error || tc("delete"));
       }
     } catch {
-      toast.error("Error de red al eliminar");
+      toast.error(tc("delete"));
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);
@@ -272,9 +275,9 @@ export function MediaManagerClient({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-text tracking-tight">Biblioteca de Medios</h1>
+          <h1 className="text-xl font-bold text-text tracking-tight">{t("title")}</h1>
           <p className="text-xs text-text-muted mt-0.5">
-            Administra carpetas, sube imágenes y organiza el contenido multimedia.
+            {t("subtitle")}
           </p>
         </div>
 
@@ -290,7 +293,7 @@ export function MediaManagerClient({
                   </span>
                 )}
                 <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded font-medium">
-                  Privado (Grant)
+                  Privado
                 </span>
               </>
             ) : currentStorage?.provider === "s3" ? (
@@ -303,13 +306,13 @@ export function MediaManagerClient({
                   </span>
                 )}
                 <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded font-medium">
-                  Privado (Grant)
+                  Privado
                 </span>
               </>
             ) : (
               <>
                 <HardDrive className="w-3.5 h-3.5 text-text-muted" />
-                <span className="text-text">Carpeta Local</span>
+                <span className="text-text">{t("localFolder")}</span>
               </>
             )}
           </div>
@@ -320,7 +323,7 @@ export function MediaManagerClient({
             onClick={() => setNewFolderModalOpen(true)}
             icon={<FolderPlus className="w-3.5 h-3.5 text-accent" />}
           >
-            Nueva Carpeta
+            {t("newFolder")}
           </Button>
 
           <Button
@@ -330,7 +333,7 @@ export function MediaManagerClient({
             disabled={isUploading}
             icon={<Upload className="w-3.5 h-3.5" />}
           >
-            {isUploading ? "Subiendo…" : "Subir Imagen"}
+            {isUploading ? t("uploading") : t("uploadImage")}
           </Button>
 
           <input
@@ -357,7 +360,7 @@ export function MediaManagerClient({
             }`}
           >
             <Home className="w-3.5 h-3.5" />
-            <span>Raíz</span>
+            <span>{t("root")}</span>
           </button>
 
           {breadcrumbs.map((segment, idx) => {
@@ -392,7 +395,7 @@ export function MediaManagerClient({
               icon={<ArrowLeft className="w-3.5 h-3.5" />}
               className="text-xs"
             >
-              Volver
+              {tc("back")}
             </Button>
           )}
 
@@ -428,10 +431,10 @@ export function MediaManagerClient({
         <div className="flex flex-col items-center justify-center space-y-1">
           <Upload className="w-5 h-5 text-accent mb-1" />
           <p className="text-xs font-semibold text-text">
-            Arrastra archivos para subirlos a <span className="font-mono text-accent">/{currentFolder || "raíz"}</span>
+            {t("dragDropPrompt")} <span className="font-mono text-accent">/{currentFolder || t("root")}</span>
           </p>
           <p className="text-[11px] text-text-muted">
-            Formatos admitidos: JPEG, PNG, WebP, GIF, SVG (hasta 10MB)
+            {t("allowedFormats")}
           </p>
         </div>
       </div>
@@ -442,7 +445,7 @@ export function MediaManagerClient({
         {filteredFolders.length > 0 && (
           <div className="space-y-2">
             <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">
-              Carpetas ({filteredFolders.length})
+              {t("foldersCount", { count: filteredFolders.length })}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {filteredFolders.map((f) => (
@@ -463,7 +466,7 @@ export function MediaManagerClient({
                     type="button"
                     onClick={() => setDeleteTarget({ path: f.path, name: f.name, isFolder: true })}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/10 text-rose-500 transition-opacity ml-1 shrink-0"
-                    title="Eliminar carpeta"
+                    title={t("deleteFolder")}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -477,7 +480,7 @@ export function MediaManagerClient({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">
-              Archivos ({filteredFiles.length})
+              {t("filesCount", { count: filteredFiles.length })}
             </h2>
             <div className="relative w-48 sm:w-64">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -485,7 +488,7 @@ export function MediaManagerClient({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filtrar archivos…"
+                placeholder={t("filterFiles")}
                 className="w-full pl-7 pr-2.5 py-1 text-xs rounded-lg border border-border bg-surface-hover/30 text-text focus:outline-hidden focus:border-accent"
               />
             </div>
@@ -493,13 +496,13 @@ export function MediaManagerClient({
 
           {isLoading && files.length === 0 ? (
             <div className="p-12 text-center text-xs text-text-muted">
-              Cargando medios…
+              {t("loadingMedia")}
             </div>
           ) : filteredFiles.length === 0 && filteredFolders.length === 0 ? (
             <div className="p-12 text-center text-text-muted space-y-1.5 border border-border rounded-xl bg-surface">
               <ImageIcon className="w-8 h-8 opacity-30 mx-auto" />
-              <p className="text-xs font-semibold text-text">Esta carpeta está vacía</p>
-              <p className="text-[11px]">Sube imágenes o crea subcarpetas para comenzar.</p>
+              <p className="text-xs font-semibold text-text">{t("emptyFolder")}</p>
+              <p className="text-[11px]">{t("emptyFolderDesc")}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
@@ -522,7 +525,7 @@ export function MediaManagerClient({
                         type="button"
                         onClick={() => setPreviewFile(file)}
                         className="p-1.5 rounded-lg bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors"
-                        title="Vista previa"
+                        title={t("preview")}
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
@@ -533,7 +536,7 @@ export function MediaManagerClient({
                           setTargetDestinationFolder(currentFolder);
                         }}
                         className="p-1.5 rounded-lg bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors"
-                        title="Mover a otra carpeta"
+                        title={t("moveFile")}
                       >
                         <FolderInput className="w-3.5 h-3.5" />
                       </button>
@@ -541,7 +544,7 @@ export function MediaManagerClient({
                         type="button"
                         onClick={() => copyToClipboard(file.url)}
                         className="p-1.5 rounded-lg bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors"
-                        title="Copiar enlace"
+                        title={t("copyUrl")}
                       >
                         <Copy className="w-3.5 h-3.5" />
                       </button>
@@ -549,7 +552,7 @@ export function MediaManagerClient({
                         type="button"
                         onClick={() => setDeleteTarget({ path: file.path, name: file.filename, isFolder: false })}
                         className="p-1.5 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white backdrop-blur-xs transition-colors"
-                        title="Eliminar"
+                        title={tc("delete")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -575,23 +578,23 @@ export function MediaManagerClient({
       <Modal
         isOpen={newFolderModalOpen}
         onClose={() => setNewFolderModalOpen(false)}
-        title="Crear Nueva Carpeta"
+        title={t("newFolder")}
       >
         <div className="space-y-3 text-xs">
           <Input
-            label="Nombre de la Carpeta"
-            placeholder="ej. covers, articulos, branding"
+            label={t("folderName")}
+            placeholder={t("folderNamePlaceholder")}
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            helperText={`Se creará dentro de: /${currentFolder || "raíz"}`}
+            helperText={`/${currentFolder || t("root")}`}
             autoFocus
           />
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)}>
-              Cancelar
+              {tc("cancel")}
             </Button>
             <Button variant="primary" size="sm" onClick={handleCreateFolder}>
-              Crear Carpeta
+              {t("createFolder")}
             </Button>
           </div>
         </div>
@@ -602,24 +605,21 @@ export function MediaManagerClient({
         <Modal
           isOpen={Boolean(moveTargetFile)}
           onClose={() => setMoveTargetFile(null)}
-          title={`Mover "${moveTargetFile.filename}"`}
+          title={`${t("moveFile")}: "${moveTargetFile.filename}"`}
         >
           <div className="space-y-3 text-xs">
-            <p className="text-text-muted">
-              Selecciona la ruta de la carpeta de destino:
-            </p>
             <Input
-              label="Carpeta Destino (vacío para raíz)"
-              placeholder="ej. covers o articulos/2026"
+              label={t("destinationFolder")}
+              placeholder="covers / articles"
               value={targetDestinationFolder}
               onChange={(e) => setTargetDestinationFolder(e.target.value)}
             />
             <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <Button variant="outline" size="sm" onClick={() => setMoveTargetFile(null)}>
-                Cancelar
+                {tc("cancel")}
               </Button>
               <Button variant="primary" size="sm" onClick={handleMoveFile} loading={isMoving}>
-                Mover Archivo
+                {t("moveFile")}
               </Button>
             </div>
           </div>
@@ -662,7 +662,7 @@ export function MediaManagerClient({
                   onClick={() => copyToClipboard(previewFile.url)}
                   icon={<Copy className="w-3.5 h-3.5" />}
                 >
-                  Copiar URL
+                  {t("copyUrl")}
                 </Button>
                 <a
                   href={previewFile.url}
@@ -671,7 +671,7 @@ export function MediaManagerClient({
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-text hover:bg-surface-hover text-xs font-semibold transition-colors"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Abrir
+                  {tc("view")}
                 </a>
               </div>
             </div>
@@ -682,11 +682,10 @@ export function MediaManagerClient({
       {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(deleteTarget)}
-        title={deleteTarget?.isFolder ? "Eliminar Carpeta" : "Eliminar Archivo"}
-        message={`¿Estás seguro de que deseas eliminar permanentemente "${deleteTarget?.name}"${
-          deleteTarget?.isFolder ? " y todo su contenido?" : "?"
-        }`}
-        confirmText={isDeleting ? "Eliminando..." : "Eliminar"}
+        title={deleteTarget?.isFolder ? t("deleteFolder") : t("deleteFile")}
+        message={deleteTarget?.isFolder ? t("confirmDeleteFolder") : t("confirmDeleteFile")}
+        confirmText={tc("delete")}
+        cancelText={tc("cancel")}
         variant="danger"
         isLoading={isDeleting}
         onConfirm={confirmDelete}

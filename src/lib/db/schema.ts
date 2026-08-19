@@ -18,6 +18,7 @@ export const sites = sqliteTable("sites", {
   fontFamily: text("font_family").default("Inter"),
   navLinks: text("nav_links").default("[]"),
   navAlignment: text("nav_alignment", { enum: ["left", "center", "right"] }).default("left"),
+  supportedLocales: text("supported_locales").default('["en"]'),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [

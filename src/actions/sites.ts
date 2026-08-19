@@ -51,7 +51,7 @@ export async function createSite(inputData: Partial<SiteInput>): Promise<SiteMut
     return { success: false, errors: validation.errors };
   }
 
-  const { name, domain, subtitle, description, locale, theme, primaryColor, fontFamily } = validation.data;
+  const { name, domain, subtitle, description, locale, theme, primaryColor, fontFamily, supportedLocales } = validation.data;
   const db = getDb();
   const id = generateId();
   const cleanDomain = domain.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
@@ -68,12 +68,14 @@ export async function createSite(inputData: Partial<SiteInput>): Promise<SiteMut
       theme: theme || "dark",
       primaryColor: primaryColor || "#6366f1",
       fontFamily: fontFamily || "Inter",
+      supportedLocales: supportedLocales || '["en"]',
       createdAt: now,
       updatedAt: now,
     })
     .run();
 
   revalidatePath("/", "layout");
+  revalidatePath("/[locale]", "layout");
   return { success: true, id };
 }
 
@@ -107,6 +109,7 @@ export async function updateSite(siteId: string, inputData: Partial<SiteInput>):
     fontFamily: inputData.fontFamily !== undefined ? inputData.fontFamily : existing.fontFamily,
     navLinks: inputData.navLinks !== undefined ? inputData.navLinks : (existing.navLinks || "[]"),
     navAlignment: inputData.navAlignment !== undefined ? inputData.navAlignment : (existing.navAlignment as "left" | "center" | "right" || "left"),
+    supportedLocales: inputData.supportedLocales !== undefined ? inputData.supportedLocales : existing.supportedLocales,
   };
 
   const validation = validate(siteSchema, merged);
@@ -114,7 +117,7 @@ export async function updateSite(siteId: string, inputData: Partial<SiteInput>):
     return { success: false, errors: validation.errors };
   }
 
-  const { name, domain, subtitle, description, logoUrl, faviconUrl, locale, theme, primaryColor, fontFamily, navLinks, navAlignment } = validation.data;
+  const { name, domain, subtitle, description, logoUrl, faviconUrl, locale, theme, primaryColor, fontFamily, navLinks, navAlignment, supportedLocales } = validation.data;
   const cleanDomain = domain.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   const now = new Date();
 
@@ -132,6 +135,7 @@ export async function updateSite(siteId: string, inputData: Partial<SiteInput>):
       fontFamily: fontFamily || "Inter",
       navLinks: navLinks !== undefined ? navLinks : "[]",
       navAlignment: navAlignment || "left",
+      supportedLocales: supportedLocales !== undefined ? supportedLocales : '["en"]',
       updatedAt: now,
     })
     .where(eq(sites.id, siteId))

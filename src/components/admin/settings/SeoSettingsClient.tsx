@@ -99,7 +99,7 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
               <span>{t("enableLlmsTxt")}</span>
             </h3>
             <p className="text-xs text-text-muted">
-              Genera automáticamente los archivos estándar <code className="bg-surface px-1 py-0.5 rounded border border-border">/llms.txt</code> y <code className="bg-surface px-1 py-0.5 rounded border border-border">/llms-full.txt</code> para que agentes de IA (ChatGPT, Claude, Perplexity) comprendan e indexen tus publicaciones.
+              {t("llmsTxtInfo")}
             </p>
           </div>
 
@@ -116,7 +116,7 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
                 label={t("llmsTxtDescription")}
                 value={llmsTxtCustom}
                 onChange={(e) => setLlmsTxtCustom(e.target.value)}
-                placeholder="Instrucciones adicionales para agentes de IA que consulten este blog…"
+                placeholder={t("llmsTxtCustomPlaceholder")}
                 className="min-h-[100px] text-xs font-mono"
               />
             </div>
@@ -137,7 +137,7 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
               }`}
             >
               {isDubConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-              {isDubConfigured ? "Activo" : "No Configurado"}
+              {isDubConfigured ? t("active") : t("notConfigured")}
             </span>
           </div>
 
@@ -151,7 +151,7 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline font-semibold"
           >
-            <span>Conocer más sobre Dub.co</span>
+            <span>{t("learnMoreDub")}</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>

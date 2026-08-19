@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { List } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /** Structure of an extracted heading entry within the table of contents. */
 interface TocItem {
@@ -17,6 +18,7 @@ interface TocItem {
  * @returns React JSX table of contents component or null when fewer than 2 headings exist.
  */
 export function TableOfContents({ contentHtml }: { contentHtml: string }) {
+  const t = useTranslations("blog");
   const [items, setItems] = useState<TocItem[]>([]);
   const [activeId, setActiveId] = useState("");
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -61,7 +63,7 @@ export function TableOfContents({ contentHtml }: { contentHtml: string }) {
     <div className="card-clean p-5 sticky top-20 space-y-3">
       <div className="flex items-center gap-2 text-sm font-semibold text-text pb-3 border-b border-border">
         <List className="w-4 h-4 text-primary" />
-        <span>Contenido</span>
+        <span>{t("tableOfContents")}</span>
       </div>
 
       <nav className="space-y-1 text-xs">

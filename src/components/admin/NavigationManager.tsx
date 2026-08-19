@@ -43,6 +43,8 @@ export interface NavItemConfig {
   target?: "_self" | "_blank";
   /** Flag denoting whether the item is fixed in position. */
   isFixed?: boolean;
+  /** Flag indicating whether the item is a social link that displays icon-only in the header without text. */
+  isSocial?: boolean;
 }
 
 /**
@@ -101,6 +103,7 @@ export function NavigationManager({
   const [itemUrl, setItemUrl] = useState("");
   const [itemIcon, setItemIcon] = useState("none");
   const [itemTarget, setItemTarget] = useState<"_self" | "_blank">("_self");
+  const [itemIsSocial, setItemIsSocial] = useState(false);
 
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -112,6 +115,7 @@ export function NavigationManager({
     setItemUrl("");
     setItemIcon("none");
     setItemTarget("_self");
+    setItemIsSocial(false);
     setIsEditing(true);
   }
 
@@ -124,6 +128,7 @@ export function NavigationManager({
     setItemUrl(item.url);
     setItemIcon(item.icon || "none");
     setItemTarget(item.target || "_self");
+    setItemIsSocial(Boolean(item.isSocial));
     setIsEditing(true);
   }
 
@@ -156,6 +161,7 @@ export function NavigationManager({
                 url: item.isFixed ? item.url : itemUrl.trim(),
                 icon: itemIcon === "none" ? undefined : itemIcon,
                 target: item.isFixed ? "_self" : itemTarget,
+                isSocial: item.isFixed ? false : itemIsSocial,
               }
             : item
         )
@@ -170,6 +176,7 @@ export function NavigationManager({
         url: itemUrl.trim(),
         icon: itemIcon === "none" ? undefined : itemIcon,
         target: itemTarget,
+        isSocial: itemIsSocial,
       };
       setItems((prev) => [...prev, newItem]);
     }
@@ -349,6 +356,11 @@ export function NavigationManager({
                         </span>
                       )
                     )}
+                    {item.isSocial && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase">
+                        Social / Icon
+                      </span>
+                    )}
                     {item.target === "_blank" && (
                       <span className="text-[10px] text-text-muted flex items-center gap-0.5" title={t("navNewTab")}>
                         <ExternalLink className="w-2.5 h-2.5" />
@@ -363,62 +375,62 @@ export function NavigationManager({
 
               {/* Right: Actions */}
               <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openEditModal(item)}
+                  className="text-xs p-1.5 h-8 w-8 text-text-muted hover:text-text"
+                  title={tc("edit")}
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </Button>
                 {!item.isFixed && (
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(item)}
-                    className="p-1.5 rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-                    title={tc("edit")}
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                {!item.isFixed && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDelete(item.id)}
-                    className="p-1.5 rounded-md text-rose-500 hover:bg-rose-500/10 transition-colors"
+                    className="text-xs p-1.5 h-8 w-8 text-text-muted hover:text-danger"
                     title={tc("delete")}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
           ))}
-        </div>
 
-        <div className="flex justify-end pt-3 border-t border-border">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSaveAll}
-            disabled={isSaving}
-          >
-            {isSaving ? tc("saving") : t("saveNav")}
-          </Button>
+          <div className="flex justify-end pt-3 border-t border-border">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSaveAll}
+              loading={isSaving}
+            >
+              {isSaving ? tc("saving") : t("saveNav")}
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Modal: Add/Edit Link */}
+      {/* Edit/Add Modal */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-md bg-surface border border-border rounded-xl p-5 shadow-xl space-y-4 animate-slide-up">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-surface border border-border rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
             <h4 className="text-sm font-bold text-text">
-              {editingId ? tc("edit") : t("addNavLink")}
+              {editingId ? tc("edit") : tc("add")}
             </h4>
 
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <Input
-                  label="Texto en Español (ES)"
+                  label={t("navLabelEs")}
                   value={itemLabelEs}
                   onChange={(e) => setItemLabelEs(e.target.value)}
                   placeholder="ej. Tienda, Contacto"
                   autoFocus
                 />
                 <Input
-                  label="Text in English (EN)"
+                  label={t("navLabelEn")}
                   value={itemLabelEn}
                   onChange={(e) => setItemLabelEn(e.target.value)}
                   placeholder="e.g. Shop, Contact"
@@ -448,7 +460,7 @@ export function NavigationManager({
                         : "border-border/50 text-text-muted hover:text-text hover:bg-surface"
                     }`}
                   >
-                    <span className="text-[10px]">Sin icono</span>
+                    <span className="text-[10px]">{t("navNoIcon")}</span>
                   </button>
                   {AVAILABLE_NAV_ICONS.map((ico) => (
                     <button
@@ -470,7 +482,18 @@ export function NavigationManager({
               </div>
 
               {(!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
-                <div className="pt-1">
+                <div className="pt-1 space-y-2.5">
+                  <Checkbox
+                    checked={itemIsSocial}
+                    onChange={(checked) => {
+                      setItemIsSocial(checked);
+                      if (checked && itemTarget === "_self") {
+                        setItemTarget("_blank");
+                      }
+                    }}
+                    label={t("navSocial")}
+                  />
+
                   <Checkbox
                     checked={itemTarget === "_blank"}
                     onChange={(checked) => setItemTarget(checked ? "_blank" : "_self")}

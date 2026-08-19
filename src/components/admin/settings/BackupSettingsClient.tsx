@@ -233,9 +233,9 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
         isOpen={showReplaceConfirm}
         onClose={() => setShowReplaceConfirm(false)}
         onConfirm={executeImport}
-        title="⚠️ Peligro: Reemplazar todo"
+        title={t("dangerReplaceAll")}
         message={t("replaceWarning")}
-        confirmText="Sí, Reemplazar Todo"
+        confirmText={t("confirmReplaceAll")}
         variant="danger"
       />
     </div>

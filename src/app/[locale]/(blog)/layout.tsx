@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getActiveSite, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
 import { getCategories } from "@/actions/categories";
 import { getDb } from "@/lib/db";
@@ -9,6 +10,52 @@ import { ScrollToTop } from "@/components/blog/ScrollToTop";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { redirect } from "@/i18n/routing";
 import { headers } from "next/headers";
+import { getLocalizedText } from "@/lib/utils/localization";
+
+/**
+ * Dynamically computes metadata, robots directives, and favicon links for the public blog.
+ *
+ * @returns Metadata configuration object.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const site = (await getSiteForHost()) || (await getActiveSite());
+  const favicon = site?.faviconUrl || "/favicon.ico";
+  const appleIcon = site?.faviconUrl || site?.logoUrl || "/favicon.ico";
+
+  const db = getDb();
+  const antiAiSetting = site
+    ? db
+        .select()
+        .from(settings)
+        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
+        .get()
+    : null;
+
+  const isAiBlocked = antiAiSetting?.value === "true";
+
+  const robots = isAiBlocked
+    ? {
+        index: true,
+        follow: true,
+        noimageindex: true,
+        nocache: true,
+      }
+    : undefined;
+
+  return {
+    icons: {
+      icon: favicon,
+      shortcut: favicon,
+      apple: appleIcon,
+    },
+    alternates: {
+      types: {
+        "application/rss+xml": "/feed.xml",
+      },
+    },
+    robots,
+  };
+}
 
 /**
  * Public blog shell layout applying custom CSS accent colors, header navigation, analytics beacon tracking, and footer branding.
@@ -59,6 +106,7 @@ export default async function BlogLayout({
     name: "Kotonoba",
     subtitle: "",
     logoUrl: null,
+    supportedLocales: '["en"]',
   };
 
   const categories = site ? await getCategories(site.id) : [];
@@ -97,16 +145,6 @@ export default async function BlogLayout({
 
   const enableLlmsTxt = !isAiBlocked && llmsSetting?.value === "true";
 
-  const rssSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "rss_enabled")))
-        .get()
-    : null;
-
-  const isRssEnabled = rssSetting?.value !== "false";
-
   const primaryColor = site?.primaryColor || "#3b82f6";
   const themeStyles = {
     "--color-primary": primaryColor,
@@ -120,29 +158,14 @@ export default async function BlogLayout({
       className="min-h-screen flex flex-col justify-between bg-bg text-text"
       style={themeStyles}
     >
-      <head>
-        {isAiBlocked && <meta name="robots" content="noai, noimageai" />}
-        {isAiBlocked && <meta name="tdm-reservation" content="1" />}
-        <link rel="icon" href={site?.faviconUrl || "/favicon.ico"} />
-        <link rel="shortcut icon" href={site?.faviconUrl || "/favicon.ico"} />
-        <link rel="apple-touch-icon" href={site?.faviconUrl || site?.logoUrl || "/favicon.ico"} />
-        {isRssEnabled && (
-          <link
-            rel="alternate"
-            type="application/rss+xml"
-            title={`${siteData.name} RSS Feed`}
-            href="/feed.xml"
-          />
-        )}
-      </head>
       {site && <AnalyticsTracker siteId={site.id} />}
       <Header site={siteData} categories={categories} searchPosts={searchPosts} />
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-10 animate-fade-in">
         {children}
       </main>
       <Footer
-        siteName={siteData.name}
-        subtitle={siteData.subtitle}
+        siteName={getLocalizedText(siteData.name, locale)}
+        subtitle={getLocalizedText(siteData.subtitle, locale)}
         categories={categories}
         enableLlmsTxt={enableLlmsTxt}
       />

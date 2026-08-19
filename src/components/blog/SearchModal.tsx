@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, X, FileText, ArrowRight, CornerDownLeft } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
+import { useTranslations } from "next-intl";
 
 /**
  * Searchable article item structure utilized by the SearchModal dialog.
@@ -31,6 +32,7 @@ export function SearchModal({
   onClose: () => void;
   posts: SearchPostItem[];
 }) {
+  const t = useTranslations("blog");
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -102,14 +104,14 @@ export function SearchModal({
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            placeholder="Buscar artículos..."
+            placeholder={t("searchPlaceholder")}
             className="w-full bg-transparent text-sm text-text placeholder-text-muted outline-none"
           />
           {query && (
             <button
               onClick={() => setQuery("")}
               className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
-              aria-label="Limpiar búsqueda"
+              aria-label={t("clearSearch")}
             >
               <X className="w-4 h-4" />
             </button>
@@ -178,7 +180,7 @@ export function SearchModal({
 
           {filtered.length === 0 && (
             <div className="py-12 text-center text-text-muted text-xs">
-              No se encontraron artículos que coincidan con &ldquo;{query}&rdquo;
+              {t("noPostsFoundQuery", { query })}
             </div>
           )}
         </div>
@@ -192,20 +194,20 @@ export function SearchModal({
               <kbd className="bg-surface px-1.5 py-0.5 rounded border border-border font-mono">
                 ↓
               </kbd>{" "}
-              Navegar
+              {t("navigate")}
             </span>
             <span>
               <kbd className="bg-surface px-1.5 py-0.5 rounded border border-border font-mono">
                 ↵
               </kbd>{" "}
-              Abrir
+              {t("open")}
             </span>
           </div>
           <span>
             <kbd className="bg-surface px-1.5 py-0.5 rounded border border-border font-mono">
               ESC
             </kbd>{" "}
-            Cerrar
+            {t("close")}
           </span>
         </div>
       </div>

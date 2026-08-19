@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { FaXTwitter, FaFacebook, FaLinkedin, FaWhatsapp } from "react-icons/fa6";
 import { Link2, Check } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { useTranslations } from "next-intl";
 
 /**
  * Properties configuring social share buttons.
@@ -22,13 +23,14 @@ export interface ShareButtonsProps {
  * @returns React JSX sharing buttons cluster.
  */
 export function ShareButtons({ url, title }: ShareButtonsProps) {
+  const tc = useTranslations("common");
   const [copied, setCopied] = useState(false);
   const toast = useToast();
 
   function copyUrl(): void {
     navigator.clipboard.writeText(url);
     setCopied(true);
-    toast.success("Enlace copiado al portapapeles");
+    toast.success(tc("copied"));
     setTimeout(() => setCopied(false), 2500);
   }
 
@@ -82,9 +84,9 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
       </a>
       <button
         onClick={copyUrl}
-        aria-label="Copiar enlace"
+        aria-label={tc("copy")}
         className={buttonClass}
-        title="Copiar enlace"
+        title={tc("copy")}
       >
         {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Link2 className="w-4 h-4" />}
       </button>

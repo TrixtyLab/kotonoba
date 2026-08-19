@@ -236,7 +236,7 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
             </div>
           ) : (
             <div className="h-16 rounded-lg border border-dashed border-border bg-surface-hover/30 flex items-center justify-center text-xs text-text-muted">
-              Sin logo asignado
+              {t("noLogoAssigned")}
             </div>
           )}
 

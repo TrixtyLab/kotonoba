@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "@/i18n/routing";
 import { CheckCircle2, BookOpen, Folder, Tag, Share2 } from "lucide-react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
@@ -46,6 +46,8 @@ export function BlogProfileHero({
   activeCategorySlug,
   stats,
 }: BlogProfileHeroProps) {
+  const t = useTranslations("blog");
+  const tc = useTranslations("common");
   const locale = useLocale();
   const avatar = author.avatarUrl || site.logoUrl;
   const siteName = getLocalizedText(site.name, locale);
@@ -71,7 +73,7 @@ export function BlogProfileHero({
           )}
           <div
             className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shadow-md ring-2 ring-surface"
-            title="Blog Oficial Verificado"
+            title={t("officialBlog")}
           >
             <CheckCircle2 className="w-4 h-4 fill-white text-primary" />
           </div>
@@ -85,11 +87,11 @@ export function BlogProfileHero({
                   {name}
                 </h1>
                 <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary/10 text-primary uppercase tracking-wider">
-                  Oficial
+                  {t("official")}
                 </span>
               </div>
-              {site.name !== name && (
-                <p className="text-xs font-semibold text-text-muted mt-0.5">{site.name}</p>
+              {siteName !== name && (
+                <p className="text-xs font-semibold text-text-muted mt-0.5">{siteName}</p>
               )}
             </div>
 
@@ -99,21 +101,21 @@ export function BlogProfileHero({
                   <span className="block text-base sm:text-lg font-bold text-text tabular-nums">
                     {stats.postsCount}
                   </span>
-                  <span className="text-[11px] text-text-muted">Artículos</span>
+                  <span className="text-[11px] text-text-muted">{tc("posts")}</span>
                 </div>
                 <div className="w-px h-6 bg-border" />
                 <div>
                   <span className="block text-base sm:text-lg font-bold text-text tabular-nums">
                     {stats.categoriesCount}
                   </span>
-                  <span className="text-[11px] text-text-muted">Categorías</span>
+                  <span className="text-[11px] text-text-muted">{tc("categories")}</span>
                 </div>
                 <div className="w-px h-6 bg-border" />
                 <div>
                   <span className="block text-base sm:text-lg font-bold text-text tabular-nums">
                     {stats.tagsCount}
                   </span>
-                  <span className="text-[11px] text-text-muted">Etiquetas</span>
+                  <span className="text-[11px] text-text-muted">{tc("tags")}</span>
                 </div>
               </div>
             )}
@@ -136,7 +138,7 @@ export function BlogProfileHero({
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
               }`}
             >
-              Todos los artículos
+              {t("allArticles")}
             </Link>
 
             {categories.map((cat) => {

@@ -37,7 +37,7 @@ export interface PostCardProps {
  * @param props - PostCardProps configuring post attributes and locale.
  * @returns React JSX article entry element.
  */
-export function PostCard({ post, locale = "ja" }: PostCardProps) {
+export function PostCard({ post, locale = "en" }: PostCardProps) {
   const postUrl = `/entry/${post.slug}`;
 
   return (

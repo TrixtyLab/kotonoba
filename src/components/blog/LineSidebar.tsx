@@ -136,7 +136,7 @@ export function LineSidebar({
           className="text-xs text-text-muted hover:text-text transition-colors inline-flex items-center gap-1.5"
         >
           <Clock className="w-3.5 h-3.5" />
-          <span>Ver archivo mensual</span>
+          <span>{t("monthlyArchive")}</span>
         </Link>
       </div>
     </aside>

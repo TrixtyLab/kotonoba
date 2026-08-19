@@ -129,7 +129,7 @@ export function IntegrationsSettingsClient({
 
   function copyFeedUrl() {
     navigator.clipboard.writeText(feedUrl);
-    toast.success(tc("save"));
+    toast.success(tc("copied"));
   }
 
   return (
@@ -172,7 +172,7 @@ export function IntegrationsSettingsClient({
               value={discordWebhookUrl}
               onChange={(e) => setDiscordWebhookUrl(e.target.value)}
               placeholder="https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz"
-              helperText="Genera este webhook en Ajustes del Canal > Integraciones > Webhooks en tu servidor de Discord."
+              helperText={t("discordWebhookHelper")}
             />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -192,7 +192,7 @@ export function IntegrationsSettingsClient({
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-[11px] text-text-muted">
-                Envía un embed con título, autor, resumen e imagen de portada cada vez que publiques.
+                {t("discordWebhookDesc")}
               </span>
               <Button
                 variant="outline"
@@ -244,14 +244,14 @@ export function IntegrationsSettingsClient({
                   icon={<Copy className="w-3.5 h-3.5" />}
                   className="shrink-0 text-xs"
                 >
-                  Copiar
+                  {tc("copy")}
                 </Button>
                 <a
                   href="/feed.xml"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 rounded-lg border border-border bg-surface text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-                  title="Abrir Feed XML"
+                  title="Feed XML"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
@@ -264,10 +264,10 @@ export function IntegrationsSettingsClient({
                 value={rssItemsCount}
                 onChange={(val) => setRssItemsCount(val)}
                 options={[
-                  { value: "10", label: "10 artículos" },
-                  { value: "20", label: "20 artículos (Recomendado)" },
-                  { value: "50", label: "50 artículos" },
-                  { value: "100", label: "100 artículos" },
+                  { value: "10", label: "10" },
+                  { value: "20", label: "20" },
+                  { value: "50", label: "50" },
+                  { value: "100", label: "100" },
                 ]}
               />
 

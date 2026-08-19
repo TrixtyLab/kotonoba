@@ -4,41 +4,10 @@ import { analytics, posts } from "@/lib/db/schema";
 import { eq, and, gt, sql } from "drizzle-orm";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
 import { getCurrentUser } from "@/lib/auth/session";
+import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
 import crypto from "crypto";
 
 const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegram|discordbot|headless|lighthouse|pingdom|uptimerobot|preview|google-read-aloud/i;
-
-/**
- * Extracts device category (mobile, tablet, desktop) and browser vendor from a User-Agent string.
- *
- * @param userAgent - Raw client User-Agent string.
- * @returns Object with normalized device and browser identifiers.
- */
-function parseDeviceAndBrowser(userAgent: string): { device: string; browser: string } {
-  const ua = userAgent.toLowerCase();
-  
-  let device = "desktop";
-  if (/mobile|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)) {
-    device = "mobile";
-  } else if (/ipad|tablet|playbook|silk/i.test(ua)) {
-    device = "tablet";
-  }
-
-  let browser = "Other";
-  if (ua.includes("edg/")) {
-    browser = "Edge";
-  } else if (ua.includes("chrome") && !ua.includes("chromium")) {
-    browser = "Chrome";
-  } else if (ua.includes("safari") && !ua.includes("chrome")) {
-    browser = "Safari";
-  } else if (ua.includes("firefox")) {
-    browser = "Firefox";
-  } else if (ua.includes("opera") || ua.includes("opr/")) {
-    browser = "Opera";
-  }
-
-  return { device, browser };
-}
 
 /**
  * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots, author views, and duplicate visits.

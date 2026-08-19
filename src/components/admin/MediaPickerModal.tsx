@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import { useTranslations } from "next-intl";
 import {
   X, Upload, Image as ImageIcon, Check, Loader2,
   RefreshCw, HardDrive, Cloud, Search, Folder,
@@ -61,9 +62,12 @@ export function MediaPickerModal({
   isOpen,
   onClose,
   onSelect,
-  title = "Seleccionar Imagen",
+  title,
 }: MediaPickerModalProps) {
+  const t = useTranslations("media");
+  const tc = useTranslations("common");
   const toast = useToast();
+  const modalTitle = title || t("selectImage");
   const [currentFolder, setCurrentFolder] = useState<string>("");
   const [parentFolder, setParentFolder] = useState<string | null>(null);
   const [folders, setFolders] = useState<MediaFolderItem[]>([]);
@@ -99,7 +103,7 @@ export function MediaPickerModal({
         setStorageInfo(data.storage);
       }
     } catch {
-      toast.error("Error al cargar la biblioteca de medios");
+      toast.error(t("loadingMedia"));
     } finally {
       setIsLoading(false);
     }
@@ -123,14 +127,14 @@ export function MediaPickerModal({
       });
       const data = await res.json();
       if (data.success && data.url) {
-        toast.success("Imagen subida con éxito");
+        toast.success(t("uploadSuccess", { count: 1 }));
         setSelectedUrl(data.url);
         await fetchMedia(currentFolder);
       } else {
-        toast.error(data.error || "Error al subir la imagen");
+        toast.error(data.error || t("uploadError"));
       }
     } catch {
-      toast.error("Error de red al subir la imagen");
+      toast.error(t("uploadError"));
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -151,15 +155,15 @@ export function MediaPickerModal({
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Carpeta "${newFolderName}" creada`);
+        toast.success(t("folderCreated"));
         setNewFolderName("");
         setIsCreatingFolder(false);
         await fetchMedia(currentFolder);
       } else {
-        toast.error(data.error || "Error al crear carpeta");
+        toast.error(data.error || t("uploadError"));
       }
     } catch {
-      toast.error("Error al crear carpeta");
+      toast.error(t("uploadError"));
     }
   }
 
@@ -185,15 +189,14 @@ export function MediaPickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
-      <div className="w-full max-w-3xl max-h-[85vh] bg-surface border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
-        {/* Modal Header */}
+      <div className="w-full max-w-3xl max-h-[85vh] bg-surface border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">        {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
               <ImageIcon className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-text">{title}</h3>
+              <h3 className="text-xs font-bold text-text">{modalTitle}</h3>
               <p className="text-[10px] text-text-muted flex items-center gap-1">
                 {storageInfo?.provider === "r2" ? (
                   <>
@@ -208,7 +211,7 @@ export function MediaPickerModal({
                 ) : (
                   <>
                     <HardDrive className="w-3 h-3 text-text-muted" />
-                    <span>Carpeta Local</span>
+                    <span>{t("localFolder")}</span>
                   </>
                 )}
               </p>
@@ -236,7 +239,7 @@ export function MediaPickerModal({
               }`}
             >
               <Home className="w-3 h-3" />
-              <span>Raíz</span>
+              <span>{t("root")}</span>
             </button>
 
             {breadcrumbs.map((segment, idx) => {
@@ -245,7 +248,7 @@ export function MediaPickerModal({
 
               return (
                 <React.Fragment key={folderPath}>
-                  <ChevronRight className="w-3 h-3 text-text-muted/50 shrink-0" />
+                  <ChevronRight className="w-3.5 h-3.5 text-text-muted/50 shrink-0" />
                   <button
                     type="button"
                     onClick={() => setCurrentFolder(folderPath)}
@@ -268,7 +271,7 @@ export function MediaPickerModal({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filtrar…"
+                placeholder={t("filter")}
                 className="w-full pl-7 pr-2.5 py-1 text-xs rounded-lg border border-border bg-surface text-text focus:outline-hidden focus:border-accent"
               />
             </div>
@@ -280,7 +283,7 @@ export function MediaPickerModal({
               icon={<FolderPlus className="w-3.5 h-3.5" />}
               className="text-xs"
             >
-              Carpeta
+              {t("folder")}
             </Button>
 
             <input
@@ -299,7 +302,7 @@ export function MediaPickerModal({
               icon={<Upload className="w-3.5 h-3.5" />}
               className="text-xs"
             >
-              {isUploading ? "Subiendo…" : "Subir"}
+              {isUploading ? t("uploading") : t("upload")}
             </Button>
           </div>
         </div>
@@ -309,7 +312,7 @@ export function MediaPickerModal({
           <div className="px-5 py-2 border-b border-border bg-surface-hover/50 flex items-center gap-2">
             <input
               type="text"
-              placeholder="Nombre de la nueva carpeta…"
+              placeholder={t("folderNamePlaceholder")}
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               className="px-2.5 py-1 text-xs rounded border border-border bg-surface text-text flex-1"
@@ -317,10 +320,10 @@ export function MediaPickerModal({
               onKeyDown={(e) => e.key === "Enter" && handleCreateFolder()}
             />
             <Button size="sm" variant="primary" onClick={handleCreateFolder} className="text-xs py-1">
-              Crear
+              {tc("create")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setIsCreatingFolder(false)} className="text-xs py-1">
-              Cancelar
+              {tc("cancel")}
             </Button>
           </div>
         )}
@@ -330,7 +333,7 @@ export function MediaPickerModal({
           {/* Folders List */}
           {filteredFolders.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Carpetas</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{t("folders")}</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
                 {filteredFolders.map((f) => (
                   <button
@@ -350,19 +353,19 @@ export function MediaPickerModal({
           {/* Files Grid */}
           <div className="space-y-1.5">
             {filteredFolders.length > 0 && (
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Archivos</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{t("files")}</p>
             )}
 
             {isLoading && mediaList.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-36 text-text-muted gap-2">
                 <Loader2 className="w-5 h-5 animate-spin text-accent" />
-                <span className="text-xs">Cargando imágenes…</span>
+                <span className="text-xs">{t("loadingImages")}</span>
               </div>
             ) : filteredMedia.length === 0 && filteredFolders.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-36 text-center text-text-muted space-y-1">
                 <ImageIcon className="w-8 h-8 opacity-30 mx-auto" />
-                <p className="text-xs font-semibold text-text">Carpeta vacía</p>
-                <p className="text-[11px]">Sube imágenes para utilizarlas aquí.</p>
+                <p className="text-xs font-semibold text-text">{t("emptyFolder")}</p>
+                <p className="text-[11px]">{t("emptyFolderPickerDesc")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -408,12 +411,12 @@ export function MediaPickerModal({
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-hover/20">
           <div className="text-[11px] text-text-muted truncate max-w-[50%] font-mono">
-            {selectedUrl ? selectedUrl : "Selecciona una imagen de la lista"}
+            {selectedUrl ? selectedUrl : ""}
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>
-              Cancelar
+              {tc("cancel")}
             </Button>
             <Button
               variant="primary"
@@ -426,7 +429,7 @@ export function MediaPickerModal({
                 }
               }}
             >
-              Usar Imagen Seleccionada
+              {tc("confirm")}
             </Button>
           </div>
         </div>

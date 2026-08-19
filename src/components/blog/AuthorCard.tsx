@@ -1,5 +1,6 @@
 import React from "react";
 import { User } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Properties configuring the AuthorCard profile component.
@@ -26,6 +27,8 @@ export interface AuthorCardProps {
  * @returns React JSX author card element.
  */
 export function AuthorCard({ author, stats }: AuthorCardProps) {
+  const tc = useTranslations("common");
+
   return (
     <div className="card-clean p-6 space-y-4">
       <div className="flex items-center gap-4">
@@ -42,9 +45,11 @@ export function AuthorCard({ author, stats }: AuthorCardProps) {
         )}
         <div className="min-w-0">
           <h3 className="text-base font-bold text-text truncate">{author.displayName}</h3>
-          <p className="text-sm text-text-muted line-clamp-2 leading-relaxed">
-            {author.bio || "Escritor y creador de contenido."}
-          </p>
+          {author.bio && (
+            <p className="text-sm text-text-muted line-clamp-2 leading-relaxed">
+              {author.bio}
+            </p>
+          )}
         </div>
       </div>
 
@@ -52,17 +57,17 @@ export function AuthorCard({ author, stats }: AuthorCardProps) {
         <div className="flex items-center justify-around pt-4 border-t border-border text-center">
           <div>
             <span className="block text-lg font-bold text-text">{stats.postsCount}</span>
-            <span className="text-xs text-text-muted">Artículos</span>
+            <span className="text-xs text-text-muted">{tc("posts")}</span>
           </div>
           <div className="w-px h-8 bg-border" />
           <div>
             <span className="block text-lg font-bold text-text">{stats.categoriesCount}</span>
-            <span className="text-xs text-text-muted">Categorías</span>
+            <span className="text-xs text-text-muted">{tc("categories")}</span>
           </div>
           <div className="w-px h-8 bg-border" />
           <div>
             <span className="block text-lg font-bold text-text">{stats.tagsCount}</span>
-            <span className="text-xs text-text-muted">Etiquetas</span>
+            <span className="text-xs text-text-muted">{tc("tags")}</span>
           </div>
         </div>
       )}

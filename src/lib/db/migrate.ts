@@ -49,6 +49,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     sql`ALTER TABLE sites ADD COLUMN font_family TEXT DEFAULT 'Inter'`,
     sql`ALTER TABLE sites ADD COLUMN nav_links TEXT DEFAULT '[]'`,
     sql`ALTER TABLE sites ADD COLUMN nav_alignment TEXT DEFAULT 'left'`,
+    sql`ALTER TABLE sites ADD COLUMN supported_locales TEXT DEFAULT '["en"]'`,
   ];
   for (const query of sitesColumns) {
     try {
@@ -193,6 +194,49 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
 
   try {
     db.run(sql`UPDATE analytics SET created_at = timestamp WHERE created_at = 0 AND timestamp IS NOT NULL`);
+  } catch {}
+
+  try {
+    // Backfill browser and device for legacy analytics rows with missing browser
+    const legacyHits = db.select({
+      id: schema.analytics.id,
+      userAgent: schema.analytics.userAgent,
+    }).from(schema.analytics).where(sql`browser IS NULL OR browser = ''`).all();
+
+    for (const row of legacyHits) {
+      if (row.userAgent) {
+        const ua = row.userAgent.toLowerCase();
+        let dev = "desktop";
+        if (/ipad|tablet|playbook|silk/i.test(ua) || (ua.includes("android") && !ua.includes("mobile"))) {
+          dev = "tablet";
+        } else if (/mobile|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)) {
+          dev = "mobile";
+        }
+
+        let br = "Other";
+        if (ua.includes("edg/") || ua.includes("edge/")) {
+          br = "Edge";
+        } else if (ua.includes("opr/") || ua.includes("opera")) {
+          br = "Opera";
+        } else if (ua.includes("samsungbrowser")) {
+          br = "Samsung Internet";
+        } else if (ua.includes("brave")) {
+          br = "Brave";
+        } else if (ua.includes("vivaldi")) {
+          br = "Vivaldi";
+        } else if (ua.includes("duckduckgo")) {
+          br = "DuckDuckGo";
+        } else if (ua.includes("firefox") || ua.includes("fxios")) {
+          br = "Firefox";
+        } else if (ua.includes("chrome") || ua.includes("crios") || ua.includes("chromium")) {
+          br = "Chrome";
+        } else if (ua.includes("safari") && !ua.includes("chrome") && !ua.includes("android")) {
+          br = "Safari";
+        }
+
+        db.update(schema.analytics).set({ browser: br, device: dev }).where(sql`id = ${row.id}`).run();
+      }
+    }
   } catch {}
 
 

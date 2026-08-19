@@ -96,7 +96,7 @@ export function Sidebar({
           type="button"
           onClick={onToggle}
           className="hidden lg:flex p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-          aria-label={isOpen ? "Colapsar barra lateral" : "Expandir barra lateral"}
+          aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
           {isOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
         </button>
@@ -105,7 +105,7 @@ export function Sidebar({
           type="button"
           onClick={onCloseMobile}
           className="lg:hidden p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
-          aria-label="Cerrar menú móvil"
+          aria-label="Close mobile menu"
         >
           <PanelLeftClose className="w-4 h-4" />
         </button>
@@ -162,7 +162,7 @@ export function Sidebar({
           className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-text-muted hover:text-text hover:bg-surface-hover transition-colors ${
             !isOpen ? "justify-center px-0" : ""
           }`}
-          title={!isOpen ? "Ver Blog Público" : undefined}
+          title={!isOpen ? t("viewSite") : undefined}
         >
           <ExternalLink className="w-4 h-4 shrink-0" />
           {isOpen && <span className="truncate">{t("viewSite")}</span>}
@@ -174,7 +174,7 @@ export function Sidebar({
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-danger/80 hover:text-danger hover:bg-danger/10 transition-colors ${
             !isOpen ? "justify-center px-0" : ""
           }`}
-          title={!isOpen ? "Cerrar sesión" : undefined}
+          title={!isOpen ? t("logout") : undefined}
         >
           <LogOut className="w-4 h-4 shrink-0" />
           {isOpen && <span className="truncate">{t("logout")}</span>}

@@ -11,6 +11,8 @@ import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import { useLocale, useTranslations } from "next-intl";
+import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
  * Representation of a selectable blog site in the tenant switcher dropdown.
@@ -55,8 +57,12 @@ export function SiteSwitcher({
   allSites: initialSites,
   collapsed = false,
 }: SiteSwitcherProps) {
+  const t = useTranslations("sites");
+  const tc = useTranslations("common");
+  const ts = useTranslations("settings");
   const router = useRouter();
   const toast = useToast();
+  const locale = useLocale();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [manageModalOpen, setManageModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -88,9 +94,9 @@ export function SiteSwitcher({
 
   function openEditForm(s: SiteOption) {
     setEditingSiteId(s.id);
-    setFormName(s.name);
+    setFormName(getLocalizedText(s.name, s.locale || locale));
     setFormDomain(s.domain);
-    setFormSubtitle(s.subtitle || "");
+    setFormSubtitle(getLocalizedText(s.subtitle, s.locale || locale));
     setFormLocale(s.locale || "es");
     setFormTheme(s.theme || "dark");
     setFormColor(s.primaryColor || "#3b82f6");
@@ -110,69 +116,100 @@ export function SiteSwitcher({
   }
 
   async function handleSaveSite() {
-    if (!formName.trim()) {
-      toast.error("El nombre del blog es obligatorio");
-      return;
-    }
-    if (!formDomain.trim()) {
-      toast.error("El dominio es obligatorio");
+    if (!formName.trim() || !formDomain.trim()) {
+      toast.error(ts("blogNameRequired"));
       return;
     }
 
     startTransition(async () => {
-      const payload = {
-        name: formName.trim(),
-        domain: formDomain.trim(),
-        subtitle: formSubtitle.trim(),
-        description: formSubtitle.trim(),
-        locale: formLocale,
-        theme: formTheme,
-        primaryColor: formColor,
-        fontFamily: "Inter",
-      };
-
       if (editingSiteId) {
-        const res = await updateSite(editingSiteId, payload);
+        const res = await updateSite(editingSiteId, {
+          name: formName.trim(),
+          domain: formDomain.trim(),
+          subtitle: formSubtitle.trim(),
+          locale: formLocale,
+          theme: formTheme,
+          primaryColor: formColor,
+        });
+
         if (res.success) {
+          toast.success(ts("saveSuccess"));
           setSites((prev) =>
-            prev.map((s) => (s.id === editingSiteId ? { ...s, ...payload } : s))
+            prev.map((s) =>
+              s.id === editingSiteId
+                ? {
+                    ...s,
+                    name: formName.trim(),
+                    domain: formDomain.trim(),
+                    subtitle: formSubtitle.trim(),
+                    locale: formLocale,
+                    theme: formTheme,
+                    primaryColor: formColor,
+                  }
+                : s
+            )
           );
           setEditingSiteId(null);
-          toast.success("Blog actualizado");
           router.refresh();
         } else {
-          toast.error("Error al actualizar el blog");
+          toast.error(ts("saveError"));
         }
       } else {
-        const res = await createSite(payload);
+        const res = await createSite({
+          name: formName.trim(),
+          domain: formDomain.trim(),
+          subtitle: formSubtitle.trim(),
+          locale: formLocale,
+          theme: formTheme,
+          primaryColor: formColor,
+        });
+
         if (res.success && res.id) {
-          const newSite: SiteOption = { id: res.id as string, ...payload };
+          toast.success(ts("saveSuccess"));
+          const newSite: SiteOption = {
+            id: res.id as string,
+            name: formName.trim(),
+            domain: formDomain.trim(),
+            subtitle: formSubtitle.trim(),
+            locale: formLocale,
+            theme: formTheme,
+            primaryColor: formColor,
+          };
           setSites((prev) => [...prev, newSite]);
           setIsCreatingNew(false);
-          toast.success("Blog creado con éxito");
           router.refresh();
         } else {
-          toast.error("Error al crear el blog");
+          toast.error(ts("saveError"));
         }
       }
     });
   }
 
-  async function handleConfirmDelete() {
-    if (!siteToDelete) return;
-    const id = siteToDelete;
+  async function handleDeleteSite(siteId: string) {
     startTransition(async () => {
-      const res = await deleteSite(id);
+      const res = await deleteSite(siteId);
       if (res.success) {
-        setSites((prev) => prev.filter((s) => s.id !== id));
-        toast.success("Blog eliminado");
-        router.refresh();
+        toast.success(tc("deleted"));
+        setSites((prev) => prev.filter((s) => s.id !== siteId));
+        if (currentSite.id === siteId) {
+          router.push("/admin");
+        } else {
+          router.refresh();
+        }
       } else {
-        toast.error("Error al eliminar el blog");
+        toast.error(ts("saveError"));
       }
       setSiteToDelete(null);
     });
   }
+
+  function handleConfirmDelete() {
+    if (siteToDelete) {
+      handleDeleteSite(siteToDelete);
+    }
+  }
+
+  const currentDisplayName = getLocalizedText(currentSite.name, locale);
 
   return (
     <>
@@ -183,7 +220,7 @@ export function SiteSwitcher({
             onClick={() => setDropdownOpen(!dropdownOpen)}
             disabled={isPending}
             className="w-10 h-10 mx-auto rounded-lg border border-border bg-surface-hover/40 hover:bg-surface-hover flex items-center justify-center text-text transition-colors"
-            title={`Blog: ${currentSite.name}`}
+            title={`Blog: ${currentDisplayName}`}
           >
             {isPending ? (
               <Loader2 className="w-4 h-4 text-accent animate-spin" />
@@ -208,7 +245,7 @@ export function SiteSwitcher({
               </div>
               <div className="min-w-0 truncate flex-1">
                 <p className="text-xs font-bold text-text truncate leading-tight group-hover:text-accent transition-colors">
-                  {currentSite.name}
+                  {currentDisplayName}
                 </p>
                 <p className="text-[10px] text-text-muted truncate leading-tight mt-0.5 font-mono">
                   {currentSite.domain}
@@ -225,10 +262,12 @@ export function SiteSwitcher({
             <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
             <div className="absolute left-0 top-full mt-1.5 w-60 rounded-xl bg-surface shadow-xl z-50 p-1.5 border border-border animate-slide-up">
               <p className="text-[10px] uppercase font-bold text-text-muted px-2 py-1 tracking-wider">
-                Blogs Activos ({sites.length})
+                {t("activeSite")} ({sites.length})
               </p>
               <div className="space-y-0.5 my-1 max-h-48 overflow-y-auto">
-                {sites.map((s) => (
+                {sites.map((s) => {
+                  const sName = getLocalizedText(s.name, locale);
+                  return (
                   <button
                     key={s.id}
                     type="button"
@@ -240,12 +279,12 @@ export function SiteSwitcher({
                     }`}
                   >
                     <div className="min-w-0 truncate">
-                      <p className="font-medium text-text truncate leading-tight">{s.name}</p>
+                      <p className="font-medium text-text truncate leading-tight">{sName}</p>
                       <p className="text-[10px] text-text-muted truncate leading-tight mt-0.5 font-mono">{s.domain}</p>
                     </div>
                     {currentSite.id === s.id && <Check className="w-3.5 h-3.5 text-accent shrink-0 ml-1" />}
                   </button>
-                ))}
+                )})}
               </div>
 
               <div className="pt-1 mt-1 border-t border-border">
@@ -260,7 +299,7 @@ export function SiteSwitcher({
                   className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-accent font-semibold hover:bg-accent/10 rounded-lg transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Añadir / Administrar Blogs</span>
+                  <span>{t("manageSites")}</span>
                 </button>
               </div>
             </div>
@@ -276,13 +315,13 @@ export function SiteSwitcher({
           setEditingSiteId(null);
           setIsCreatingNew(false);
         }}
-        title="Gestor de Blogs"
+        title={t("siteManager")}
       >
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           {/* Header Action */}
           <div className="flex items-center justify-between pb-2 border-b border-border">
             <p className="text-xs text-text-muted">
-              Administra los blogs independientes de tu servidor.
+              {t("multiTenantHint")}
             </p>
             {!isCreatingNew && !editingSiteId && (
               <Button
@@ -292,7 +331,7 @@ export function SiteSwitcher({
                 icon={<Plus className="w-3.5 h-3.5" />}
                 className="text-xs"
               >
-                Nuevo Blog
+                {t("addSite")}
               </Button>
             )}
           </div>
@@ -301,26 +340,26 @@ export function SiteSwitcher({
           {(isCreatingNew || editingSiteId) ? (
             <div className="p-4 rounded-xl border border-border bg-surface-hover/30 space-y-3 animate-fade-in">
               <h4 className="text-xs font-bold text-text">
-                {editingSiteId ? "Editar Blog" : "Crear Nuevo Blog"}
+                {editingSiteId ? t("editSite") : t("createSite")}
               </h4>
 
               <Input
-                label="Nombre del Blog"
+                label={t("siteName")}
                 placeholder="ej. Blog de Tecnología"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
 
               <Input
-                label="Dominio / Host HTTP"
+                label={t("domain")}
                 placeholder="ej. blog.midominio.com o localhost:3000"
                 value={formDomain}
                 onChange={(e) => setFormDomain(e.target.value)}
-                helperText="Enrutamiento multi-tenant basado en el host de la petición"
+                helperText={t("multiTenantHint")}
               />
 
               <Input
-                label="Subtítulo / Lema"
+                label={t("siteSubtitle")}
                 placeholder="Reflexiones sobre tecnología y diseño"
                 value={formSubtitle}
                 onChange={(e) => setFormSubtitle(e.target.value)}
@@ -328,7 +367,7 @@ export function SiteSwitcher({
 
               <div className="grid grid-cols-2 gap-3">
                 <Select
-                  label="Idioma"
+                  label={tc("language")}
                   value={formLocale}
                   onChange={(val) => setFormLocale(val)}
                   options={[
@@ -338,12 +377,12 @@ export function SiteSwitcher({
                 />
 
                 <Select
-                  label="Tema"
+                  label={ts("theme")}
                   value={formTheme}
                   onChange={(val) => setFormTheme(val === "light" ? "light" : "dark")}
                   options={[
-                    { value: "dark", label: "Oscuro" },
-                    { value: "light", label: "Claro" },
+                    { value: "dark", label: ts("themeDark") },
+                    { value: "light", label: ts("themeLight") },
                   ]}
                 />
               </div>
@@ -358,7 +397,7 @@ export function SiteSwitcher({
                   }}
                   className="text-xs"
                 >
-                  Cancelar
+                  {tc("cancel")}
                 </Button>
                 <Button
                   variant="primary"
@@ -367,7 +406,7 @@ export function SiteSwitcher({
                   loading={isPending}
                   className="text-xs"
                 >
-                  {editingSiteId ? "Guardar Cambios" : "Crear Blog"}
+                  {editingSiteId ? t("saveChanges") : t("addSite")}
                 </Button>
               </div>
             </div>
@@ -388,9 +427,9 @@ export function SiteSwitcher({
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-text truncate">{s.name}</span>
+                      <span className="text-xs font-bold text-text truncate">{getLocalizedText(s.name, locale)}</span>
                       {isCurrent ? (
-                        <Badge variant="success" className="text-[10px] py-0 px-1.5">Activo</Badge>
+                        <Badge variant="success" className="text-[10px] py-0 px-1.5">{t("active")}</Badge>
                       ) : null}
                     </div>
                     <p className="text-[11px] font-mono text-text-muted truncate mt-0.5">{s.domain}</p>
@@ -408,7 +447,7 @@ export function SiteSwitcher({
                         disabled={isPending}
                         className="text-xs py-1 px-2.5 min-h-[28px]"
                       >
-                        Activar
+                        {t("activate")}
                       </Button>
                     )}
 
@@ -417,7 +456,7 @@ export function SiteSwitcher({
                       target="_blank"
                       rel="noreferrer"
                       className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-                      title="Ver sitio público"
+                      title={t("viewPublicBlog")}
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
@@ -426,7 +465,7 @@ export function SiteSwitcher({
                       type="button"
                       onClick={() => openEditForm(s)}
                       className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
-                      title="Editar blog"
+                      title={t("editSite")}
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
@@ -436,7 +475,7 @@ export function SiteSwitcher({
                         type="button"
                         onClick={() => setSiteToDelete(s.id)}
                         className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
-                        title="Eliminar blog"
+                        title={t("deleteSite")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -454,10 +493,10 @@ export function SiteSwitcher({
         isOpen={Boolean(siteToDelete)}
         onClose={() => setSiteToDelete(null)}
         onConfirm={handleConfirmDelete}
-        title="Eliminar Blog"
-        message="¿Estás seguro de que deseas eliminar este blog y todos sus artículos asociados de forma permanente?"
-        confirmText="Eliminar"
-        cancelText="Cancelar"
+        title={t("deleteSite")}
+        message={t("confirmDeleteSite")}
+        confirmText={tc("delete")}
+        cancelText={tc("cancel")}
         variant="danger"
         isLoading={isPending}
       />

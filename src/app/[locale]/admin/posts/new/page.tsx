@@ -17,10 +17,18 @@ export default async function NewPostPage() {
   const categories = await getCategories(site.id);
   const tags = await getTags(site.id);
 
+  let supportedLocales = ["es", "en"];
+  if (site.supportedLocales) {
+    try {
+      const parsed = JSON.parse(site.supportedLocales);
+      if (Array.isArray(parsed) && parsed.length > 0) supportedLocales = parsed;
+    } catch {}
+  }
+
   return (
     <PostEditor
       siteId={site.id}
-      supportedLocales={["es", "en"]}
+      supportedLocales={supportedLocales}
       isDubEnabled={isDubConfigured()}
       availableCategories={categories}
       availableTags={tags}

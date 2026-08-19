@@ -1,8 +1,27 @@
+import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getActiveSite } from "@/lib/tenant";
 import { getAllSites } from "@/actions/sites";
 import { redirect } from "@/i18n/routing";
 import { AdminClientLayout } from "@/components/admin/AdminClientLayout";
+import { getLocalizedText } from "@/lib/utils/localization";
+
+/**
+ * Dynamically computes metadata and custom favicon configuration for the admin panel.
+ *
+ * @returns Metadata object with custom favicon icons.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const site = await getActiveSite();
+  const favicon = site?.faviconUrl || "/favicon.ico";
+  return {
+    icons: {
+      icon: favicon,
+      shortcut: favicon,
+      apple: favicon,
+    },
+  };
+}
 
 /**
  * Server layout component enforcing role-based authentication and supplying multi-tenant site context to the admin panel shell.
@@ -29,32 +48,26 @@ export default async function AdminLayout({
   const allSites = await getAllSites();
 
   const currentSiteOption = site
-    ? { id: site.id, name: site.name, domain: site.domain }
+    ? { id: site.id, name: getLocalizedText(site.name, locale), domain: site.domain }
     : { id: "default", name: "Default Blog", domain: "localhost" };
 
   const allSiteOptions = allSites.map((s) => ({
     id: s.id,
-    name: s.name,
+    name: getLocalizedText(s.name, locale),
     domain: s.domain,
   }));
 
   return (
-    <>
-      <head>
-        <link rel="icon" href={site?.faviconUrl || "/favicon.ico"} />
-        <link rel="shortcut icon" href={site?.faviconUrl || "/favicon.ico"} />
-      </head>
-      <AdminClientLayout
-        currentSite={currentSiteOption}
-        allSites={allSiteOptions.length > 0 ? allSiteOptions : [currentSiteOption]}
-        user={{
-          displayName: user.email.split("@")[0],
-          email: user.email,
-          role: user.role,
-        }}
-      >
-        {children}
-      </AdminClientLayout>
-    </>
+    <AdminClientLayout
+      currentSite={currentSiteOption}
+      allSites={allSiteOptions.length > 0 ? allSiteOptions : [currentSiteOption]}
+      user={{
+        displayName: user.email.split("@")[0],
+        email: user.email,
+        role: user.role,
+      }}
+    >
+      {children}
+    </AdminClientLayout>
   );
 }

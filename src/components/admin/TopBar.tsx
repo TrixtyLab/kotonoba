@@ -33,7 +33,7 @@ export function TopBar({ user, onOpenMobileSidebar }: TopBarProps) {
           type="button"
           onClick={onOpenMobileSidebar}
           className="lg:hidden p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-          aria-label="Abrir menú de navegación"
+          aria-label="Open navigation menu"
         >
           <Menu className="w-5 h-5" />
         </button>

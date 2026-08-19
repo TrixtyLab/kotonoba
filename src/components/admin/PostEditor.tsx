@@ -20,6 +20,7 @@ import { generateExcerptAction, rewriteAction, translateAction } from "@/actions
 import { generateDubLinkAction } from "@/actions/dub";
 import { useRouter } from "@/i18n/routing";
 import { useToast } from "@/components/ui/Toast";
+import { useTranslations } from "next-intl";
 import {
   Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3,
   List, ListOrdered, Quote, Minus, Undo, Redo, Image as ImageIcon,
@@ -129,6 +130,9 @@ function slugify(text: string): string {
  * @returns React JSX article editor interface.
  */
 export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost, availableCategories, availableTags }: PostEditorProps) {
+  const t = useTranslations("editor");
+  const tc = useTranslations("common");
+  const ta = useTranslations("admin");
   const router = useRouter();
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
@@ -223,7 +227,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
         },
       }),
       Placeholder.configure({
-        placeholder: "Escribe tu artículo aquí…",
+        placeholder: t("contentPlaceholder"),
       }),
     ],
     content: initialPost?.contentMd || "",
@@ -646,18 +650,18 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             className="text-text-muted hover:text-text"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />
-            Artículos
+            {ta("recentPosts").split(" ")[0]}
           </Button>
 
           <span className="w-px h-4 bg-border" />
 
           <Badge variant={status === "published" ? "success" : status === "archived" ? "outline" : "warning"}>
-            {status === "published" ? "Publicado" : status === "archived" ? "Archivado" : "Borrador"}
+            {status === "published" ? t("published") : status === "archived" ? t("archived") : t("draft")}
           </Badge>
 
           <span className="text-[11px] text-text-muted hidden md:inline-flex items-center gap-1 font-mono">
             <Clock className="w-3 h-3" />
-            {wordCount} palabras • {readingTime} min de lectura
+            {t("wordCount", { count: wordCount, minutes: readingTime })}
           </span>
         </div>
 
@@ -667,10 +671,10 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             size="sm"
             onClick={() => setShowInspector(!showInspector)}
             className="text-xs"
-            title="Ajustes del artículo"
+            title={t("postSettings")}
           >
             <SlidersHorizontal className="w-3.5 h-3.5 mr-1" />
-            {showInspector ? "Ocultar Detalles" : "Detalles"}
+            {showInspector ? t("hideDetails") : t("details")}
           </Button>
 
           <Button
@@ -680,7 +684,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             className="text-accent text-xs font-semibold"
           >
             <Sparkles className="w-3.5 h-3.5 mr-1" />
-            Asistente IA
+            {t("aiAssistant")}
           </Button>
 
           {status !== "published" && (
@@ -691,7 +695,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               loading={isPending}
               icon={<Save className="w-3.5 h-3.5" />}
             >
-              Guardar Borrador
+              {t("saveDraft")}
             </Button>
           )}
 
@@ -702,7 +706,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             loading={isPending}
             icon={<CheckCircle2 className="w-3.5 h-3.5" />}
           >
-            {status === "published" ? "Guardar Cambios" : status === "archived" ? "Guardar Archivado" : "Publicar"}
+            {status === "published" ? t("saveChanges") : status === "archived" ? t("saveArchived") : t("publish")}
           </Button>
         </div>
       </div>
@@ -717,7 +721,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               type="text"
               value={title}
               onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Título del artículo..."
+              placeholder={t("postTitlePlaceholder")}
               className="w-full text-2xl sm:text-3xl font-extrabold bg-transparent border-0 text-text placeholder-text-muted/30 focus:outline-hidden focus:ring-0 leading-tight"
             />
           </div>
@@ -729,7 +733,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("bold")}
               className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("bold") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Negrita (Ctrl+B)"
+              title={t("boldTooltip")}
             >
               <Bold className="w-4 h-4" />
             </button>
@@ -738,7 +742,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("italic")}
               className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("italic") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Cursiva (Ctrl+I)"
+              title={t("italicTooltip")}
             >
               <Italic className="w-4 h-4" />
             </button>
@@ -747,7 +751,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("strike")}
               className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("strike") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Tachado"
+              title={t("strikeTooltip")}
             >
               <Strikethrough className="w-4 h-4" />
             </button>
@@ -756,7 +760,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("code")}
               className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("code") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Código en línea"
+              title={t("codeTooltip")}
             >
               <Code className="w-4 h-4" />
             </button>
@@ -768,7 +772,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleHeading(1)}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 1 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Título 1"
+              title={t("h1")}
             >
               <Heading1 className="w-4 h-4" />
             </button>
@@ -777,7 +781,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleHeading(2)}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 2 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Título 2"
+              title={t("h2")}
             >
               <Heading2 className="w-4 h-4" />
             </button>
@@ -786,7 +790,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleHeading(3)}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 3 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title="Título 3"
+              title={t("h3")}
             >
               <Heading3 className="w-4 h-4" />
             </button>
@@ -798,7 +802,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleBullet}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("bulletList") ? "text-accent bg-accent/10" : "text-text"}`}
-              title="Lista de puntos"
+              title={t("bulletList")}
             >
               <List className="w-4 h-4" />
             </button>
@@ -807,7 +811,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleOrdered}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("orderedList") ? "text-accent bg-accent/10" : "text-text"}`}
-              title="Lista numerada"
+              title={t("orderedList")}
             >
               <ListOrdered className="w-4 h-4" />
             </button>
@@ -816,7 +820,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleBlockquote}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("blockquote") ? "text-accent bg-accent/10" : "text-text"}`}
-              title="Cita"
+              title={t("quote")}
             >
               <Quote className="w-4 h-4" />
             </button>
@@ -825,7 +829,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => editor?.chain().focus().setHorizontalRule().run()}
               className="p-1.5 rounded-lg hover:bg-surface-hover text-text"
-              title="Línea divisoria"
+              title={t("divider")}
             >
               <Minus className="w-4 h-4" />
             </button>
@@ -837,7 +841,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={openLinkModal}
               className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("link") ? "text-accent bg-accent/10" : "text-text"}`}
-              title="Insertar o editar enlace"
+              title={t("link")}
             >
               <Link2 className="w-4 h-4" />
             </button>
@@ -848,10 +852,10 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => openMediaPicker("editor")}
               className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text ml-1"
-              title="Insertar Imagen desde la Biblioteca"
+              title={t("library")}
             >
               <ImageIcon className="w-3.5 h-3.5 text-accent" />
-              <span>Biblioteca</span>
+              <span>{t("library")}</span>
             </button>
 
             {/* Direct Image upload */}
@@ -868,22 +872,22 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               onClick={() => inlineFileInputRef.current?.click()}
               disabled={isUploadingInline}
               className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text"
-              title="Subir Imagen Directamente al Artículo"
+              title={t("directUpload")}
             >
               {isUploadingInline ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 text-accent" />}
-              <span>Subir</span>
+              <span>{t("directUpload")}</span>
             </button>
 
-            {/* Embed Media (YouTube, Vimeo, X, Bluesky) */}
+            {/* Embed Media (YouTube, Vimeo, Steam, itch.io) */}
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setEmbedModalOpen(true)}
               className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text"
-              title="Insertar Video, Tweet o Post de Bluesky"
+              title={t("embed")}
             >
               <PlaySquare className="w-3.5 h-3.5 text-accent" />
-              <span>Embed</span>
+              <span>{t("embed")}</span>
             </button>
 
             <div className="ml-auto flex items-center gap-1">
@@ -893,7 +897,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                 onClick={() => editor?.chain().focus().undo().run()}
                 disabled={!editor?.can().undo()}
                 className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text"
-                title="Deshacer"
+                title={t("undo")}
               >
                 <Undo className="w-4 h-4" />
               </button>
@@ -903,7 +907,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                 onClick={() => editor?.chain().focus().redo().run()}
                 disabled={!editor?.can().redo()}
                 className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text"
-                title="Rehacer"
+                title={t("redo")}
               >
                 <Redo className="w-4 h-4" />
               </button>
@@ -922,17 +926,17 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             {/* Slug & Language */}
             <div className="p-5 rounded-xl bg-surface border border-border space-y-3.5 shadow-xs">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border">
-                Parámetros de Publicación
+                {t("postParams")}
               </h3>
 
               <div className="space-y-1">
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
                     <Input
-                      label="Slug de URL (/entry/[slug])"
+                      label={t("urlSlug")}
                       value={slug}
                       onChange={(e) => setSlug(e.target.value)}
-                      placeholder="mi-articulo-increible"
+                      placeholder={t("postSlugPlaceholder")}
                     />
                   </div>
                   <Button
@@ -941,10 +945,10 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                     size="sm"
                     onClick={() => {
                       setSlug(slugify(title));
-                      toast.success("Slug regenerado desde el título");
+                      toast.success(t("slugRegenerated"));
                     }}
                     className="text-xs shrink-0"
-                    title="Regenerar slug desde el título"
+                    title={t("regenerateSlug")}
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                   </Button>
@@ -953,7 +957,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-text">Idioma del Artículo</span>
+                  <span className="text-xs font-medium text-text">{t("language")}</span>
                   <Button
                     type="button"
                     variant="ghost"
@@ -962,7 +966,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                     className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
                   >
                     <Sparkles className="w-3 h-3" />
-                    Traducir con IA
+                    {t("aiTranslatePost")}
                   </Button>
                 </div>
 
@@ -973,13 +977,13 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                 />
 
                 <Select
-                  label="Estado de Publicación"
+                  label={t("publishStatus")}
                   value={status}
                   onChange={(val) => setStatus(val as "draft" | "published" | "archived")}
                   options={[
-                    { value: "draft", label: "Borrador (Oculto)" },
-                    { value: "published", label: "Publicado (Visible en el blog)" },
-                    { value: "archived", label: "Archivado" },
+                    { value: "draft", label: t("draftHidden") },
+                    { value: "published", label: t("publishedVisible") },
+                    { value: "archived", label: t("archived") },
                   ]}
                 />
               </div>
@@ -987,7 +991,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               {/* Resumen / Extracto SEO */}
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-text">Resumen / Extracto SEO</span>
+                  <span className="text-xs font-medium text-text">{t("seoExcerpt")}</span>
                   <Button
                     type="button"
                     variant="ghost"
@@ -997,11 +1001,11 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                     className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
                   >
                     <Sparkles className="w-3 h-3" />
-                    Generar IA
+                    {t("aiGenerate")}
                   </Button>
                 </div>
                 <Textarea
-                  placeholder="Breve descripción para buscadores y vista previa…"
+                  placeholder={t("excerptPlaceholder")}
                   value={excerpt}
                   onChange={(e) => setExcerpt(e.target.value)}
                   className="min-h-[75px] text-xs"
@@ -1012,7 +1016,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                 <Checkbox
                   checked={pinned}
                   onChange={(val) => setPinned(val)}
-                  label="Fijar en artículos destacados"
+                  label={t("pinPost")}
                 />
               </div>
 
@@ -1022,7 +1026,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-text flex items-center gap-1.5">
                       <Share2 className="w-3.5 h-3.5 text-accent" />
-                      <span>Enlace Corto Dub.co</span>
+                      <span>{t("dubShortLink")}</span>
                     </span>
                     <Button
                       type="button"
@@ -1032,7 +1036,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                       className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
                     >
                       <Sparkles className="w-3 h-3" />
-                      {shortUrl ? "UTM Builder" : "Acortar Link"}
+                      {shortUrl ? "UTM Builder" : t("generateDubLink")}
                     </Button>
                   </div>
 
@@ -1050,10 +1054,10 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                         size="sm"
                         onClick={() => {
                           navigator.clipboard.writeText(shortUrl);
-                          toast.success("Enlace Dub.co copiado al portapapeles");
+                          toast.success(t("dubCopied"));
                         }}
                         className="p-1 h-auto text-xs shrink-0"
-                        title="Copiar enlace corto"
+                        title={tc("copy")}
                       >
                         <Copy className="w-3 h-3" />
                       </Button>
@@ -1064,7 +1068,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                           size="sm"
                           onClick={() => setQrModalOpen(true)}
                           className="p-1 h-auto text-xs shrink-0"
-                          title="Ver Código QR"
+                          title="QR Code"
                         >
                           <QrCode className="w-3 h-3" />
                         </Button>
@@ -1072,7 +1076,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                     </div>
                   ) : (
                     <p className="text-[11px] text-text-muted leading-tight">
-                      Acorta este artículo con Dub.co y añade parámetros UTM para rastreo de campañas.
+                      {t("dubPromoDesc")}
                     </p>
                   )}
                 </div>
@@ -1083,7 +1087,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                  Imagen de Portada
+                  {t("coverImage")}
                 </h3>
                 {coverImage && (
                   <button
@@ -1091,18 +1095,18 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                     onClick={() => setCoverImage("")}
                     className="text-[11px] text-rose-500 hover:underline font-semibold flex items-center gap-1"
                   >
-                    <X className="w-3 h-3" /> Quitar
+                    <X className="w-3 h-3" /> {t("remove")}
                   </button>
                 )}
               </div>
 
               {coverImage ? (
                 <div className="relative rounded-xl overflow-hidden border border-border aspect-video w-full bg-surface-hover/30">
-                  <img src={coverImage} alt="Portada" className="w-full h-full object-cover" />
+                  <img src={coverImage} alt={t("coverImage")} className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-border bg-surface-hover/20 aspect-video w-full flex items-center justify-center text-text-muted text-xs">
-                  Sin portada asignada
+                  {t("noCoverAssigned")}
                 </div>
               )}
 
@@ -1123,7 +1127,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                   icon={isUploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                   className="text-xs flex-1"
                 >
-                  {isUploadingCover ? "Subiendo..." : "Subir"}
+                  {isUploadingCover ? t("uploading") : t("upload")}
                 </Button>
 
                 <Button
@@ -1134,12 +1138,12 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                   icon={<ImageIcon className="w-3.5 h-3.5 text-accent" />}
                   className="text-xs flex-1"
                 >
-                  Biblioteca
+                  {t("library")}
                 </Button>
               </div>
 
               <Input
-                placeholder="O URL: https://... portada.jpg"
+                placeholder="https://... cover.jpg"
                 value={coverImage || ""}
                 onChange={(e) => setCoverImage(e.target.value)}
               />
@@ -1149,7 +1153,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                  Categorías
+                  {t("categories")}
                 </h3>
                 <Folder className="w-3.5 h-3.5 text-text-muted" />
               </div>
@@ -1170,7 +1174,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                   />
                 ))}
                 {availableCategories.length === 0 && (
-                  <p className="text-xs text-text-muted">No hay categorías creadas aún.</p>
+                  <p className="text-xs text-text-muted">{t("noCategoriesYet")}</p>
                 )}
               </div>
             </div>
@@ -1179,7 +1183,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                  Etiquetas (Tags)
+                  {t("tags")}
                 </h3>
                 <Tag className="w-3.5 h-3.5 text-text-muted" />
               </div>
@@ -1210,7 +1214,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               {/* Tag Creation Input */}
               <div className="flex gap-2">
                 <Input
-                  placeholder="Nueva etiqueta…"
+                  placeholder={t("newTagPlaceholder")}
                   value={newTagInput}
                   onChange={(e) => setNewTagInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -1221,14 +1225,14 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                   }}
                 />
                 <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
-                  Añadir
+                  {tc("add")}
                 </Button>
               </div>
 
               {/* Quick Select existing tags */}
               {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
                 <div className="pt-2 border-t border-border/50">
-                  <p className="text-[11px] text-text-muted mb-1.5">Sugerencias existentes:</p>
+                  <p className="text-[11px] text-text-muted mb-1.5">{t("existingSuggestions")}</p>
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {localTags
                       .filter((t) => !selectedTags.includes(t.id))
@@ -1255,25 +1259,25 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
         isOpen={mediaPickerOpen}
         onClose={() => setMediaPickerOpen(false)}
         onSelect={handleMediaSelect}
-        title={mediaTarget === "cover" ? "Seleccionar Imagen de Portada" : "Insertar Imagen en el Artículo"}
+        title={mediaTarget === "cover" ? t("selectCoverModalTitle") : t("insertImageModalTitle")}
       />
 
       {/* AI Assistant Modal */}
-      <Modal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} title="Asistente de Redacción IA">
+      <Modal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} title={t("aiAssistantModal")}>
         <div className="space-y-4">
           <p className="text-xs text-text-muted">
-            Pide al asistente de IA que reescriba, resuma, corrija ortografía o mejore el tono de tu artículo.
+            {t("aiAssistantDesc")}
           </p>
           <Textarea
-            label="Instrucción para la IA"
-            placeholder="ej. 'Haz la introducción más atractiva y corrige cualquier falta ortográfica.'"
+            label={t("aiInstruction")}
+            placeholder={t("aiInstructionPlaceholder")}
             value={aiInstruction}
             onChange={(e) => setAiInstruction(e.target.value)}
             className="min-h-[90px]"
           />
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="ghost" onClick={() => setAiModalOpen(false)} className="text-xs">
-              Cancelar
+              {tc("cancel")}
             </Button>
             <Button
               variant="primary"
@@ -1282,21 +1286,21 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               icon={<Sparkles className="w-4 h-4" />}
               className="text-xs"
             >
-              Aplicar Cambios
+              {t("applyChanges")}
             </Button>
           </div>
         </div>
       </Modal>
 
       {/* AI Translate Modal */}
-      <Modal isOpen={aiTranslateModalOpen} onClose={() => setAiTranslateModalOpen(false)} title="Traducir Artículo con IA">
+      <Modal isOpen={aiTranslateModalOpen} onClose={() => setAiTranslateModalOpen(false)} title={t("translateModalTitle")}>
         <div className="space-y-4 text-xs">
           <p className="text-text-muted">
-            Selecciona el idioma al que deseas traducir todo el artículo (título, contenido Markdown/HTML y extracto SEO). La IA adaptará la redacción manteniendo el formato original.
+            {t("translateModalDesc")}
           </p>
 
           <Select
-            label="Idioma Destino"
+            label={t("targetLanguage")}
             value={targetTranslateLocale}
             onChange={(val) => setTargetTranslateLocale(val)}
             options={availableLanguageOptions}
@@ -1304,16 +1308,16 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
 
           <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg text-text space-y-1">
             <p className="font-semibold text-accent flex items-center gap-1.5">
-              <Globe className="w-4 h-4" /> Traducción Automática Inteligente
+              <Globe className="w-4 h-4" /> {t("smartAutoTranslate")}
             </p>
             <p className="text-text-muted">
-              Se traducirá el título, el slug, el extracto y todo el contenido del editor preservando los encabezados, imágenes, tablas y diagramas.
+              {t("smartAutoTranslateDesc")}
             </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="ghost" onClick={() => setAiTranslateModalOpen(false)} className="text-xs">
-              Cancelar
+              {tc("cancel")}
             </Button>
             <Button
               variant="primary"
@@ -1322,42 +1326,42 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               icon={<Sparkles className="w-4 h-4" />}
               className="text-xs"
             >
-              {isTranslating ? "Traduciendo artículo…" : "Comenzar Traducción"}
+              {isTranslating ? t("translating") : t("startTranslation")}
             </Button>
           </div>
         </div>
       </Modal>
 
       {/* Embed Modal */}
-      <Modal isOpen={embedModalOpen} onClose={() => setEmbedModalOpen(false)} title="Insertar Embed Multimedia">
+      <Modal isOpen={embedModalOpen} onClose={() => setEmbedModalOpen(false)} title={t("embedModalTitle")}>
         <div className="space-y-4 text-xs">
           <p className="text-text-muted">
-            Inserta widgets interactivos de <strong>Steam</strong>, <strong>itch.io</strong>, videos de <strong>YouTube</strong> o <strong>Vimeo</strong>, posts de <strong>X (Twitter)</strong>, <strong>Bluesky</strong> o archivos de video directos.
+            {t("embedModalDesc")}
           </p>
 
           <Input
-            label="ID del Juego, URL o Código Iframe"
-            placeholder="ID de Steam (1299800), ID de itch.io (2548291), URL o iframe"
+            label={t("embedInputLabel")}
+            placeholder={t("embedInputPlaceholder")}
             value={embedUrl}
             onChange={(e) => setEmbedUrl(e.target.value)}
-            helperText="Soporta IDs directos (1299800), URLs de tienda/widget o etiquetas <iframe> completas."
+            helperText={t("embedHelperText")}
           />
 
           <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1.5 text-text-muted">
-            <p className="font-semibold text-text">Formatos soportados:</p>
+            <p className="font-semibold text-text">{t("supportedFormats")}</p>
             <ul className="list-disc pl-4 space-y-1 font-mono text-[11px]">
-              <li><strong>Steam:</strong> 1299800 o https://store.steampowered.com/app/1299800/...</li>
-              <li><strong>itch.io:</strong> 2548291 o https://itch.io/embed/2548291</li>
-              <li><strong>YouTube:</strong> https://www.youtube.com/watch?v=dQw4w9WgXcQ</li>
-              <li><strong>X / Twitter:</strong> https://x.com/username/status/1234567890</li>
-              <li><strong>Bluesky:</strong> https://bsky.app/profile/user.bsky.social/post/3la7xyz</li>
-              <li><strong>Iframes:</strong> &lt;iframe src="https://store.steampowered.com/widget/..."&gt;&lt;/iframe&gt;</li>
+              <li><strong>Steam:</strong> 1299800</li>
+              <li><strong>itch.io:</strong> 2548291</li>
+              <li><strong>YouTube:</strong> https://www.youtube.com/watch?v=...</li>
+              <li><strong>X / Twitter:</strong> https://x.com/...</li>
+              <li><strong>Bluesky:</strong> https://bsky.app/...</li>
+              <li><strong>Iframes:</strong> &lt;iframe src=&quot;...&quot;&gt;&lt;/iframe&gt;</li>
             </ul>
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="ghost" onClick={() => setEmbedModalOpen(false)} className="text-xs">
-              Cancelar
+              {tc("cancel")}
             </Button>
             <Button
               variant="primary"
@@ -1366,14 +1370,14 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               icon={<PlaySquare className="w-4 h-4" />}
               className="text-xs"
             >
-              Insertar Embed
+              {t("insertEmbed")}
             </Button>
           </div>
         </div>
       </Modal>
 
       {/* Link Modal */}
-      <Modal isOpen={linkModalOpen} onClose={() => setLinkModalOpen(false)} title="Insertar o Editar Enlace">
+      <Modal isOpen={linkModalOpen} onClose={() => setLinkModalOpen(false)} title={t("linkModalTitle")}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1382,28 +1386,28 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
           className="space-y-4 text-xs"
         >
           <Input
-            label="URL del Enlace"
-            placeholder="https://ejemplo.com"
+            label={t("linkUrlLabel")}
+            placeholder="https://example.com"
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
-            helperText="Escribe o pega la dirección URL completa del enlace"
+            helperText={t("linkUrlHelper")}
             autoFocus
           />
 
           <div className="flex justify-between items-center pt-2 border-t border-border">
             {editor?.isActive("link") ? (
               <Button type="button" variant="danger" onClick={handleRemoveLink} className="text-xs">
-                Quitar Enlace
+                {t("removeLink")}
               </Button>
             ) : (
               <div />
             )}
             <div className="flex gap-2">
               <Button type="button" variant="ghost" onClick={() => setLinkModalOpen(false)} className="text-xs">
-                Cancelar
+                {tc("cancel")}
               </Button>
               <Button type="submit" variant="primary" className="text-xs">
-                Guardar Enlace
+                {t("saveLink")}
               </Button>
             </div>
           </div>
@@ -1411,30 +1415,30 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       </Modal>
 
       {/* Dub.co UTM Builder Modal */}
-      <Modal isOpen={dubModalOpen} onClose={() => setDubModalOpen(false)} title="Dub.co • Acortador y Constructor UTM">
+      <Modal isOpen={dubModalOpen} onClose={() => setDubModalOpen(false)} title={t("dubModalTitle")}>
         <div className="space-y-4 text-xs">
           <p className="text-text-muted">
-            Genera un enlace corto oficial en <strong>Dub.co</strong> con parámetros UTM opcionales para medir con precisión las campañas de tráfico.
+            {t("dubModalDesc")}
           </p>
 
           <div className="space-y-3">
             <Input
-              label="Fuente de Campaña (utm_source)"
-              placeholder="ej. twitter, newsletter, linkedin, youtube"
+              label={t("utmSourceLabel")}
+              placeholder={t("utmSourcePlaceholder")}
               value={utmSource}
               onChange={(e) => setUtmSource(e.target.value)}
             />
 
             <Input
-              label="Medio de Campaña (utm_medium)"
-              placeholder="ej. social, email, cpc, banner"
+              label={t("utmMediumLabel")}
+              placeholder={t("utmMediumPlaceholder")}
               value={utmMedium}
               onChange={(e) => setUtmMedium(e.target.value)}
             />
 
             <Input
-              label="Nombre de Campaña (utm_campaign)"
-              placeholder="ej. lanzamiento_2026, promo_verano"
+              label={t("utmCampaignLabel")}
+              placeholder={t("utmCampaignPlaceholder")}
               value={utmCampaign}
               onChange={(e) => setUtmCampaign(e.target.value)}
             />
@@ -1443,7 +1447,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
           <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1 text-text-muted">
             <p className="font-semibold text-text flex items-center gap-1.5">
               <Share2 className="w-3.5 h-3.5 text-accent" />
-              Destino Original:
+              {t("originalDestination")}
             </p>
             <p className="font-mono text-[11px] truncate">
               {typeof window !== "undefined" ? window.location.origin : ""}/entry/{slug || slugify(title)}
@@ -1452,7 +1456,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="ghost" onClick={() => setDubModalOpen(false)} className="text-xs">
-              Cancelar
+              {tc("cancel")}
             </Button>
             <Button
               variant="primary"
@@ -1461,23 +1465,23 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               icon={<Sparkles className="w-4 h-4" />}
               className="text-xs"
             >
-              Generar con Dub.co
+              {t("generateWithDub")}
             </Button>
           </div>
         </div>
       </Modal>
 
       {/* Dub.co QR Code Modal */}
-      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title="Código QR de Dub.co">
+      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title={t("qrModalTitle")}>
         <div className="space-y-4 text-xs text-center">
           <p className="text-text-muted">
-            Escanea este código QR con cualquier dispositivo móvil para acceder directamente al artículo.
+            {t("qrModalDesc")}
           </p>
 
           {qrCodeUrl && (
             <div className="flex justify-center py-2">
               <div className="p-3 bg-white rounded-xl shadow-xs border border-border inline-block">
-                <img src={qrCodeUrl} alt="Código QR" className="w-48 h-48 object-contain" />
+                <img src={qrCodeUrl} alt={t("qrModalTitle")} className="w-48 h-48 object-contain" />
               </div>
             </div>
           )}
@@ -1490,18 +1494,18 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                 variant="outline"
                 onClick={() => {
                   navigator.clipboard.writeText(shortUrl);
-                  toast.success("Enlace copiado");
+                  toast.success(tc("copied"));
                 }}
                 className="text-xs"
               >
-                <Copy className="w-3.5 h-3.5 mr-1" /> Copiar
+                <Copy className="w-3.5 h-3.5 mr-1" /> {tc("copy")}
               </Button>
             </div>
           )}
 
           <div className="flex justify-end pt-2 border-t border-border">
             <Button variant="primary" onClick={() => setQrModalOpen(false)} className="text-xs">
-              Cerrar
+              {t("close")}
             </Button>
           </div>
         </div>

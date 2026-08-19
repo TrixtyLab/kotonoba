@@ -170,10 +170,10 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
           <div className="p-4 bg-surface-hover/30 border border-border rounded-xl space-y-2 text-xs">
             <div className="flex items-center gap-2 text-emerald-500 font-semibold">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Almacenamiento Local Activo</span>
+              <span>{t("localStorageActive")}</span>
             </div>
             <p className="text-text-muted leading-relaxed">
-              Los archivos subidos se almacenan en la carpeta local <code className="bg-surface px-1.5 py-0.5 rounded border border-border">/public/uploads/</code> del servidor. Las imágenes se procesan y sirven de forma instantánea.
+              {t("localStorageDesc")}
             </p>
           </div>
         ) : (
@@ -224,7 +224,7 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
                 onChange={(e) => setS3AccessKey(e.target.value)}
                 placeholder={
                   isR2EnvActive || isS3EnvActive
-                    ? "(Heredado de variables de entorno)"
+                    ? `(${t("inheritedFromEnv")})`
                     : "AKIA..."
                 }
               />
@@ -235,7 +235,7 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
                 onChange={(e) => setS3SecretKey(e.target.value)}
                 placeholder={
                   isR2EnvActive || isS3EnvActive
-                    ? "•••••••••••••••• (Heredado de .env)"
+                    ? `•••••••••••••••• (${t("inheritedFromEnv")})`
                     : "••••••••••••••••"
                 }
               />
@@ -248,7 +248,7 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
               placeholder={
                 envStorageInfo?.r2PublicUrl || "https://media.myblog.com"
               }
-              helperText="URL pública o CDN asociada al bucket para servir imágenes"
+              helperText={t("s3PublicUrlHelper")}
             />
           </div>
         )}

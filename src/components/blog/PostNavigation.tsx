@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "@/i18n/routing";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Basic post reference for sequential navigation.
@@ -25,6 +26,7 @@ export function PostNavigation({
   prevPost?: NavPost | null;
   nextPost?: NavPost | null;
 }) {
+  const t = useTranslations("blog");
   if (!prevPost && !nextPost) return null;
 
   return (
@@ -37,7 +39,7 @@ export function PostNavigation({
           <ChevronLeft className="w-5 h-5 text-text-muted group-hover:text-primary transition-colors shrink-0" />
           <div className="min-w-0">
             <span className="text-[11px] text-text-muted font-medium block">
-              Anterior
+              {t("previousPost")}
             </span>
             <span className="text-sm font-semibold text-text group-hover:text-primary transition-colors truncate block">
               {prevPost.title}
@@ -55,7 +57,7 @@ export function PostNavigation({
         >
           <div className="min-w-0">
             <span className="text-[11px] text-text-muted font-medium block">
-              Siguiente
+              {t("nextPost")}
             </span>
             <span className="text-sm font-semibold text-text group-hover:text-primary transition-colors truncate block">
               {nextPost.title}

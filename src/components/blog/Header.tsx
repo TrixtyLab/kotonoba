@@ -31,6 +31,8 @@ export interface CustomNavItem {
   target?: "_self" | "_blank";
   /** Flag denoting whether the item is fixed in the navigation bar. */
   isFixed?: boolean;
+  /** Flag denoting whether the item is a social link that displays icon-only in the header without text. */
+  isSocial?: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export interface HeaderProps {
     logoUrl?: string | null;
     navLinks?: string | null;
     navAlignment?: "left" | "center" | "right" | null;
+    supportedLocales?: string | null;
   };
   /** Category taxonomy items for menu fallback. */
   categories?: Array<{ id: string; name: string; slug: string }>;
@@ -141,6 +144,18 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
     }
   }, [site.navAlignment]);
 
+  const enabledLocales = useMemo<string[]>(() => {
+    if (site.supportedLocales) {
+      try {
+        const parsed = JSON.parse(site.supportedLocales);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return ["en"];
+  }, [site.supportedLocales]);
+
   return (
     <>
       <header className="sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-md border-b border-border/80 transition-colors">
@@ -159,10 +174,12 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                       href={item.url}
                       target={item.target || "_blank"}
                       rel="noopener noreferrer"
-                      className="relative h-full flex items-center px-1 text-xs sm:text-[13px] font-bold tracking-wider text-text-muted hover:text-accent transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] after:bg-transparent hover:after:bg-accent/40"
+                      title={label}
+                      aria-label={label}
+                      className={`relative h-full flex items-center ${item.isSocial ? "px-2" : "px-1"} text-xs sm:text-[13px] font-bold tracking-wider text-text-muted hover:text-accent transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] after:bg-transparent hover:after:bg-accent/40`}
                     >
                       {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
-                      <span>{label}</span>
+                      {!item.isSocial && <span>{label}</span>}
                     </a>
                   );
                 }
@@ -172,7 +189,9 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                     key={item.id}
                     href={item.url}
                     target={item.target}
-                    className={`relative h-full flex items-center px-1 text-xs sm:text-[13px] font-bold tracking-wider transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] ${
+                    title={label}
+                    aria-label={label}
+                    className={`relative h-full flex items-center ${item.isSocial ? "px-2" : "px-1"} text-xs sm:text-[13px] font-bold tracking-wider transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] ${
                       isActive
                         ? "text-accent font-extrabold after:bg-accent"
                         : "text-text-muted hover:text-text after:bg-transparent hover:after:bg-text-muted/40"
@@ -184,7 +203,7 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                         className={`w-4 h-4 ${isActive ? "text-accent" : "text-text-muted"}`}
                       />
                     )}
-                    <span>{label}</span>
+                    {!item.isSocial && <span>{label}</span>}
                   </Link>
                 );
               })}
@@ -194,14 +213,14 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
             <div className="flex items-center gap-2.5 ml-auto shrink-0">
               <button
                 onClick={() => setSearchOpen(true)}
-                aria-label="Buscar artículos"
-                title="Buscar (⌘K)"
+                aria-label={t("searchPlaceholder")}
+                title={`${t("searchPlaceholder")} (⌘K)`}
                 className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
               >
                 <Search className="w-4 h-4" />
               </button>
 
-              <LocaleSwitcher />
+              <LocaleSwitcher enabledLocales={enabledLocales} />
               <ThemeToggle />
 
               <button

@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { AlertTriangle, Info, Trash2, X, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "./Button";
 
 /**
@@ -40,11 +41,14 @@ export function ConfirmModal({
   onConfirm,
   title,
   message,
-  confirmText = "Confirmar",
-  cancelText = "Cancelar",
+  confirmText,
+  cancelText,
   variant = "danger",
   isLoading = false,
 }: ConfirmModalProps) {
+  const tc = useTranslations("common");
+  const resolvedConfirmText = confirmText || tc("confirm");
+  const resolvedCancelText = cancelText || tc("cancel");
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && isOpen && !isLoading) {
@@ -112,7 +116,7 @@ export function ConfirmModal({
             disabled={isLoading}
             className="text-xs"
           >
-            {cancelText}
+            {resolvedCancelText}
           </Button>
 
           <Button
@@ -125,10 +129,10 @@ export function ConfirmModal({
             {isLoading ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Procesando...</span>
+                <span>{tc("loading")}</span>
               </span>
             ) : (
-              confirmText
+              resolvedConfirmText
             )}
           </Button>
         </div>

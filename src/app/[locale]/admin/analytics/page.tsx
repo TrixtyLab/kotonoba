@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { analytics, posts } from "@/lib/db/schema";
@@ -19,6 +20,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { Link } from "@/i18n/routing";
+import { ResetAnalyticsButton } from "@/components/admin/analytics/ResetAnalyticsButton";
 
 /**
  * Normalizes referrer strings into clean root domains.
@@ -27,12 +29,12 @@ import { Link } from "@/i18n/routing";
  * @returns Clean root domain name or fallback description.
  */
 function cleanReferrerDomain(rawReferrer: string | null): string {
-  if (!rawReferrer || !rawReferrer.trim()) return "Directo / Búsqueda";
+  if (!rawReferrer || !rawReferrer.trim()) return "Direct / Search";
   try {
     const url = new URL(rawReferrer.startsWith("http") ? rawReferrer : `https://${rawReferrer}`);
     return url.hostname.replace(/^www\./, "");
   } catch {
-    return rawReferrer.replace(/^https?:\/\//, "").split("/")[0] || "Directo";
+    return rawReferrer.replace(/^https?:\/\//, "").split("/")[0] || "Direct";
   }
 }
 
@@ -41,7 +43,14 @@ function cleanReferrerDomain(rawReferrer: string | null): string {
  *
  * @returns React JSX analytics dashboard view.
  */
-export default async function AdminAnalyticsPage() {
+export default async function AdminAnalyticsPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "analytics" });
+  const tc = await getTranslations({ locale, namespace: "common" });
   const site = await getActiveSite();
   if (!site) notFound();
 
@@ -117,12 +126,12 @@ export default async function AdminAnalyticsPage() {
 
   const browserStats = db
     .select({
-      browser: analytics.browser,
+      browser: sql<string>`case when ${analytics.browser} is null or ${analytics.browser} = '' then 'Other' else ${analytics.browser} end`,
       count: sql<number>`count(*)`,
     })
     .from(analytics)
     .where(eq(analytics.siteId, site.id))
-    .groupBy(analytics.browser)
+    .groupBy(sql`case when ${analytics.browser} is null or ${analytics.browser} = '' then 'Other' else ${analytics.browser} end`)
     .orderBy(desc(sql`count(*)`))
     .limit(5)
     .all();
@@ -168,7 +177,7 @@ export default async function AdminAnalyticsPage() {
     const d = new Date();
     d.setDate(d.getDate() - (13 - i));
     const dateStr = d.toISOString().split("T")[0];
-    const label = d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+    const label = d.toLocaleDateString(locale, { day: "numeric", month: "short" });
     dailyTimeline.push({ dateStr, label, count: 0 });
   }
 
@@ -188,12 +197,14 @@ export default async function AdminAnalyticsPage() {
         <div>
           <h1 className="text-xl font-bold text-text tracking-tight flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-accent" />
-            <span>Estadísticas y Analíticas</span>
+            <span>{t("title")}</span>
           </h1>
           <p className="text-xs text-text-muted mt-0.5">
-            Métricas de visitas respetuosas con la privacidad y atribución UTM para <span className="font-semibold text-text">{site.name}</span>.
+            {t("subtitle", { site: site.name })}
           </p>
         </div>
+
+        <ResetAnalyticsButton siteId={site.id} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -202,7 +213,7 @@ export default async function AdminAnalyticsPage() {
             <Eye className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-text-muted">Total de Visitas</p>
+            <p className="text-[11px] font-medium text-text-muted">{t("totalVisits")}</p>
             <p className="text-xl font-bold text-text tabular-nums mt-0.5">{totalPageViews.toLocaleString()}</p>
           </div>
         </div>
@@ -212,7 +223,7 @@ export default async function AdminAnalyticsPage() {
             <TrendingUp className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-text-muted">Visitantes Únicos Est.</p>
+            <p className="text-[11px] font-medium text-text-muted">{t("uniqueVisitors")}</p>
             <p className="text-xl font-bold text-text tabular-nums mt-0.5">{uniqueVisitors.toLocaleString()}</p>
           </div>
         </div>
@@ -222,7 +233,7 @@ export default async function AdminAnalyticsPage() {
             <Share2 className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-text-muted">Campañas UTM</p>
+            <p className="text-[11px] font-medium text-text-muted">{t("utmCampaigns")}</p>
             <p className="text-xl font-bold text-text tabular-nums mt-0.5">{utmCampaigns.length}</p>
           </div>
         </div>
@@ -232,7 +243,7 @@ export default async function AdminAnalyticsPage() {
             <Compass className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-text-muted">Fuentes de Tráfico</p>
+            <p className="text-[11px] font-medium text-text-muted">{t("trafficSources")}</p>
             <p className="text-xl font-bold text-text tabular-nums mt-0.5">{topReferrers.length}</p>
           </div>
         </div>
@@ -242,10 +253,10 @@ export default async function AdminAnalyticsPage() {
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-bold text-text">Evolución de Tráfico (Últimos 14 Días)</h2>
+            <h2 className="text-sm font-bold text-text">{t("trafficEvolution")}</h2>
           </div>
           <span className="text-xs font-mono text-text-muted">
-            {recentHits.length} visitas en el período
+            {t("periodVisits", { count: recentHits.length })}
           </span>
         </div>
 
@@ -262,7 +273,7 @@ export default async function AdminAnalyticsPage() {
                     <div
                       className="w-full bg-accent hover:bg-accent/80 transition-all rounded-t-md"
                       style={{ height: `${Math.max(day.count > 0 ? 8 : 2, heightPct)}%` }}
-                      title={`${day.label}: ${day.count} visitas`}
+                      title={`${day.label}: ${day.count}`}
                     />
                   </div>
                   <span className="text-[9px] sm:text-[10px] text-text-muted truncate w-full text-center">
@@ -280,7 +291,7 @@ export default async function AdminAnalyticsPage() {
           <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
             <h2 className="text-sm font-bold text-text flex items-center gap-2 pb-3 border-b border-border">
               <BarChart3 className="w-4 h-4 text-accent" />
-              <span>Artículos Más Vistos</span>
+              <span>{t("mostViewedArticles")}</span>
             </h2>
 
             <div className="space-y-3.5 pt-1">
@@ -301,7 +312,7 @@ export default async function AdminAnalyticsPage() {
                           </span>
                         )}
                       </Link>
-                      <span className="font-mono text-text-muted shrink-0 ml-2">{p.views.toLocaleString()} vistas</span>
+                      <span className="font-mono text-text-muted shrink-0 ml-2">{p.views.toLocaleString()}</span>
                     </div>
                     <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
                       <div
@@ -314,7 +325,7 @@ export default async function AdminAnalyticsPage() {
               })}
 
               {topPosts.length === 0 && (
-                <p className="text-xs text-text-muted py-6 text-center">No hay registros de tráfico aún.</p>
+                <p className="text-xs text-text-muted py-6 text-center">{t("noTrafficYet")}</p>
               )}
             </div>
           </div>
@@ -323,7 +334,7 @@ export default async function AdminAnalyticsPage() {
             <div className="bg-surface border border-border rounded-xl p-5 space-y-3 shadow-xs">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border flex items-center gap-2">
                 <Share2 className="w-3.5 h-3.5 text-accent" />
-                <span>Fuentes UTM (utm_source)</span>
+                <span>{t("utmSources")}</span>
               </h3>
               <div className="space-y-2.5 text-xs">
                 {utmSources.map((s, i) => (
@@ -338,7 +349,7 @@ export default async function AdminAnalyticsPage() {
                   </div>
                 ))}
                 {utmSources.length === 0 && (
-                  <p className="text-xs text-text-muted py-2">Sin parámetros utm_source registrados.</p>
+                  <p className="text-xs text-text-muted py-2">{t("noUtmSources")}</p>
                 )}
               </div>
             </div>
@@ -346,7 +357,7 @@ export default async function AdminAnalyticsPage() {
             <div className="bg-surface border border-border rounded-xl p-5 space-y-3 shadow-xs">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border flex items-center gap-2">
                 <Layers className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Campañas UTM (utm_campaign)</span>
+                <span>{t("utmCampaignsHeader")}</span>
               </h3>
               <div className="space-y-2.5 text-xs">
                 {utmCampaigns.map((c, i) => (
@@ -358,7 +369,7 @@ export default async function AdminAnalyticsPage() {
                   </div>
                 ))}
                 {utmCampaigns.length === 0 && (
-                  <p className="text-xs text-text-muted py-2">Sin campañas UTM activas aún.</p>
+                  <p className="text-xs text-text-muted py-2">{t("noUtmCampaigns")}</p>
                 )}
               </div>
             </div>
@@ -369,7 +380,7 @@ export default async function AdminAnalyticsPage() {
           <div className="bg-surface border border-border rounded-xl p-5 space-y-3 shadow-xs">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border flex items-center gap-2">
               <ArrowUpRight className="w-3.5 h-3.5 text-accent" />
-              <span>Fuentes de Tráfico (Referrers)</span>
+              <span>{t("referrers")}</span>
             </h3>
             <div className="space-y-2.5 text-xs">
               {topReferrers.map((r, i) => (
@@ -381,7 +392,7 @@ export default async function AdminAnalyticsPage() {
                 </div>
               ))}
               {topReferrers.length === 0 && (
-                <p className="text-xs text-text-muted py-1.5">Sin datos aún.</p>
+                <p className="text-xs text-text-muted py-1.5">{t("noReferrers")}</p>
               )}
             </div>
           </div>
@@ -389,7 +400,7 @@ export default async function AdminAnalyticsPage() {
           <div className="bg-surface border border-border rounded-xl p-5 space-y-4 shadow-xs">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border flex items-center gap-2">
               <Laptop className="w-3.5 h-3.5 text-accent" />
-              <span>Dispositivos y Navegadores</span>
+              <span>{t("devicesAndBrowsers")}</span>
             </h3>
 
             <div className="space-y-2 text-xs">
@@ -401,7 +412,7 @@ export default async function AdminAnalyticsPage() {
                     <div className="flex items-center justify-between text-text">
                       <span className="capitalize flex items-center gap-1.5">
                         <Icon className="w-3.5 h-3.5 text-text-muted" />
-                        {d.device || "Escritorio"}
+                        {d.device === "mobile" ? t("mobile") : d.device === "tablet" ? t("tablet") : t("desktop")}
                       </span>
                       <span className="font-mono text-text-muted">{pct}% ({d.count})</span>
                     </div>
@@ -412,19 +423,22 @@ export default async function AdminAnalyticsPage() {
                 );
               })}
               {deviceStats.length === 0 && (
-                <p className="text-xs text-text-muted py-1">Sin datos de dispositivos aún.</p>
+                <p className="text-xs text-text-muted py-1">{t("noDevices")}</p>
               )}
             </div>
 
             {browserStats.length > 0 && (
               <div className="pt-2 border-t border-border space-y-1.5 text-xs">
-                <p className="text-[11px] font-semibold text-text-muted">Navegadores Principales:</p>
+                <p className="text-[11px] font-semibold text-text-muted">{t("topBrowsers")}</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {browserStats.map((b, i) => (
-                    <span key={i} className="text-[11px] bg-surface-hover px-2 py-0.5 rounded border border-border text-text">
-                      {b.browser}: <span className="font-mono text-text-muted">{b.count}</span>
-                    </span>
-                  ))}
+                  {browserStats.map((b, i) => {
+                    const browserLabel = b.browser === "Other" || !b.browser ? t("otherBrowser") : b.browser;
+                    return (
+                      <span key={i} className="text-[11px] bg-surface-hover px-2 py-0.5 rounded border border-border text-text">
+                        {browserLabel}: <span className="font-mono text-text-muted">{b.count}</span>
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -433,19 +447,19 @@ export default async function AdminAnalyticsPage() {
           <div className="bg-surface border border-border rounded-xl p-5 space-y-3 shadow-xs">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border flex items-center gap-2">
               <Globe className="w-3.5 h-3.5 text-accent" />
-              <span>Distribución Geográfica</span>
+              <span>{t("geoDistribution")}</span>
             </h3>
             <div className="space-y-2 text-xs">
               {topCountries.map((c, i) => (
                 <div key={i} className="flex items-center justify-between">
-                  <span className="text-text">{c.country || "Global / Desconocido"}</span>
+                  <span className="text-text">{c.country || t("globalUnknown")}</span>
                   <span className="font-mono text-text-muted bg-surface-hover px-2 py-0.5 rounded text-[11px]">
                     {c.count}
                   </span>
                 </div>
               ))}
               {topCountries.length === 0 && (
-                <p className="text-xs text-text-muted py-1.5">Sin datos aún.</p>
+                <p className="text-xs text-text-muted py-1.5">{t("noGeo")}</p>
               )}
             </div>
           </div>

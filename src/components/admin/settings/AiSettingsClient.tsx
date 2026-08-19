@@ -44,7 +44,7 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
 
   async function handleTestConnection() {
     if (!aiKey) {
-      toast.error("Ingresa la clave de API para probar la conexión");
+      toast.error(t("enterApiKeyToTest"));
       return;
     }
     setTestLoading(true);
@@ -126,7 +126,7 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
             type="password"
             value={aiKey}
             onChange={(e) => setAiKey(e.target.value)}
-            placeholder={initialSettings.ai_api_key ? "•••••••••••••••• (dejar en blanco para mantener actual)" : "sk-..."}
+            placeholder={initialSettings.ai_api_key ? `•••••••••••••••• (${t("leaveBlankToKeep")})` : "sk-..."}
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -165,7 +165,7 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
               icon={testLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
               className="text-xs"
             >
-              {testLoading ? "Probando conexión..." : t("aiTestConnection")}
+              {testLoading ? t("testingConnection") : t("aiTestConnection")}
             </Button>
           </div>
 

@@ -209,7 +209,7 @@ export function SitesManagerClient({
                       <Check className="w-3 h-3 mr-1" /> {t("activeSite")}
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">Inactivo</Badge>
+                    <Badge variant="secondary">{tc("inactive")}</Badge>
                   )}
                 </div>
 
