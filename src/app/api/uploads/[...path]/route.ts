@@ -42,14 +42,14 @@ export async function GET(
   // Prevent directory traversal
   const sanitizedSegments = pathSegments.map((s) => path.basename(s));
   const relativePath = sanitizedSegments.join("/");
-  const filePath = path.join(getUploadDir(), relativePath);
+  const filePath = path.join(/*turbopackIgnore: true*/ getUploadDir(), relativePath);
 
-  if (!existsSync(filePath)) {
+  if (!existsSync(/*turbopackIgnore: true*/ filePath)) {
     return new NextResponse("File Not Found", { status: 404 });
   }
 
   try {
-    const fileBuffer = await fs.readFile(filePath);
+    const fileBuffer = await fs.readFile(/*turbopackIgnore: true*/ filePath);
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_MAP[ext] || "application/octet-stream";
 

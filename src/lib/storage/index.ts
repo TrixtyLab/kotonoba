@@ -281,11 +281,11 @@ export async function uploadToStorage(
   }
 
   const baseUploadDir = config.uploadDir;
-  const targetDir = cleanFolder ? path.join(baseUploadDir, cleanFolder) : baseUploadDir;
+  const targetDir = cleanFolder ? path.join(/*turbopackIgnore: true*/ baseUploadDir, cleanFolder) : baseUploadDir;
   ensureDir(targetDir);
 
-  const destinationPath = path.join(targetDir, rawFilename);
-  await fs.writeFile(destinationPath, buffer);
+  const destinationPath = path.join(/*turbopackIgnore: true*/ targetDir, rawFilename);
+  await fs.writeFile(/*turbopackIgnore: true*/ destinationPath, buffer);
 
   return {
     url: `/api/uploads/${relativePath}`,

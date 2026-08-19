@@ -97,14 +97,14 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
   const uploadDir = getUploadDir();
   let mediaCount = 0;
 
-  if (uploadsFolder && existsSync(uploadDir)) {
+  if (uploadsFolder && existsSync(/*turbopackIgnore: true*/ uploadDir)) {
     try {
-      const files = await fs.readdir(uploadDir);
+      const files = await fs.readdir(/*turbopackIgnore: true*/ uploadDir);
       for (const file of files) {
-        const filePath = path.join(uploadDir, file);
-        const stat = await fs.stat(filePath);
+        const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, file);
+        const stat = await fs.stat(/*turbopackIgnore: true*/ filePath);
         if (stat.isFile()) {
-          const fileData = await fs.readFile(filePath);
+          const fileData = await fs.readFile(/*turbopackIgnore: true*/ filePath);
           uploadsFolder.file(file, fileData);
           mediaCount++;
         }
