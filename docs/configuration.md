@@ -82,8 +82,18 @@ To map multiple isolated blogs to custom domains:
 
 ---
 
-## 5. SEO & AI Search Engine Indexing (`/llms.txt`)
+## 5. SEO, Anti-AI Crawling Policy & LLMs Manifest
 
+### A. Search Engine Directives (`/robots.txt` & `/sitemap.xml`)
 - **`/sitemap.xml`:** Generated dynamically with multi-language `xhtml:link` alternates.
-- **`/robots.txt`:** Standard bot crawling guidelines.
-- **`/llms.txt` & `/llms-full.txt`:** Standardized markdown manifests for AI search engines (ChatGPT, Perplexity, Claude). Can be toggled on/off in `/admin/settings/seo`.
+- **`/robots.txt`:** Standard crawling rules allowing public blog sections while protecting `/admin/`, `/api/`, and `/setup/`.
+
+### B. Anti-AI Crawling & Scraping Policy (`block_ai_crawlers`)
+Kotonoba includes a built-in Anti-AI privacy protection toggle in `/admin/settings/seo`:
+- **Robots Disallow Directives:** Explicitly disallows major AI training bots and web scrapers (`GPTBot`, `ChatGPT-User`, `ClaudeBot`, `Claude-Web`, `anthropic-ai`, `Google-Extended`, `CCBot`, `PerplexityBot`, `Bytespider`, `Diffbot`, `FacebookBot`, `cohere-ai`, `Omgilibot`, `ImagesiftBot`).
+- **Standard Metadata:** Injects `<meta name="robots" content="noai, noimageai" />` and the W3C `<meta name="tdm-reservation" content="1" />` (Text and Data Mining reservation) into public blog pages.
+- **LLM Suppression:** Automatically forces `/llms.txt` and `/llms-full.txt` to return HTTP 404 (Not Found).
+
+### C. AI Search Engine Indexing (`/llms.txt` & `/llms-full.txt`)
+- **Disabled by Default:** LLM manifests are disabled out of the box.
+- **Opt-in Indexing:** Can be enabled in `/admin/settings/seo` if you wish to allow AI engines (ChatGPT, Claude, Perplexity) to index and cite your blog posts. Custom system instructions for AI models can also be configured.

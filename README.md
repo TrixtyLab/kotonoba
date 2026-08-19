@@ -76,10 +76,11 @@
 - **Localized Date Formatting:** Formats publication timestamps according to the active locale using native `Intl.DateTimeFormat`.
 - **Locale Switcher & Language Selector:** Seamless UI switcher in public blog headers and administrative bars.
 
-### 🔍 SEO, Social Sharing & AI Engine Manifests
+### 🔍 SEO, Anti-AI Crawling Policy & LLMs Manifest
 - **Dynamic XML Sitemap:** Automatically generated at `/sitemap.xml` with `xhtml:link` hreflang alternates for all published posts and categories.
-- **Dynamic Robots File:** Configured at `/robots.txt` with sitemap directives.
-- **AI Search Engine Manifests (`/llms.txt` & `/llms-full.txt`):** Structured markdown documentation index optimized for AI engines (Perplexity, ChatGPT, Claude, Gemini) with an administrative toggle switch in `/admin/settings/seo`.
+- **Dynamic Robots File:** Configured at `/robots.txt` with standard crawling budget directives.
+- **Anti-AI Policy & Crawler Blocker:** Built-in toggle in `/admin/settings/seo` to actively disallow all major AI training scrapers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`, `PerplexityBot`, etc.) in `robots.txt`, inject `<meta name="robots" content="noai, noimageai" />`, and set W3C `<meta name="tdm-reservation" content="1" />` tags.
+- **AI Search Engine Manifests (`/llms.txt` & `/llms-full.txt`):** Disabled by default. Can be optionally enabled in `/admin/settings/seo` to provide structured markdown indexes for AI models (ChatGPT, Perplexity, Claude).
 - **Social Sharing & Engagement:**
   - One-click sharing to Twitter/X, Facebook, LinkedIn, WhatsApp, and Telegram.
   - Client-side article like reaction button with persistent local storage.

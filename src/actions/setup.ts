@@ -158,7 +158,8 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
     .run();
 
   const defaultSettings = [
-    { key: "llms_txt_enabled", value: "true" },
+    { key: "llms_txt_enabled", value: "false" },
+    { key: "block_ai_crawlers", value: "false" },
     { key: "ai_enabled", value: "false" },
     { key: "ai_api_url", value: "https://api.openai.com/v1" },
     { key: "ai_model", value: "gpt-4o" },

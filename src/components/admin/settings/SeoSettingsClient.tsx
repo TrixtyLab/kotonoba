@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { useToast } from "@/components/ui/Toast";
-import { Search, Save, Sparkles, ExternalLink, CheckCircle2, AlertCircle } from "lucide-react";
+import { Search, Save, Sparkles, ExternalLink, CheckCircle2, AlertCircle, ShieldAlert } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 
 /**
@@ -23,7 +23,7 @@ export interface SeoSettingsClientProps {
 }
 
 /**
- * Administrative SEO and LLM index management panel for configuring custom LLMs.txt files and search engine parameters.
+ * Administrative SEO, LLM index, and Anti-AI crawler management panel for configuring search engine parameters and AI policies.
  *
  * @param props - SeoSettingsClientProps configuring site ID and current SEO parameters.
  * @returns React JSX SEO settings view.
@@ -35,14 +35,16 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [llmsTxtEnabled, setLlmsTxtEnabled] = useState(initialSettings.llms_txt_enabled !== "false");
+  const [llmsTxtEnabled, setLlmsTxtEnabled] = useState(initialSettings.llms_txt_enabled === "true");
   const [llmsTxtCustom, setLlmsTxtCustom] = useState(initialSettings.llms_txt_custom || "");
+  const [blockAiCrawlers, setBlockAiCrawlers] = useState(initialSettings.block_ai_crawlers === "true");
 
   async function handleSave() {
     startTransition(async () => {
       const res = await saveSiteSettings(siteId, {
         llms_txt_enabled: llmsTxtEnabled ? "true" : "false",
         llms_txt_custom: llmsTxtCustom,
+        block_ai_crawlers: blockAiCrawlers ? "true" : "false",
       });
 
       if (res.success) {
@@ -65,8 +67,32 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
       </div>
 
       <div className="space-y-6 max-w-2xl">
-        {/* LLMs.txt Configuration */}
+        {/* Anti-AI Crawler & Scraper Policy */}
         <div className="p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-text flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-500" />
+              <span>{t("antiAiPolicy")}</span>
+            </h3>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {t("antiAiPolicyDesc")}
+            </p>
+          </div>
+
+          <Checkbox
+            checked={blockAiCrawlers}
+            onChange={(val) => {
+              setBlockAiCrawlers(val);
+              if (val) {
+                setLlmsTxtEnabled(false);
+              }
+            }}
+            label={t("blockAiCrawlers")}
+          />
+        </div>
+
+        {/* LLMs.txt Configuration (Disabled by default) */}
+        <div className={`p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4 ${blockAiCrawlers ? "opacity-60 pointer-events-none" : ""}`}>
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-text flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-accent" />
@@ -81,9 +107,10 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
             checked={llmsTxtEnabled}
             onChange={(val) => setLlmsTxtEnabled(val)}
             label={t("enableLlmsTxt")}
+            disabled={blockAiCrawlers}
           />
 
-          {llmsTxtEnabled && (
+          {llmsTxtEnabled && !blockAiCrawlers && (
             <div className="space-y-2 pt-2 border-t border-border">
               <Textarea
                 label={t("llmsTxtDescription")}

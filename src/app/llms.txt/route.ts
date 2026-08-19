@@ -18,14 +18,24 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("Not Found", { status: 404 });
   }
 
+  const antiAiSetting = db
+    .select()
+    .from(settings)
+    .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
+    .get();
+
+  if (antiAiSetting?.value === "true") {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
   const llmsSetting = db
     .select()
     .from(settings)
     .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_enabled")))
     .get();
 
-  if (llmsSetting && llmsSetting.value === "false") {
-    return new NextResponse("LLMs.txt is disabled on this site.", { status: 404 });
+  if (!llmsSetting || llmsSetting.value !== "true") {
+    return new NextResponse("Not Found", { status: 404 });
   }
 
   const customInstructions = db
