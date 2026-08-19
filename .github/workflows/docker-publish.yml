@@ -75,11 +75,11 @@ jobs:
             type=raw,value=${{ steps.versioning.outputs.CLEAN_VERSION }}
             type=raw,value=${{ steps.versioning.outputs.VERSION }}
 
-      - name: Build and push Multi-Arch Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

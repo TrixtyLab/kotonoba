@@ -152,7 +152,7 @@ To route multiple domains/subdomains to separate blogs hosted on the same instan
 
 ## 6. Docker Tagging & Automated Semantic Releases (SemVer)
 
-When changes are pushed or merged to the `main` branch or a Git tag (`v*.*.*`) is published, the GitHub Actions workflow automatically builds multi-arch images (`linux/amd64`, `linux/arm64`), creates a GitHub Release with an automated changelog, and pushes the corresponding tags to GitHub Container Registry (GHCR):
+When changes are pushed or merged to the `main` branch or a Git tag (`v*.*.*`) is published, the GitHub Actions workflow automatically builds production Docker images (`linux/amd64`), creates a GitHub Release with an automated changelog, and pushes the corresponding tags to GitHub Container Registry (GHCR):
 
 | Tag Format | Example | Purpose |
 | :--- | :--- | :--- |

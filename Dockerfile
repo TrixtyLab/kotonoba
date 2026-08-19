@@ -25,7 +25,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV DB_PATH=/app/data/blog.db
+ENV DB_PATH=/app/data/kotonoba.db
 ENV UPLOAD_DIR=/app/data/uploads
 
 RUN apk add --no-cache curl wget
