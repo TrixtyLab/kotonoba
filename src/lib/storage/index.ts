@@ -1,112 +1,119 @@
+import path from "path";
+import fs from "fs/promises";
+import { existsSync, mkdirSync } from "fs";
 import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
   CopyObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
-import { ensureDir } from "@/lib/utils/fs";
-import { generateId } from "@/lib/utils/slug";
-import path from "path";
-import fs from "fs/promises";
-import { existsSync } from "fs";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getDb } from "@/lib/db";
 import { settings, sites } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 /**
- * Result payload returned after successfully uploading an asset to storage.
+ * Storage configuration interface holding resolved driver and authentication parameters.
  */
-export interface UploadResult {
-  /** Publicly accessible URL to access the uploaded asset. */
-  url: string;
-  /** Generated unique filename on the storage backend. */
-  filename: string;
-  /** Normalized relative path including parent folders. */
-  path: string;
-  /** File size in bytes. */
-  size: number;
-  /** MIME content type of the uploaded asset. */
-  mimeType: string;
-  /** Target storage driver provider. */
-  provider: "r2" | "s3" | "local";
+export interface StorageConfig {
+  /** Selected driver backend. */
+  provider: "local" | "s3" | "r2";
+  /** Cloud storage bucket name. */
+  bucket?: string;
+  /** Cloud region identifier. */
+  region?: string;
+  /** Custom endpoint URL for Cloudflare R2 or MinIO. */
+  endpoint?: string;
+  /** Access Key ID credential. */
+  accessKeyId?: string;
+  /** Secret Access Key credential. */
+  secretAccessKey?: string;
+  /** Public base URL for serving media assets. */
+  publicUrl?: string;
+  /** Local filesystem directory path for persistent uploads. */
+  uploadDir: string;
 }
 
 /**
- * Metadata representation of a file stored in media storage.
+ * Metadata record for a stored media file.
  */
 export interface MediaFileItem {
-  /** Basename of the file. */
+  /** Base filename. */
   filename: string;
-  /** Normalized path relative to the root storage bucket or upload folder. */
+  /** Relative path within the storage bucket or uploads directory. */
   path: string;
-  /** Direct public URL for media display. */
+  /** Public or presigned accessible HTTP URL. */
   url: string;
   /** File size in bytes. */
   size: number;
   /** Last modification timestamp. */
   updatedAt: Date;
-  /** Parent folder path or empty string for root. */
+  /** Containing directory folder path. */
   folder: string;
 }
 
 /**
- * Representation of a virtual or filesystem folder in media storage.
+ * Directory folder structure representation.
  */
 export interface MediaFolderItem {
-  /** Display name of the folder directory. */
+  /** Directory display name. */
   name: string;
-  /** Relative directory path. */
+  /** Normalized path relative to storage root. */
   path: string;
-  /** Optional count of contained items. */
-  itemCount?: number;
 }
 
 /**
- * Paginated or scoped listing result of media files and subfolders within a directory.
+ * File upload completion result payload.
+ */
+export interface UploadResult {
+  /** Accessible HTTP URL for the uploaded asset. */
+  url: string;
+  /** Sanitized base filename. */
+  filename: string;
+  /** Relative storage path. */
+  path: string;
+  /** Uploaded file size in bytes. */
+  size: number;
+  /** MIME content-type string. */
+  mimeType: string;
+}
+
+/**
+ * Directory listing payload containing subfolders and files.
  */
 export interface MediaListingResult {
-  /** Relative path of the currently browsed directory. */
+  /** Current active directory path. */
   currentFolder: string;
-  /** Relative path of the parent directory, or null if at root. */
+  /** Parent directory path or null if at root. */
   parentFolder: string | null;
-  /** Subdirectories located within the current folder. */
+  /** List of subdirectories. */
   folders: MediaFolderItem[];
-  /** File assets located within the current folder. */
+  /** List of media file items. */
   files: MediaFileItem[];
 }
 
 /**
- * Storage driver runtime configuration parameters.
- */
-export interface StorageConfig {
-  /** Active storage provider driver. */
-  provider: "local" | "s3" | "r2";
-  /** S3 or R2 bucket identifier. */
-  bucket?: string;
-  /** AWS or S3-compatible region string. */
-  region?: string;
-  /** Custom endpoint URL for S3 or Cloudflare R2. */
-  endpoint?: string;
-  /** Access Key ID for authentication. */
-  accessKeyId?: string;
-  /** Secret Access Key for authentication. */
-  secretAccessKey?: string;
-  /** Public CDN or base URL for serving files. */
-  publicUrl: string;
-  /** Local filesystem directory path for storage fallback. */
-  uploadDir: string;
-}
-
-/**
- * Resolves the absolute directory path used for local file uploads.
+ * Resolves the absolute local filesystem directory used for persistent uploads.
  *
- * @returns Absolute filesystem path string.
+ * @returns Absolute directory path string.
  */
 export function getUploadDir(): string {
   if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR;
   if (process.env.NODE_ENV === "production") return "/app/data/uploads";
   return path.join(process.cwd(), "data", "uploads");
+}
+
+/**
+ * Ensures a directory path exists on the local filesystem.
+ *
+ * @param dir - Absolute directory path string.
+ */
+export function ensureDir(dir: string): void {
+  if (!existsSync(/*turbopackIgnore: true*/ dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
 }
 
 /**
@@ -119,6 +126,18 @@ export function getUploadDir(): string {
 export function getStorageConfig(siteId?: string): StorageConfig {
   const uploadDir = getUploadDir();
   ensureDir(uploadDir);
+
+  const {
+    R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET_NAME,
+    R2_PUBLIC_URL,
+    S3_BUCKET,
+    AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY,
+    AWS_REGION,
+  } = process.env;
 
   try {
     const db = getDb();
@@ -141,15 +160,32 @@ export function getStorageConfig(siteId?: string): StorageConfig {
         map[s.key] = s.value;
       }
 
-      const provider = (map.storage_provider as "local" | "s3" | "r2") || "local";
+      let provider = (map.storage_provider as "local" | "s3" | "r2") || undefined;
+
+      // Auto-detect provider if not explicitly saved in DB
+      if (!provider) {
+        if (R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME) {
+          provider = "r2";
+        } else if (S3_BUCKET && AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
+          provider = "s3";
+        } else {
+          provider = "local";
+        }
+      }
 
       if (provider === "r2" || provider === "s3") {
-        const bucket = map.s3_bucket || process.env.R2_BUCKET_NAME || process.env.S3_BUCKET || "";
-        const region = map.s3_region || process.env.AWS_REGION || "auto";
-        const endpoint = map.s3_endpoint || (provider === "r2" && process.env.R2_ACCOUNT_ID ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : undefined);
-        const accessKeyId = map.s3_access_key || process.env.R2_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || "";
-        const secretAccessKey = map.s3_secret_key || process.env.R2_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || "";
-        const publicUrl = (map.s3_public_url || process.env.R2_PUBLIC_URL || "").replace(/\/$/, "");
+        const bucket = map.s3_bucket || R2_BUCKET_NAME || S3_BUCKET || "";
+        const region = map.s3_region || AWS_REGION || "auto";
+        const endpoint =
+          map.s3_endpoint ||
+          (provider === "r2" && R2_ACCOUNT_ID
+            ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+            : undefined);
+        const accessKeyId =
+          map.s3_access_key || R2_ACCESS_KEY_ID || AWS_ACCESS_KEY_ID || "";
+        const secretAccessKey =
+          map.s3_secret_key || R2_SECRET_ACCESS_KEY || AWS_SECRET_ACCESS_KEY || "";
+        const publicUrl = (map.s3_public_url || R2_PUBLIC_URL || "").replace(/\/$/, "");
 
         if (bucket && accessKeyId && secretAccessKey) {
           return {
@@ -159,17 +195,14 @@ export function getStorageConfig(siteId?: string): StorageConfig {
             endpoint,
             accessKeyId,
             secretAccessKey,
-            publicUrl: publicUrl || `/api/uploads`,
+            publicUrl: publicUrl || undefined,
             uploadDir,
           };
         }
       }
     }
-  } catch {
-    // Database query failed (e.g. during initial migration), fallback to environment variables
-  }
+  } catch {}
 
-  const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL } = process.env;
   if (R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME) {
     return {
       provider: "r2",
@@ -178,7 +211,18 @@ export function getStorageConfig(siteId?: string): StorageConfig {
       endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
       accessKeyId: R2_ACCESS_KEY_ID,
       secretAccessKey: R2_SECRET_ACCESS_KEY,
-      publicUrl: (R2_PUBLIC_URL || "").replace(/\/$/, ""),
+      publicUrl: (R2_PUBLIC_URL || "").replace(/\/$/, "") || undefined,
+      uploadDir,
+    };
+  }
+
+  if (S3_BUCKET && AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
+    return {
+      provider: "s3",
+      bucket: S3_BUCKET,
+      region: AWS_REGION || "us-east-1",
+      accessKeyId: AWS_ACCESS_KEY_ID,
+      secretAccessKey: AWS_SECRET_ACCESS_KEY,
       uploadDir,
     };
   }
@@ -196,7 +240,7 @@ export function getStorageConfig(siteId?: string): StorageConfig {
  * @param config - The resolved StorageConfig parameters.
  * @returns Configured S3Client instance.
  */
-function getS3Client(config: StorageConfig): S3Client {
+export function getS3Client(config: StorageConfig): S3Client {
   return new S3Client({
     region: config.region || "auto",
     endpoint: config.endpoint || undefined,
@@ -205,6 +249,38 @@ function getS3Client(config: StorageConfig): S3Client {
       secretAccessKey: config.secretAccessKey!,
     },
   });
+}
+
+/**
+ * Generates a presigned GET access grant URL for an object residing in a private S3/R2 bucket.
+ *
+ * @param filePath - Relative path to the stored media object.
+ * @param expiresInSeconds - Access grant duration in seconds. Defaults to 86400 (24 hours).
+ * @param siteId - Optional site identifier.
+ * @returns Promise resolving to the signed access URL string.
+ */
+export async function getPresignedMediaUrl(
+  filePath: string,
+  expiresInSeconds = 86400,
+  siteId?: string
+): Promise<string> {
+  const config = getStorageConfig(siteId);
+  const cleanPath = sanitizePath(filePath);
+
+  if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
+    try {
+      const s3 = getS3Client(config);
+      const command = new GetObjectCommand({
+        Bucket: config.bucket,
+        Key: cleanPath,
+      });
+      return await getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
+    } catch {
+      return `/api/uploads/${cleanPath}`;
+    }
+  }
+
+  return `/api/uploads/${cleanPath}`;
 }
 
 /**
@@ -229,7 +305,7 @@ export function getStorageStatus(siteId?: string) {
  * @param p - Raw path string.
  * @returns Sanitized relative path string.
  */
-function sanitizePath(p: string): string {
+export function sanitizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").replace(/\.\./g, "");
 }
 
@@ -250,33 +326,46 @@ export async function uploadToStorage(
   targetFolder = "",
   siteId?: string
 ): Promise<UploadResult> {
-  const ext = path.extname(originalFilename) || ".jpg";
-  const rawFilename = `${generateId()}${ext}`;
-  const cleanFolder = sanitizePath(targetFolder);
-  const relativePath = cleanFolder ? `${cleanFolder}/${rawFilename}` : rawFilename;
-
   const config = getStorageConfig(siteId);
+  const cleanFolder = sanitizePath(targetFolder);
+
+  const ext = path.extname(originalFilename).toLowerCase();
+  const baseName = path
+    .basename(originalFilename, ext)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  const timestamp = Date.now();
+  const rawFilename = `${baseName}-${timestamp}${ext}`;
+  const relativePath = cleanFolder ? `${cleanFolder}/${rawFilename}` : rawFilename;
 
   if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
     const s3 = getS3Client(config);
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: config.bucket,
-        Key: relativePath,
-        Body: buffer,
-        ContentType: contentType,
-      })
-    );
 
-    const publicUrl = config.publicUrl ? `${config.publicUrl}/${relativePath}` : `/api/uploads/${relativePath}`;
+    const command = new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: relativePath,
+      Body: buffer,
+      ContentType: contentType,
+    });
+
+    await s3.send(command);
+
+    let fileUrl: string;
+    if (config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")) {
+      fileUrl = `${config.publicUrl}/${relativePath}`;
+    } else {
+      fileUrl = await getPresignedMediaUrl(relativePath, 86400, siteId);
+    }
 
     return {
-      url: publicUrl,
+      url: fileUrl,
       filename: rawFilename,
       path: relativePath,
       size: buffer.length,
       mimeType: contentType,
-      provider: config.provider,
     };
   }
 
@@ -293,24 +382,32 @@ export async function uploadToStorage(
     path: relativePath,
     size: buffer.length,
     mimeType: contentType,
-    provider: "local",
   };
 }
 
 /**
- * Creates a new virtual or filesystem folder in the configured storage provider.
+ * Creates a new directory folder inside storage.
  *
- * @param folderName - Name of the directory to create.
- * @param parentFolder - Parent folder path. Defaults to root.
+ * @param folderName - New folder name.
+ * @param parentFolder - Parent directory path.
  * @param siteId - Optional site identifier.
- * @returns A Promise resolving to true if created successfully, false otherwise.
+ * @returns A Promise resolving to true on successful creation, false otherwise.
  */
-export async function createFolder(folderName: string, parentFolder = "", siteId?: string): Promise<boolean> {
-  const safeName = folderName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, "").replace(/\s+/g, "-");
-  if (!safeName) return false;
-
+export async function createFolder(
+  folderName: string,
+  parentFolder = "",
+  siteId?: string
+): Promise<boolean> {
   const cleanParent = sanitizePath(parentFolder);
-  const folderPath = cleanParent ? `${cleanParent}/${safeName}` : safeName;
+  const cleanName = folderName
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  if (!cleanName) return false;
+  const folderPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
 
   const config = getStorageConfig(siteId);
 
@@ -455,7 +552,6 @@ export async function deleteFromStorage(
           })
         );
       }
-
       return true;
     } catch {
       return false;
@@ -464,13 +560,12 @@ export async function deleteFromStorage(
 
   try {
     const fullPath = path.join(config.uploadDir, cleanItem);
-    if (existsSync(fullPath)) {
-      const stat = await fs.stat(fullPath);
-      if (stat.isDirectory()) {
-        await fs.rm(fullPath, { recursive: true, force: true });
-      } else {
-        await fs.unlink(fullPath);
-      }
+    if (!existsSync(fullPath)) return false;
+
+    if (isFolder) {
+      await fs.rm(fullPath, { recursive: true, force: true });
+    } else {
+      await fs.unlink(fullPath);
     }
     return true;
   } catch {
@@ -479,24 +574,25 @@ export async function deleteFromStorage(
 }
 
 /**
- * Lists all folders and files located within a specific directory path of storage.
+ * Retrieves the directory contents (folders and media files) for a specific folder path.
  *
- * @param folderPath - Target directory path to inspect. Defaults to root.
+ * @param folder - Subfolder directory path. Defaults to root.
  * @param siteId - Optional site identifier.
- * @returns A Promise resolving to a MediaListingResult containing folders and file records.
+ * @returns A Promise resolving to MediaListingResult.
  */
 export async function listMediaFiles(
-  folderPath = "",
+  folder = "",
   siteId?: string
 ): Promise<MediaListingResult> {
-  const cleanFolder = sanitizePath(folderPath);
-  const parentFolder = cleanFolder.includes("/")
-    ? cleanFolder.split("/").slice(0, -1).join("/")
-    : cleanFolder
-    ? ""
-    : null;
-
+  const cleanFolder = sanitizePath(folder);
   const config = getStorageConfig(siteId);
+
+  let parentFolder: string | null = null;
+  if (cleanFolder) {
+    const segments = cleanFolder.split("/");
+    segments.pop();
+    parentFolder = segments.join("/");
+  }
 
   if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
     try {
@@ -523,28 +619,36 @@ export async function listMediaFiles(
 
       const publicUrlBase = config.publicUrl;
 
-      const files: MediaFileItem[] = (res.Contents || [])
-        .filter((obj) => obj.Key && !obj.Key.endsWith("/") && !obj.Key.endsWith(".keep"))
-        .map((obj) => {
-          const filePath = obj.Key!;
-          const filename = path.basename(filePath);
-          const url = publicUrlBase ? `${publicUrlBase}/${filePath}` : `/api/uploads/${filePath}`;
-          return {
-            filename,
-            path: filePath,
-            url,
-            size: obj.Size || 0,
-            updatedAt: obj.LastModified || new Date(),
-            folder: cleanFolder,
-          };
-        })
-        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      const files: MediaFileItem[] = await Promise.all(
+        (res.Contents || [])
+          .filter((obj) => obj.Key && !obj.Key.endsWith("/") && !obj.Key.endsWith(".keep"))
+          .map(async (obj) => {
+            const filePath = obj.Key!;
+            const filename = path.basename(filePath);
+            
+            let url: string;
+            if (publicUrlBase && !publicUrlBase.includes("r2.cloudflarestorage.com")) {
+              url = `${publicUrlBase}/${filePath}`;
+            } else {
+              url = await getPresignedMediaUrl(filePath, 86400, siteId);
+            }
+
+            return {
+              filename,
+              path: filePath,
+              url,
+              size: obj.Size || 0,
+              updatedAt: obj.LastModified || new Date(),
+              folder: cleanFolder,
+            };
+          })
+      );
 
       return {
         currentFolder: cleanFolder,
         parentFolder,
         folders,
-        files,
+        files: files.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
       };
     } catch {
       return { currentFolder: cleanFolder, parentFolder, folders: [], files: [] };

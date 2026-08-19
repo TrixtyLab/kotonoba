@@ -4,7 +4,7 @@ Comprehensive configuration reference for storage backends, AI assistant endpoin
 
 ---
 
-## 1. Storage Providers Configuration
+## 1. Storage Providers Configuration & Private Buckets
 
 Kotonoba supports three primary storage backends for uploaded media and post images:
 
@@ -13,21 +13,22 @@ Stores media files directly in the persistent volume.
 - **Environment Variable:** `UPLOAD_DIR=/app/data/uploads` (Production) or `./data/uploads` (Development).
 - **Public URL:** Streamed securely via `/api/uploads/[...path]`.
 
-### B. Cloudflare R2
+### B. Cloudflare R2 (Public or 100% Private Buckets)
 High-performance S3-compatible object storage with zero egress fees.
+- **Private Buckets & Presigned Grants:** Full native support for completely private R2 buckets. Kotonoba automatically generates 24-hour cryptographic presigned access grants (`@aws-sdk/s3-request-presigner`) for previewing and serving images without making your bucket public.
 - **Configuration via UI:** Navigate to `/admin/settings/storage`, select **Cloudflare R2**, and input:
   - **Account ID:** Cloudflare Account ID.
   - **Access Key ID:** R2 API Token Access Key.
   - **Secret Access Key:** R2 API Token Secret.
   - **Bucket Name:** Name of your R2 bucket.
-  - **Public URL:** Your custom domain or R2 dev URL (e.g. `https://media.myblog.com`).
+  - **Public URL:** *(Optional)* Custom CDN domain (e.g. `https://media.myblog.com`). If left blank, signed access grants and internal streaming proxies are used automatically.
 - **Configuration via `.env`:**
   ```env
   R2_ACCOUNT_ID=your_cloudflare_account_id
   R2_ACCESS_KEY_ID=your_access_key
   R2_SECRET_ACCESS_KEY=your_secret_key
   R2_BUCKET_NAME=your_bucket_name
-  R2_PUBLIC_URL=https://media.myblog.com
+  R2_PUBLIC_URL=https://media.myblog.com # Optional
   ```
 
 ### C. Amazon S3 / S3-Compatible (MinIO, DigitalOcean Spaces, Wasabi)
@@ -37,7 +38,6 @@ High-performance S3-compatible object storage with zero egress fees.
   AWS_SECRET_ACCESS_KEY=your_aws_secret
   S3_BUCKET=your_s3_bucket
   AWS_REGION=us-east-1
-  R2_PUBLIC_URL=https://your-bucket.s3.amazonaws.com
   ```
 
 ---
@@ -72,13 +72,14 @@ Integrates with [Dub.co](https://dub.co) for custom short links and analytics.
 
 ---
 
-## 4. Multi-Tenant Domain Routing
+## 4. Multi-Tenant Domain Routing & Dashboard Isolation
 
 To map multiple isolated blogs to custom domains:
 
 1. In DNS, point CNAME or A records to your server IP.
 2. In Kotonoba (`/admin/sites`), create a new site record and set the **Domain** field to the hostname (e.g. `blog.company.com`).
-3. Next.js middleware automatically isolates all posts, categories, tags, settings, and media to that tenant.
+3. Kotonoba automatically routes incoming traffic on `blog.company.com` to that specific blog.
+4. **Dashboard Redirection (`ADMIN_DOMAIN`):** If you run your management panel on a dedicated subdomain (e.g. `blog-dashboard.example.com`) or root domain, any requests to public blog paths on that domain are automatically redirected to `/[locale]/admin`, keeping public blog content restricted only to designated blog domains.
 
 ---
 

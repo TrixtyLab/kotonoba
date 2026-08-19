@@ -1,3 +1,4 @@
+import { getActiveSite } from "@/lib/tenant";
 import { getStorageStatus } from "@/lib/storage";
 import { MediaManagerClient } from "@/components/admin/MediaManagerClient";
 
@@ -7,7 +8,8 @@ import { MediaManagerClient } from "@/components/admin/MediaManagerClient";
  * @returns React JSX media library view.
  */
 export default async function AdminMediaPage() {
-  const storageInfo = getStorageStatus();
+  const site = await getActiveSite();
+  const storageInfo = getStorageStatus(site?.id);
 
   return (
     <MediaManagerClient

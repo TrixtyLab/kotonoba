@@ -17,6 +17,8 @@ Access the site at `http://localhost:3000`. On first visit, the initial setup wi
 ### `docker-compose.yml`
 
 ```yaml
+version: "3.8"
+
 services:
   kotonoba:
     image: ghcr.io/your-username/kotonoba:latest
@@ -26,12 +28,13 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_PATH=/app/data/blog.db
+      - DB_PATH=/app/data/kotonoba.db
       - UPLOAD_DIR=/app/data/uploads
       - JWT_SECRET=change-this-to-a-secure-random-32-char-key
       - SITE_URL=https://yourdomain.com
+      - ADMIN_DOMAIN=blog-dashboard.yourdomain.com # Optional: redirects non-blog requests to /admin
     volumes:
-      - blog_data:/app/data
+      - kotonoba_data:/app/data
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
       interval: 15s
@@ -40,7 +43,7 @@ services:
       start_period: 30s
 
 volumes:
-  blog_data:
+  kotonoba_data:
     driver: local
 ```
 
@@ -98,16 +101,22 @@ chmod +x scripts/deploy.sh
 
 | Variable | Default in Container | Description |
 | :--- | :--- | :--- |
-| `DB_PATH` | `/app/data/blog.db` | Absolute path to SQLite database file |
+| `DB_PATH` | `/app/data/kotonoba.db` | Absolute path to SQLite database file |
 | `UPLOAD_DIR` | `/app/data/uploads` | Directory for image and media uploads |
 | `JWT_SECRET` | *(Required)* | 32+ character secret for signing auth tokens & encryption |
 | `SITE_URL` | `http://localhost:3000` | Canonical URL for sitemaps and OpenGraph |
+| `ADMIN_DOMAIN` | `""` | Optional dashboard domain (e.g. `blog-dashboard.example.com`) |
 | `NODE_ENV` | `production` | Node execution environment |
 | `PORT` | `3000` | Port the Next.js process listens on |
 | `HOSTNAME` | `0.0.0.0` | Bind host address |
+| `R2_ACCOUNT_ID` | `""` | Cloudflare Account ID for private/public R2 buckets |
+| `R2_ACCESS_KEY_ID` | `""` | R2 API Token Access Key |
+| `R2_SECRET_ACCESS_KEY` | `""` | R2 API Token Secret |
+| `R2_BUCKET_NAME` | `""` | Target Cloudflare R2 bucket name |
+| `R2_PUBLIC_URL` | `""` | Optional custom CDN domain |
 
 > [!NOTE]
-> AI configuration (OpenAI endpoint, API keys, model) is managed entirely via the **Admin Settings UI** and stored securely with AES-256 encryption. No extra environment variables required.
+> Storage and AI configurations can also be configured directly via the **Admin Settings UI** (`/admin/settings/*`) and are stored securely in SQLite with AES-256 encryption.
 
 ---
 
@@ -115,7 +124,7 @@ chmod +x scripts/deploy.sh
 
 All database records, site configurations, and uploaded media reside in the shared volume `/app/data`:
 
-- `/app/data/blog.db`: SQLite database in WAL (Write-Ahead Logging) mode.
+- `/app/data/kotonoba.db`: SQLite database in WAL (Write-Ahead Logging) mode.
 - `/app/data/uploads/`: Uploaded images and media.
 
 ### Online Atomic Backup
@@ -137,7 +146,7 @@ To route multiple domains/subdomains to separate blogs hosted on the same instan
 
 1. Point your DNS A/CNAME records (e.g. `blog.company.com`, `tech.domain.org`) to your Docker host IP.
 2. In the Admin Dashboard (`/admin/sites`), create a new blog instance and set the **Domain** field to match the host header.
-3. The internal Next.js `proxy.ts` automatically isolates data, categories, and articles per domain.
+3. Kotonoba automatically routes incoming traffic to that specific blog. If visiting an unassigned domain or `ADMIN_DOMAIN`, the user is redirected to `/[locale]/admin`.
 
 ---
 
@@ -153,16 +162,3 @@ When changes are pushed or merged to the `main` branch or a Git tag (`v*.*.*`) i
 | `MAJOR` | `ghcr.io/owner/kotonoba:1` | Rolling major tag pointing to latest minor/patch |
 | `MAJOR.MINOR.PATCH-TAG.NUM` | `ghcr.io/owner/kotonoba:1.0.0-rc.1` | Pre-release and testing builds |
 | `vMAJOR.MINOR.PATCH` | `ghcr.io/owner/kotonoba:v1.2.3` | Full Git release tag |
-
-### Pulling Releases
-
-```bash
-# Pull latest stable version
-docker pull ghcr.io/your-username/kotonoba:latest
-
-# Pin to an exact semantic version
-docker pull ghcr.io/your-username/kotonoba:1.0.0
-
-# Pin to a pre-release candidate
-docker pull ghcr.io/your-username/kotonoba:1.0.0-rc.1
-```

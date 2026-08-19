@@ -68,7 +68,11 @@ export function MediaPickerModal({
   const [parentFolder, setParentFolder] = useState<string | null>(null);
   const [folders, setFolders] = useState<MediaFolderItem[]>([]);
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
-  const [storageInfo, setStorageInfo] = useState<{ provider: "r2" | "local"; publicUrl: string } | null>(null);
+  const [storageInfo, setStorageInfo] = useState<{
+    provider: "r2" | "s3" | "local";
+    bucketName?: string;
+    publicUrl?: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
@@ -194,7 +198,12 @@ export function MediaPickerModal({
                 {storageInfo?.provider === "r2" ? (
                   <>
                     <Cloud className="w-3 h-3 text-accent" />
-                    <span>Cloudflare R2</span>
+                    <span>Cloudflare R2 {storageInfo.bucketName ? `(${storageInfo.bucketName})` : ''}</span>
+                  </>
+                ) : storageInfo?.provider === "s3" ? (
+                  <>
+                    <Cloud className="w-3 h-3 text-indigo-500" />
+                    <span>AWS S3 {storageInfo.bucketName ? `(${storageInfo.bucketName})` : ''}</span>
                   </>
                 ) : (
                   <>

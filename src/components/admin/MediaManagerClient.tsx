@@ -283,7 +283,28 @@ export function MediaManagerClient({
             {currentStorage?.provider === "r2" ? (
               <>
                 <Cloud className="w-3.5 h-3.5 text-accent" />
-                <span className="text-text">Cloudflare R2</span>
+                <span className="text-text font-bold">Cloudflare R2</span>
+                {currentStorage.bucketName && (
+                  <span className="text-[11px] font-mono text-text-muted bg-surface-hover px-1.5 py-0.5 rounded">
+                    {currentStorage.bucketName}
+                  </span>
+                )}
+                <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded font-medium">
+                  Privado (Grant)
+                </span>
+              </>
+            ) : currentStorage?.provider === "s3" ? (
+              <>
+                <Cloud className="w-3.5 h-3.5 text-indigo-500" />
+                <span className="text-text font-bold">AWS S3</span>
+                {currentStorage.bucketName && (
+                  <span className="text-[11px] font-mono text-text-muted bg-surface-hover px-1.5 py-0.5 rounded">
+                    {currentStorage.bucketName}
+                  </span>
+                )}
+                <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded font-medium">
+                  Privado (Grant)
+                </span>
               </>
             ) : (
               <>

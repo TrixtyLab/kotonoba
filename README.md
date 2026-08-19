@@ -1,7 +1,7 @@
 # Kotonoba (言の場) — Modern Multi-Tenant Blog CMS
 
 <p align="center">
-  <strong>A high-performance, self-hosted, multi-tenant blog CMS built with Next.js 16, SQLite, Tailwind CSS v4, and Docker.</strong>
+  <strong>A high-performance, self-hosted, multi-tenant blog CMS built with Next.js 16, SQLite (WAL), Tailwind CSS v4, and Docker.</strong>
 </p>
 
 <p align="center">
@@ -10,22 +10,23 @@
   <img src="https://img.shields.io/badge/Drizzle-ORM-C5F74F?logo=drizzle" alt="Drizzle ORM" />
   <img src="https://img.shields.io/badge/Tailwind-CSS_v4-38bdf8?logo=tailwindcss" alt="Tailwind CSS v4" />
   <img src="https://img.shields.io/badge/Docker-Ready-2496ed?logo=docker" alt="Docker" />
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
+  <img src="https://img.shields.io/badge/License-UPL_1.0_(Non--Commercial)-blue" alt="UPL 1.0 License" />
 </p>
 
 ---
 
 ## 📖 Overview
 
-**Kotonoba (言の場)** is a modern, lightweight, self-hosted content management system designed for developers, technical creators, and multi-blog publishing networks. Built with a clean, distraction-free aesthetic and modern developer tooling (Linear/Vercel design standards), Kotonoba delivers blistering page loads, zero third-party tracking, native Markdown/Mermaid authoring, and multi-tenant domain isolation from a single SQLite database and container.
+**Kotonoba (言の場)** is a modern, lightweight, self-hosted content management system designed for developers, technical creators, and multi-blog publishing networks. Built with a clean, distraction-free aesthetic and modern developer tooling (Linear/Vercel design standards), Kotonoba delivers blistering page loads, zero third-party tracking, native Markdown/Mermaid authoring, private bucket cloud storage, and multi-tenant domain isolation from a single SQLite database and container.
 
 ---
 
 ## ✨ Features & Integrated Capabilities
 
-### 🏢 Multi-Tenant Architecture & Domain Routing
+### 🏢 Multi-Tenant Architecture & Domain Isolation
 - **Multiple Blogs on a Single Instance:** Host and govern multiple isolated blog sites with independent categories, tags, posts, branding, and navigation.
-- **Custom Domain & Subdomain Routing:** Native hostname resolution via Next.js middleware (`src/proxy.ts`), mapping incoming requests (e.g. `blog.mycompany.com`, `tech.domain.org`, `localhost:3000`) directly to their corresponding site records.
+- **Custom Domain & Subdomain Routing:** Native hostname resolution via [`src/lib/tenant.ts`](file:///e:/proyects/blog-cms/src/lib/tenant.ts), mapping incoming requests (e.g. `blog.mycompany.com`, `tech.domain.org`, `localhost:3000`) directly to their corresponding site records.
+- **Dashboard & Root Domain Redirection (`ADMIN_DOMAIN`):** If a user visits an unassigned domain or a designated dashboard domain (e.g. `blog-dashboard.example.com` or root domain), any request to public blog paths is automatically redirected to `/[locale]/admin`, ensuring blog content is only displayed on assigned blog domains (`blog.example.com`).
 - **Instant Workspace Switcher:** Switch between tenant blogs seamlessly within the administrative navigation bar and sidebar.
 
 ### ✍️ Rich WYSIWYG & Markdown Editor
@@ -59,27 +60,29 @@
   - 14-day interactive activity timeline chart.
   - Top articles ranked by verified view count.
 
-### 🗄️ Pluggable Storage & Media Library
+### 🗄️ Pluggable Storage & Private Bucket Support
 - **Dual-Mode Storage Backend:**
   - **Local Filesystem:** Stored persistently on disk at `UPLOAD_DIR` (`/app/data/uploads`).
-  - **Cloudflare R2 & AWS S3:** High-performance cloud storage with custom CDN public URL support.
+  - **Cloudflare R2 & AWS S3:** High-performance object storage with full support for **private buckets**.
+- **Presigned Access Grants (`@aws-sdk/s3-request-presigner`):** Generates secure, cryptographic 24-hour access grants for private bucket objects without requiring public read permissions.
+- **Internal Streaming Proxy:** Media served via `/api/uploads/[...path]` streams securely from private buckets or disk with immutable cache headers (`Cache-Control: public, max-age=31536000, immutable`).
 - **Interactive Media Manager (`/admin/media`):**
+  - Live storage provider detection with active bucket and privacy status badge.
   - Hierarchical folder navigation with subfolder creation.
   - Drag-and-drop file uploader with mime validation (JPEG, PNG, WebP, GIF, SVG).
   - Move files between directories, search assets, and delete files.
   - Integrated **Media Picker Modal** accessible directly from the post editor and branding settings.
-- **Dedicated Media Server:** Static file streaming route (`/api/uploads/[...path]`) with immutable cache headers (`Cache-Control: public, max-age=31536000, immutable`).
 
 ### 🌐 Internationalization & Localization (i18n)
 - **Built with `next-intl`:** Route-based language prefixing (`/es/`, `/en/`) with automatic fallback.
-- **Multilingual Content:** Articles and site settings support localized titles, descriptions, and custom navigation link labels.
+- **Multilingual Content:** Articles and site settings support localized titles, descriptions, categories, tags, and custom navigation link labels.
 - **Localized Date Formatting:** Formats publication timestamps according to the active locale using native `Intl.DateTimeFormat`.
 - **Locale Switcher & Language Selector:** Seamless UI switcher in public blog headers and administrative bars.
 
 ### 🔍 SEO, Anti-AI Crawling Policy & LLMs Manifest
 - **Dynamic XML Sitemap:** Automatically generated at `/sitemap.xml` with `xhtml:link` hreflang alternates for all published posts and categories.
 - **Dynamic Robots File:** Configured at `/robots.txt` with standard crawling budget directives.
-- **Anti-AI Policy & Crawler Blocker:** Built-in toggle in `/admin/settings/seo` to actively disallow all major AI training scrapers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`, `PerplexityBot`, etc.) in `robots.txt`, inject `<meta name="robots" content="noai, noimageai" />`, and set W3C `<meta name="tdm-reservation" content="1" />` tags.
+- **Anti-AI Policy & Crawler Blocker:** Built-in toggle in `/admin/settings/seo` to actively disallow all major AI training scrapers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`, `PerplexityBot`, `Bytespider`, etc.) in `robots.txt`, inject `<meta name="robots" content="noai, noimageai" />`, and set W3C `<meta name="tdm-reservation" content="1" />` tags.
 - **AI Search Engine Manifests (`/llms.txt` & `/llms-full.txt`):** Disabled by default. Can be optionally enabled in `/admin/settings/seo` to provide structured markdown indexes for AI models (ChatGPT, Perplexity, Claude).
 - **Social Sharing & Engagement:**
   - One-click sharing to Twitter/X, Facebook, LinkedIn, WhatsApp, and Telegram.
@@ -110,173 +113,65 @@ Kotonoba can be configured via environment variables or directly through the Web
 | `NODE_ENV` | `string` | `production` | No | Node runtime environment (`production` or `development`). |
 | `PORT` | `number` | `3000` | No | Port on which the Next.js HTTP server listens. |
 | `HOSTNAME` | `string` | `0.0.0.0` | No | Network interface binding address. |
-| `JWT_SECRET` | `string` | *(Required)* | **Yes (Prod)** | 32+ character random secret key for signing JWT tokens and encrypting credentials (AES-256). |
-| `DB_PATH` | `string` | `/app/data/blog.db` | No | Absolute or relative filesystem path to the SQLite database file. |
-| `UPLOAD_DIR` | `string` | `/app/data/uploads` | No | Local directory for uploaded media and images. |
 | `SITE_URL` | `string` | `http://localhost:3000` | No | Fallback canonical URL for sitemaps, robots, and OpenGraph when domain is unspecified. |
+| `ADMIN_DOMAIN` | `string` | `""` | No | Optional dashboard/root domain (e.g. `blog-dashboard.example.com`). Redirects public paths to `/admin`. |
+| `JWT_SECRET` | `string` | *(Required)* | **Yes (Prod)** | 32+ character random secret key for signing JWT tokens and encrypting credentials (AES-256). |
 | `SESSION_DURATION` | `string` | `30d` | No | Access token expiration duration (e.g. `30d`, `7d`, `24h`). Alias: `JWT_EXPIRES_IN`. |
 | `REFRESH_DURATION` | `string` | `90d` | No | Refresh token expiration duration. Alias: `REFRESH_EXPIRES_IN`. |
+| `DB_PATH` | `string` | `/app/data/kotonoba.db` | No | Absolute or relative filesystem path to the SQLite database file. |
+| `UPLOAD_DIR` | `string` | `/app/data/uploads` | No | Local directory for uploaded media and images. |
 | `MAX_UPLOAD_SIZE` | `number` | `10485760` (10MB) | No | Maximum allowed upload file size in bytes. |
 | `DUB_API_KEY` | `string` | `""` | No | Dub.co API Key for branded short link generation. |
-| `DUB_DOMAIN` | `string` | `dub.sh` | No | Custom short link domain configured in your Dub.co workspace. |
-| `R2_ACCOUNT_ID` | `string` | `""` | No | Cloudflare Account ID for R2 storage integration. |
-| `R2_ACCESS_KEY_ID` | `string` | `""` | No | S3 / Cloudflare R2 Access Key ID. Alias: `AWS_ACCESS_KEY_ID`. |
-| `R2_SECRET_ACCESS_KEY` | `string` | `""` | No | S3 / Cloudflare R2 Secret Access Key. Alias: `AWS_SECRET_ACCESS_KEY`. |
-| `R2_BUCKET_NAME` | `string` | `""` | No | S3 or Cloudflare R2 bucket name. Alias: `S3_BUCKET`. |
-| `R2_PUBLIC_URL` | `string` | `""` | No | Public CDN or custom domain URL serving R2 assets (e.g. `https://media.example.com`). |
-| `AWS_REGION` | `string` | `auto` | No | AWS S3 region (e.g. `us-east-1` or `auto` for Cloudflare R2). |
-
-> [!TIP]
-> Storage provider settings (Local / S3 / R2) and AI Assistant configurations can be configured dynamically without restarting the server via `/admin/settings/storage` and `/admin/settings/ai`.
+| `DUB_DOMAIN` | `string` | `dub.sh` | No | Short link domain registered on Dub.co. |
+| `R2_ACCOUNT_ID` | `string` | `""` | No | Cloudflare Account ID for Cloudflare R2 object storage. |
+| `R2_ACCESS_KEY_ID` | `string` | `""` | No | Cloudflare R2 / S3 API Access Key ID. |
+| `R2_SECRET_ACCESS_KEY`| `string` | `""` | No | Cloudflare R2 / S3 API Secret Access Key. |
+| `R2_BUCKET_NAME` | `string` | `""` | No | Target Cloudflare R2 bucket name. |
+| `R2_PUBLIC_URL` | `string` | `""` | No | Custom public CDN domain or base URL (optional for private buckets). |
+| `AWS_REGION` | `string` | `auto` | No | AWS S3 region or `auto` for Cloudflare R2. |
+| `S3_BUCKET` | `string` | `""` | No | Amazon AWS S3 bucket name (alternative to R2). |
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Quick Start with Docker
 
-### Option 1: Docker Compose (Recommended)
+### Using Docker Compose (Recommended)
 
 1. Create a `docker-compose.yml` file:
 
 ```yaml
+version: "3.8"
+
 services:
   kotonoba:
-    image: ghcr.io/trixtylab/kotonoba:latest
-    container_name: kotonoba
+    image: kotonoba:latest
+    container_name: kotonoba-blog
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_PATH=/app/data/kotonoba.db
-      - UPLOAD_DIR=/app/data/uploads
-      - JWT_SECRET=replace-with-a-secure-random-32-character-secret-key
-      - SITE_URL=http://localhost:3000
+      - PORT=3000
+      - SITE_URL=https://myblog.com
+      - JWT_SECRET=your_super_secret_random_32_character_string_here
     volumes:
-      - blog_data:/app/data
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      - kotonoba_data:/app/data
 
 volumes:
-  blog_data:
-    driver: local
+  kotonoba_data:
 ```
 
 2. Start the container:
+
 ```bash
 docker compose up -d
 ```
 
-3. Open `http://localhost:3000` in your browser. The setup wizard will prompt you to create your initial administrator account and primary blog.
-
----
-
-### Option 2: Local Development
-
-1. **Clone the repository & install dependencies:**
-```bash
-git clone https://github.com/TrixtyLab/kotonoba.git
-cd kotonoba
-pnpm install
-```
-
-2. **Configure environment variables:**
-```bash
-cp .env.example .env.local
-```
-
-3. **Start the Turbopack development server:**
-```bash
-pnpm dev
-```
-
-4. Open `http://localhost:3000`. Migrations and database indexes are automatically applied on startup to `./data/kotonoba.db`.
-
----
-
-## 🐳 Zero-Downtime Blue-Green Deployment
-
-Kotonoba includes a production-ready zero-downtime deployment mechanism with Nginx hot-reloading (< 100ms switch, < 2s total deployment time) and health check validation:
-
-```bash
-# Make script executable
-chmod +x scripts/deploy.sh
-
-# Deploy a new release
-./scripts/deploy.sh v1.0.0
-```
-
-For full architectural blueprints, rollback strategies, and volume management, see the [Docker Operations Guide](docs/docker.md).
-
----
-
-## 🔌 API & Endpoint Reference
-
-| Endpoint | Method | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `/api/health` | `GET` | Public | Liveness and database connectivity probe. |
-| `/api/analytics/hit` | `POST` | Public | Ingests privacy-friendly pageviews with deduplication and bot filtering. |
-| `/api/upload` | `POST` | Authenticated | Multipart image and media upload handler (Local / S3 / R2). |
-| `/api/uploads/[...path]` | `GET` | Public | Static file streaming server for persistent media with cache headers. |
-| `/api/media` | `GET` / `POST` | Authenticated | Directory browser, folder creation, asset relocation, and deletion. |
-| `/api/backup/export` | `GET` | Admin / Super Admin | Streams compressed ZIP archive of database entities and media files. |
-| `/api/backup/import` | `POST` | Admin / Super Admin | Restores database records and media files from an uploaded ZIP archive. |
-| `/sitemap.xml` | `GET` | Public | Dynamic XML sitemap with hreflang multi-language alternates. |
-| `/robots.txt` | `GET` | Public | Crawler instructions and sitemap link. |
-| `/llms.txt` | `GET` | Public | Structured markdown documentation index for LLMs and AI agents. |
-| `/llms-full.txt` | `GET` | Public | Full comprehensive documentation catalog for AI model context. |
-
----
-
-## 🏗️ Project Structure
-
-```
-blog-cms/
-├── .github/workflows/          # CI/CD & Automated Semantic Release Workflows
-├── data/                       # Local SQLite DB & Uploads (Mounted in Docker)
-├── docs/                       # Detailed Technical & Operations Documentation
-│   ├── docker.md               # Blue-Green & Container Deployment Guide
-│   ├── configuration.md        # Deep-dive Configuration Reference
-│   └── architecture.md         # System Architecture & Design System
-├── messages/                   # Internationalization JSON Dictionaries (en, es)
-├── nginx/                      # Nginx Upstream Configuration for Blue-Green
-├── public/                     # Static Web Assets (Favicons, Icons)
-├── scripts/                    # Deployment & Automated Backup Shell Scripts
-├── src/
-│   ├── actions/                # Server Actions (auth, setup, posts, categories, tags, sites, settings, ai, dub)
-│   ├── app/                    # Next.js App Router (Layouts, Pages, API Handlers)
-│   │   ├── [locale]/           # Localized App Routes
-│   │   │   ├── (admin)/        # Authenticated CMS Administration Portal
-│   │   │   ├── (auth)/         # Login Portal & First-Run Setup Wizard
-│   │   │   └── (blog)/         # Public Blog Presentation Views (Home, Archive, Category, Tag, Entry)
-│   │   └── api/                # REST & Streaming Endpoints (Analytics, Backup, Health, Media, Upload)
-│   ├── components/             # Reusable UI & Business Logic Components
-│   │   ├── admin/              # CMS Editors, Lists, Modal Pickers, Settings Panels
-│   │   ├── blog/               # Public Blog Presentation Layout, Header, Cards, Sidebar, TOC, Share
-│   │   └── ui/                 # Accessible Primitive Design System (Buttons, Modals, Inputs, Badges)
-│   ├── i18n/                   # Internationalization Routing & Request Handlers
-│   ├── lib/                    # Core Business & Infrastructure Layer
-│   │   ├── ai/                 # OpenAI-Compatible Client
-│   │   ├── auth/               # Argon2id, JWT, Session Management
-│   │   ├── backup/             # ZIP Export & Import Backup Engine
-│   │   ├── db/                 # SQLite Connection, Drizzle Schema & Migrations
-│   │   ├── security/           # Crypto AES-256, Rate Limiting, Headers, Validation
-│   │   ├── storage/            # Local, Cloudflare R2 & AWS S3 Storage Handlers
-│   │   ├── utils/              # Markdown, Embeds, Dates, Slugs, Localization
-│   │   ├── dub.ts              # Dub.co Shortener Integration
-│   │   └── tenant.ts           # Multi-tenant Site Resolvers
-│   └── proxy.ts                # Next.js Edge Middleware for Multi-Tenant Routing
-├── Dockerfile                  # Multi-Stage Container Image Definition
-├── docker-compose.yml          # Production & Development Compose Configuration
-└── package.json                # Project Manifest & Dependency Catalog
-```
+3. Open `http://localhost:3000` in your browser to start the initial setup wizard.
 
 ---
 
 ## 📄 License
 
-![License: UPL 1.0](https://img.shields.io/badge/License-UPL%201.0-blue?style=for-the-badge)
-![Non-Commercial](https://img.shields.io/badge/Non--Commercial-Only-red?style=for-the-badge)
+This software is licensed under the **UnSetSoft Public License (UPL) 1.0 (Non-Commercial Only)**.
+See the [`LICENSE.md`](file:///e:/proyects/blog-cms/LICENSE.md) file for complete licensing terms and restrictions.

@@ -24,8 +24,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const folder = searchParams.get("folder") || "";
 
   try {
-    const listing = await listMediaFiles(folder);
-    const status = getStorageStatus();
+    const listing = await listMediaFiles(folder, user.siteId || undefined);
+    const status = getStorageStatus(user.siteId || undefined);
 
     return NextResponse.json({
       success: true,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (!folderName) {
         return NextResponse.json({ error: "Folder name is required" }, { status: 400 });
       }
-      const success = await createFolder(folderName, parentFolder || "");
+      const success = await createFolder(folderName, parentFolder || "", user.siteId || undefined);
       if (!success) {
         return NextResponse.json({ error: "Failed to create folder" }, { status: 500 });
       }
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (!itemPath) {
         return NextResponse.json({ error: "Item path is required" }, { status: 400 });
       }
-      const success = await moveMediaItem(itemPath, targetFolder || "");
+      const success = await moveMediaItem(itemPath, targetFolder || "", user.siteId || undefined);
       if (!success) {
         return NextResponse.json({ error: "Failed to move item" }, { status: 500 });
       }
@@ -103,14 +103,14 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Item path is required" }, { status: 400 });
     }
 
-    const success = await deleteFromStorage(itemPath, isFolder);
+    const success = await deleteFromStorage(itemPath, isFolder, user.siteId || undefined);
     if (!success) {
       return NextResponse.json({ error: "Failed to delete item" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to delete item";
+    const message = err instanceof Error ? err.message : "Failed to delete media item";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

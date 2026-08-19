@@ -44,7 +44,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const result = await uploadToStorage(buffer, file.name, file.type, folder);
+    const result = await uploadToStorage(buffer, file.name, file.type, folder, user.siteId || undefined);
 
     return NextResponse.json({
       success: true,
@@ -53,7 +53,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       path: result.path,
       size: result.size,
       mimeType: result.mimeType,
-      provider: result.provider,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to upload file";

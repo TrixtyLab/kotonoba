@@ -1,4 +1,4 @@
-import { getActiveSite, hasAdminUser } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
 import { getCategories } from "@/actions/categories";
 import { getDb } from "@/lib/db";
 import { posts, settings } from "@/lib/db/schema";
@@ -8,6 +8,7 @@ import { Footer } from "@/components/blog/Footer";
 import { ScrollToTop } from "@/components/blog/ScrollToTop";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { redirect } from "@/i18n/routing";
+import { headers } from "next/headers";
 
 /**
  * Public blog shell layout applying custom CSS accent colors, header navigation, analytics beacon tracking, and footer branding.
@@ -29,7 +30,30 @@ export default async function BlogLayout({
     redirect({ href: "/setup", locale });
   }
 
-  const site = await getActiveSite();
+  // Verify incoming host domain matching
+  const headersList = await headers();
+  const rawHost = headersList.get("host") || "localhost:3000";
+  const cleanHost = normalizeDomain(rawHost);
+  const isLocal =
+    cleanHost === "localhost" ||
+    cleanHost === "127.0.0.1" ||
+    cleanHost === "::1" ||
+    cleanHost.endsWith(".localhost");
+
+  const siteForHost = await getSiteForHost();
+  const adminDomain = process.env.ADMIN_DOMAIN
+    ? normalizeDomain(process.env.ADMIN_DOMAIN)
+    : null;
+
+  // If visiting the designated dashboard domain or a non-blog host in production, redirect to /admin
+  const isExplicitAdminDomain = Boolean(adminDomain && cleanHost === adminDomain);
+  const isNonBlogDomain = !siteForHost && !isLocal;
+
+  if (isExplicitAdminDomain || isNonBlogDomain) {
+    redirect({ href: "/admin", locale });
+  }
+
+  const site = siteForHost || (isLocal ? await getActiveSite() : null);
   const siteData = site || {
     id: "default",
     name: "Kotonoba",

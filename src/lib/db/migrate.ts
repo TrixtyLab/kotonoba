@@ -17,6 +17,7 @@ export type DatabaseInstance = BetterSQLite3Database<typeof schema>;
 export function runMigrations(dbInstance: DatabaseInstance): void {
   const db = dbInstance;
 
+
   db.run(sql`CREATE TABLE IF NOT EXISTS sites (
     id TEXT PRIMARY KEY,
     domain TEXT NOT NULL UNIQUE,
@@ -36,12 +37,25 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     updated_at INTEGER NOT NULL
   )`);
 
-  try {
-    db.run(sql`ALTER TABLE sites ADD COLUMN nav_links TEXT DEFAULT '[]'`);
-  } catch {}
-  try {
-    db.run(sql`ALTER TABLE sites ADD COLUMN nav_alignment TEXT DEFAULT 'left'`);
-  } catch {}
+  const sitesColumns = [
+    sql`ALTER TABLE sites ADD COLUMN subtitle TEXT DEFAULT ''`,
+    sql`ALTER TABLE sites ADD COLUMN description TEXT DEFAULT ''`,
+    sql`ALTER TABLE sites ADD COLUMN logo_url TEXT`,
+    sql`ALTER TABLE sites ADD COLUMN favicon_url TEXT`,
+    sql`ALTER TABLE sites ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'`,
+    sql`ALTER TABLE sites ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark'`,
+    sql`ALTER TABLE sites ADD COLUMN custom_css TEXT DEFAULT ''`,
+    sql`ALTER TABLE sites ADD COLUMN primary_color TEXT DEFAULT '#6366f1'`,
+    sql`ALTER TABLE sites ADD COLUMN font_family TEXT DEFAULT 'Inter'`,
+    sql`ALTER TABLE sites ADD COLUMN nav_links TEXT DEFAULT '[]'`,
+    sql`ALTER TABLE sites ADD COLUMN nav_alignment TEXT DEFAULT 'left'`,
+  ];
+  for (const query of sitesColumns) {
+    try {
+      db.run(query);
+    } catch { }
+  }
+
 
   db.run(sql`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -53,6 +67,18 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     site_id TEXT REFERENCES sites(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL
   )`);
+
+  const usersColumns = [
+    sql`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT 'Admin'`,
+    sql`ALTER TABLE users ADD COLUMN avatar_url TEXT`,
+    sql`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'author'`,
+    sql`ALTER TABLE users ADD COLUMN site_id TEXT REFERENCES sites(id) ON DELETE CASCADE`,
+  ];
+  for (const query of usersColumns) {
+    try {
+      db.run(query);
+    } catch { }
+  }
 
   db.run(sql`CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
@@ -75,12 +101,24 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     dub_link_id TEXT
   )`);
 
-  try {
-    db.run(sql`ALTER TABLE posts ADD COLUMN short_url TEXT`);
-  } catch {}
-  try {
-    db.run(sql`ALTER TABLE posts ADD COLUMN dub_link_id TEXT`);
-  } catch {}
+  const postsColumns = [
+    sql`ALTER TABLE posts ADD COLUMN content_md TEXT DEFAULT ''`,
+    sql`ALTER TABLE posts ADD COLUMN content_html TEXT DEFAULT ''`,
+    sql`ALTER TABLE posts ADD COLUMN excerpt TEXT DEFAULT ''`,
+    sql`ALTER TABLE posts ADD COLUMN cover_image TEXT`,
+    sql`ALTER TABLE posts ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'`,
+    sql`ALTER TABLE posts ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'`,
+    sql`ALTER TABLE posts ADD COLUMN views INTEGER NOT NULL DEFAULT 0`,
+    sql`ALTER TABLE posts ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
+    sql`ALTER TABLE posts ADD COLUMN short_url TEXT`,
+    sql`ALTER TABLE posts ADD COLUMN dub_link_id TEXT`,
+  ];
+  for (const query of postsColumns) {
+    try {
+      db.run(query);
+    } catch { }
+  }
+
 
   db.run(sql`CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
@@ -116,7 +154,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     path TEXT NOT NULL,
     referrer TEXT DEFAULT '',
     user_agent TEXT DEFAULT '',
-    ip_hash TEXT NOT NULL,
+    ip_hash TEXT NOT NULL DEFAULT '',
     country TEXT DEFAULT '',
     city TEXT DEFAULT '',
     device TEXT DEFAULT 'desktop',
@@ -127,28 +165,36 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     utm_campaign TEXT,
     utm_term TEXT,
     utm_content TEXT,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL DEFAULT 0
   )`);
 
+  const analyticsColumns = [
+    sql`ALTER TABLE analytics ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN post_id TEXT REFERENCES posts(id) ON DELETE CASCADE`,
+    sql`ALTER TABLE analytics ADD COLUMN referrer TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN user_agent TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN country TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN city TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN device TEXT DEFAULT 'desktop'`,
+    sql`ALTER TABLE analytics ADD COLUMN browser TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN os TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN utm_source TEXT`,
+    sql`ALTER TABLE analytics ADD COLUMN utm_medium TEXT`,
+    sql`ALTER TABLE analytics ADD COLUMN utm_campaign TEXT`,
+    sql`ALTER TABLE analytics ADD COLUMN utm_term TEXT`,
+    sql`ALTER TABLE analytics ADD COLUMN utm_content TEXT`,
+    sql`ALTER TABLE analytics ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0`,
+  ];
+  for (const query of analyticsColumns) {
+    try {
+      db.run(query);
+    } catch { }
+  }
+
   try {
-    db.run(sql`ALTER TABLE analytics ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0`);
     db.run(sql`UPDATE analytics SET created_at = timestamp WHERE created_at = 0 AND timestamp IS NOT NULL`);
   } catch {}
-  try {
-    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_source TEXT`);
-  } catch {}
-  try {
-    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_medium TEXT`);
-  } catch {}
-  try {
-    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_campaign TEXT`);
-  } catch {}
-  try {
-    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_term TEXT`);
-  } catch {}
-  try {
-    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_content TEXT`);
-  } catch {}
+
 
   db.run(sql`CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,6 +202,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     key TEXT NOT NULL,
     value TEXT NOT NULL
   )`);
+
 
   const indexes = [
     sql`CREATE INDEX IF NOT EXISTS sites_domain_idx ON sites(domain)`,
