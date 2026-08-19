@@ -32,7 +32,7 @@
 ### ✍️ Rich WYSIWYG & Markdown Editor
 - **TipTap v2 Engine:** Full WYSIWYG authoring with bold, italic, strikethrough, inline code, headings (H1–H3), blockquotes, lists, and horizontal dividers.
 - **Live Mermaid Diagrams:** Write ` ```mermaid ` code blocks with instant graphical diagram rendering in both the editor preview and public article reader.
-- **Rich Media Embeds:** Automatic parsing and responsive embedding for YouTube, X (Twitter), Bluesky, Vimeo, Spotify, and CodePen URLs using simple `@[embed](url)` markdown tags.
+- **Rich Media & Gaming Embeds:** Automatic parsing and responsive widget embedding for **Steam Games** (App ID, store URL, or iframe), **itch.io Games** (Game ID, embed URL, or iframe), YouTube, X (Twitter), Bluesky, Vimeo, and direct video files using simple `@[steam](id)`, `@[itch](id)` or `@[embed](url)` tags.
 - **Bidirectional Markdown Sync:** Full HTML to Markdown and Markdown to HTML conversion with live word count and reading time estimations.
 - **Automatic Block Escaping:** Smart Enter key shortcuts to automatically exit quote blocks and headings into standard paragraph prose.
 
@@ -59,6 +59,18 @@
   - Geographic distribution by country (via Cloudflare/Vercel geolocation headers).
   - 14-day interactive activity timeline chart.
   - Top articles ranked by verified view count.
+
+### 🎮 Discord Webhook Auto-Publishing
+- **Automated Rich Embeds:** Automatically broadcasts new articles to your Discord community channels when a post is published.
+- **Pixel-Perfect Embed Layout:** Displays the blog's name and icon as author, linked article title, summary description, full-width cover image, theme accent color bar, and publication footer.
+- **Configurable Settings (`/admin/settings/integrations`):** Webhook URL management, bot username and avatar overrides, and an interactive **"Send Test Message"** button with live status feedback.
+- **Fail-Safe & Asynchronous:** Non-blocking background execution ensures post saving is never interrupted by external network latency.
+
+### 📡 RSS 2.0 & Atom Syndication Feeds
+- **Standard XML Feeds (`/feed.xml` & `/rss.xml`):** Compatible with modern feed readers and aggregators (Feedly, Inoreader, NewsBlur, NetNewsWire).
+- **Rich Media & Content:** Injects `<content:encoded>` with formatted HTML, `<description>`, publication dates, categories, and `<enclosure>` hero image attachments.
+- **Auto-Discovery:** Automatically places `<link rel="alternate" type="application/rss+xml" ... />` in the blog `<head>`.
+- **Configurable Control:** Adjustable feed items limit (10 to 100 posts) and choice between full HTML content vs. brief excerpts.
 
 ### 🗄️ Pluggable Storage & Private Bucket Support
 - **Dual-Mode Storage Backend:**

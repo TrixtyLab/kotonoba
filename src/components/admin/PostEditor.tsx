@@ -27,7 +27,7 @@ import {
   Folder, Tag, Link2, X, Eye, SlidersHorizontal, Upload, Loader2,
   PlaySquare, RefreshCw, Globe, Send, QrCode, Copy, Share2, ExternalLink
 } from "lucide-react";
-import { parseEmbedUrl } from "@/lib/utils/embeds";
+import { parseEmbedUrl, extractSteamId, extractItchId } from "@/lib/utils/embeds";
 
 /**
  * Configuration properties for the rich-text article editor.
@@ -301,14 +301,30 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
   }
 
   function handleInsertEmbed() {
-    if (!embedUrl.trim()) return;
-    const url = embedUrl.trim();
-    if (editor) {
-      editor.chain().focus().insertContent(`<p>@[embed](${url})</p>`).run();
+    const raw = embedUrl.trim();
+    if (!raw) return;
+
+    const embed = parseEmbedUrl(raw);
+    if (embed) {
+      editor?.chain().focus().insertContent(`<p>@[${embed.type}](${raw})</p>`).run();
+      toast.success("Embed multimedia insertado");
+    } else {
+      const steamId = extractSteamId(raw);
+      const itchId = extractItchId(raw);
+      if (steamId) {
+        editor?.chain().focus().insertContent(`<p>@[steam](${steamId})</p>`).run();
+        toast.success("Widget de Steam insertado");
+      } else if (itchId) {
+        editor?.chain().focus().insertContent(`<p>@[itch](${itchId})</p>`).run();
+        toast.success("Widget de itch.io insertado");
+      } else {
+        editor?.chain().focus().insertContent(`<p><a href="${raw}" target="_blank" rel="noopener noreferrer">${raw}</a></p>`).run();
+        toast.info("Enlace insertado");
+      }
     }
+
     setEmbedUrl("");
     setEmbedModalOpen(false);
-    toast.success("Embed multimedia insertado");
   }
 
   function openLinkModal() {
@@ -1316,24 +1332,26 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       <Modal isOpen={embedModalOpen} onClose={() => setEmbedModalOpen(false)} title="Insertar Embed Multimedia">
         <div className="space-y-4 text-xs">
           <p className="text-text-muted">
-            Pega el enlace de un video de <strong>YouTube</strong>, <strong>Vimeo</strong>, un tweet/post de <strong>X (Twitter)</strong>, <strong>Bluesky</strong> o un archivo de video directo (MP4).
+            Inserta widgets interactivos de <strong>Steam</strong>, <strong>itch.io</strong>, videos de <strong>YouTube</strong> o <strong>Vimeo</strong>, posts de <strong>X (Twitter)</strong>, <strong>Bluesky</strong> o archivos de video directos.
           </p>
 
           <Input
-            label="URL del Video o Publicación Social"
-            placeholder="https://www.youtube.com/watch?v=... o https://x.com/.../status/..."
+            label="ID del Juego, URL o Código Iframe"
+            placeholder="ID de Steam (1299800), ID de itch.io (2548291), URL o iframe"
             value={embedUrl}
             onChange={(e) => setEmbedUrl(e.target.value)}
-            helperText="Formatos soportados: YouTube, Vimeo, X.com, Twitter.com, Bluesky (bsky.app), .mp4"
+            helperText="Soporta IDs directos (1299800), URLs de tienda/widget o etiquetas <iframe> completas."
           />
 
-          <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1 text-text-muted">
-            <p className="font-semibold text-text">Ejemplos válidos:</p>
-            <ul className="list-disc pl-4 space-y-0.5 font-mono text-[11px]">
-              <li>https://www.youtube.com/watch?v=dQw4w9WgXcQ</li>
-              <li>https://x.com/username/status/1234567890</li>
-              <li>https://bsky.app/profile/user.bsky.social/post/3la7xyz</li>
-              <li>https://vimeo.com/76979871</li>
+          <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1.5 text-text-muted">
+            <p className="font-semibold text-text">Formatos soportados:</p>
+            <ul className="list-disc pl-4 space-y-1 font-mono text-[11px]">
+              <li><strong>Steam:</strong> 1299800 o https://store.steampowered.com/app/1299800/...</li>
+              <li><strong>itch.io:</strong> 2548291 o https://itch.io/embed/2548291</li>
+              <li><strong>YouTube:</strong> https://www.youtube.com/watch?v=dQw4w9WgXcQ</li>
+              <li><strong>X / Twitter:</strong> https://x.com/username/status/1234567890</li>
+              <li><strong>Bluesky:</strong> https://bsky.app/profile/user.bsky.social/post/3la7xyz</li>
+              <li><strong>Iframes:</strong> &lt;iframe src="https://store.steampowered.com/widget/..."&gt;&lt;/iframe&gt;</li>
             </ul>
           </div>
 

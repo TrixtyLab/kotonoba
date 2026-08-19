@@ -11,10 +11,11 @@ import {
   Search,
   Sparkles,
   Archive,
+  Share2,
 } from "lucide-react";
 
 /**
- * Layout shell for administrative settings providing categorical navigation tabs for general, branding, navigation, storage, SEO, AI, and backups.
+ * Layout shell for administrative settings providing categorical navigation tabs for general, branding, navigation, storage, SEO, integrations, AI, and backups.
  *
  * @param props - Object containing children elements.
  * @returns React JSX settings navigation shell.
@@ -33,6 +34,7 @@ export default function SettingsLayout({
     { href: "/admin/settings/navigation", label: t("navigation"), icon: Compass, desc: t("navigationDesc") },
     { href: "/admin/settings/storage", label: t("storage"), icon: HardDrive, desc: t("storageDesc") },
     { href: "/admin/settings/seo", label: t("seo"), icon: Search, desc: t("seoDesc") },
+    { href: "/admin/settings/integrations", label: t("integrations"), icon: Share2, desc: t("integrationsDesc") },
     { href: "/admin/settings/ai", label: t("ai"), icon: Sparkles, desc: t("aiDesc") },
     { href: "/admin/settings/backup", label: t("backup"), icon: Archive, desc: t("backupDesc") },
   ];

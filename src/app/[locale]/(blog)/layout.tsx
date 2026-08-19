@@ -97,6 +97,16 @@ export default async function BlogLayout({
 
   const enableLlmsTxt = !isAiBlocked && llmsSetting?.value === "true";
 
+  const rssSetting = site
+    ? db
+        .select()
+        .from(settings)
+        .where(and(eq(settings.siteId, site.id), eq(settings.key, "rss_enabled")))
+        .get()
+    : null;
+
+  const isRssEnabled = rssSetting?.value !== "false";
+
   const primaryColor = site?.primaryColor || "#3b82f6";
   const themeStyles = {
     "--color-primary": primaryColor,
@@ -110,12 +120,21 @@ export default async function BlogLayout({
       className="min-h-screen flex flex-col justify-between bg-bg text-text"
       style={themeStyles}
     >
-      {isAiBlocked && (
-        <head>
-          <meta name="robots" content="noai, noimageai" />
-          <meta name="tdm-reservation" content="1" />
-        </head>
-      )}
+      <head>
+        {isAiBlocked && <meta name="robots" content="noai, noimageai" />}
+        {isAiBlocked && <meta name="tdm-reservation" content="1" />}
+        <link rel="icon" href={site?.faviconUrl || "/favicon.ico"} />
+        <link rel="shortcut icon" href={site?.faviconUrl || "/favicon.ico"} />
+        <link rel="apple-touch-icon" href={site?.faviconUrl || site?.logoUrl || "/favicon.ico"} />
+        {isRssEnabled && (
+          <link
+            rel="alternate"
+            type="application/rss+xml"
+            title={`${siteData.name} RSS Feed`}
+            href="/feed.xml"
+          />
+        )}
+      </head>
       {site && <AnalyticsTracker siteId={site.id} />}
       <Header site={siteData} categories={categories} searchPosts={searchPosts} />
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-10 animate-fade-in">

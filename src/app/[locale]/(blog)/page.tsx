@@ -5,7 +5,6 @@ import { eq, desc, and } from "drizzle-orm";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { LinePagination } from "@/components/blog/LinePagination";
-import { Link } from "@/i18n/routing";
 import { BookOpen } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
@@ -111,16 +110,9 @@ export default async function BlogHomePage({
       {/* Left Column: Post Timeline Stream */}
       <div className="lg:col-span-8 space-y-12">
         {allPosts.length === 0 ? (
-          <div className="py-20 text-center space-y-4">
+          <div className="py-20 text-center space-y-3">
             <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
-            <p className="text-base font-semibold text-text">{t("noPosts")}</p>
-            <p className="text-sm text-text-muted">{t("noPostsHint")}</p>
-            <Link
-              href="/admin/posts/new"
-              className="inline-flex items-center gap-2 text-sm font-medium px-5 py-2 rounded bg-accent text-white hover:bg-accent-hover transition-colors shadow-xs"
-            >
-              {t("createPost")} →
-            </Link>
+            <p className="text-sm text-text-muted">{t("noPosts")}</p>
           </div>
         ) : (
           <div className="space-y-12">

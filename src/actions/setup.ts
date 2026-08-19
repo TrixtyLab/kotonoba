@@ -160,6 +160,10 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
   const defaultSettings = [
     { key: "llms_txt_enabled", value: "false" },
     { key: "block_ai_crawlers", value: "false" },
+    { key: "discord_notifications_enabled", value: "false" },
+    { key: "rss_enabled", value: "true" },
+    { key: "rss_items_count", value: "20" },
+    { key: "rss_full_content", value: "true" },
     { key: "ai_enabled", value: "false" },
     { key: "ai_api_url", value: "https://api.openai.com/v1" },
     { key: "ai_model", value: "gpt-4o" },

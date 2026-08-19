@@ -3,7 +3,7 @@
  */
 export interface EmbedInfo {
   /** The identified provider type of the embedded media. */
-  type: "youtube" | "vimeo" | "twitter" | "bluesky" | "video";
+  type: "youtube" | "vimeo" | "twitter" | "bluesky" | "steam" | "itch" | "video";
   /** Responsive HTML markup ready for DOM injection. */
   html: string;
 }
@@ -57,15 +57,67 @@ export function extractBlueskyInfo(url: string): { handle: string; postId: strin
 }
 
 /**
- * Analyzes an arbitrary URL and generates a responsive 16:9 or native HTML embed if supported.
- * Supports YouTube, Vimeo, X (Twitter), Bluesky, and direct MP4/WebM video files.
+ * Parses and extracts the numeric App ID from a Steam store URL, widget iframe, or raw ID.
  *
- * @param rawUrl - The target URL to evaluate for embedding.
- * @returns An EmbedInfo object with the provider type and HTML markup, or null if unsupported.
+ * @param input - The Steam URL, widget snippet, or numeric ID string.
+ * @returns The extracted Steam App ID string, or null if invalid.
+ */
+export function extractSteamId(input: string): string | null {
+  const clean = input.trim();
+  if (!clean) return null;
+  if (/^\d{3,10}$/.test(clean)) {
+    return clean;
+  }
+  const match = clean.match(/(?:store\.steampowered\.com\/(?:app|widget)\/|steam:\/\/app\/)(\d+)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Parses and extracts the game ID from an itch.io embed URL, widget snippet, or raw ID.
+ *
+ * @param input - The itch.io embed URL, iframe snippet, or numeric ID string.
+ * @returns The extracted itch.io game ID string, or null if invalid.
+ */
+export function extractItchId(input: string): string | null {
+  const clean = input.trim();
+  if (!clean) return null;
+  if (/^\d{3,10}$/.test(clean)) {
+    return clean;
+  }
+  const match = clean.match(/itch\.io\/embed(?:-upload)?\/(\d+)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Analyzes an arbitrary URL or identifier and generates a responsive HTML embed widget if supported.
+ * Supports Steam Widgets, itch.io Widgets, YouTube, Vimeo, X (Twitter), Bluesky, and direct video files.
+ *
+ * @param rawUrl - The target URL, iframe, or identifier to evaluate for embedding.
+ * @returns An EmbedInfo object with provider type and HTML markup, or null if unsupported.
  */
 export function parseEmbedUrl(rawUrl: string): EmbedInfo | null {
   const url = rawUrl.trim();
   if (!url) return null;
+
+  const steamId = extractSteamId(url);
+  if (steamId) {
+    return {
+      type: "steam",
+      html: `<div class="my-6 w-full max-w-[650px] mx-auto rounded-xl overflow-hidden border border-border shadow-xs bg-[#1b2838]">
+  <iframe src="https://store.steampowered.com/widget/${steamId}/" frameborder="0" class="w-full border-0 h-[190px] block" loading="lazy" title="Steam Widget ${steamId}"></iframe>
+</div>`,
+    };
+  }
+
+  const itchId = extractItchId(url);
+  if (itchId) {
+    return {
+      type: "itch",
+      html: `<div class="my-6 w-full max-w-[552px] mx-auto rounded-xl overflow-hidden border border-border shadow-xs bg-[#222]">
+  <iframe src="https://itch.io/embed/${itchId}?dark=true" frameborder="0" class="w-full border-0 h-[167px] sm:h-[175px] block" loading="lazy" title="itch.io Widget ${itchId}"></iframe>
+</div>`,
+    };
+  }
 
   const ytId = extractYouTubeId(url);
   if (ytId) {

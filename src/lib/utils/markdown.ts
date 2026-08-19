@@ -12,7 +12,7 @@ export function renderPostContent(rawContent: string): string {
 
   const trimmed = rawContent.trim();
 
-  if (trimmed.startsWith("<") && (trimmed.startsWith("<p>") || trimmed.startsWith("<h") || trimmed.startsWith("<div") || trimmed.startsWith("<ul") || trimmed.startsWith("<ol"))) {
+  if (trimmed.startsWith("<") && (trimmed.startsWith("<p>") || trimmed.startsWith("<h") || trimmed.startsWith("<div") || trimmed.startsWith("<ul") || trimmed.startsWith("<ol") || trimmed.startsWith("<iframe"))) {
     return processHtmlEmbeds(trimmed);
   }
 
@@ -20,20 +20,30 @@ export function renderPostContent(rawContent: string): string {
 }
 
 /**
- * Processes pre-rendered HTML strings to resolve embed directives and standalone media URLs into responsive widgets.
+ * Processes pre-rendered HTML strings to resolve embed directives, raw iframes, and standalone media URLs into responsive widgets.
  *
- * @param html - Raw HTML markup containing embed directives or standalone media URLs.
+ * @param html - Raw HTML markup containing embed directives, iframes, or standalone media URLs.
  * @returns HTML string with embed directives replaced by responsive iframe/widget markup.
  */
 function processHtmlEmbeds(html: string): string {
-  let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, _type, url) => {
+  let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, _type, url) => {
     const embed = parseEmbedUrl(url.trim());
     return embed ? embed.html : `<p><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a></p>`;
   });
 
-  result = result.replace(/@\[(youtube|vimeo|twitter|x|bluesky|video|embed)\]\(([^)]+)\)/gi, (_m, _type, url) => {
+  result = result.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, _type, url) => {
     const embed = parseEmbedUrl(url.trim());
     return embed ? embed.html : `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a>`;
+  });
+
+  result = result.replace(/<p>\s*(<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>)\s*<\/p>/gi, (_m, rawIframe) => {
+    const embed = parseEmbedUrl(rawIframe);
+    return embed ? embed.html : rawIframe;
+  });
+
+  result = result.replace(/<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>/gi, (rawIframe) => {
+    const embed = parseEmbedUrl(rawIframe);
+    return embed ? embed.html : rawIframe;
   });
 
   result = result.replace(/<p>\s*(?:<a[^>]*href=["']([^"']+)["'][^>]*>.*?<\/a>|(https?:\/\/[^\s<]+))\s*<\/p>/gi, (match, linkHref, plainUrl) => {
@@ -82,7 +92,17 @@ export function renderMarkdownToHtml(markdown: string): string {
   });
 
   const embedBlocks: string[] = [];
-  src = src.replace(/@\[(youtube|vimeo|twitter|x|bluesky|video|embed)\]\(([^)]+)\)/gi, (_m, _type, url) => {
+  src = src.replace(/<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>/gi, (rawIframe) => {
+    const embed = parseEmbedUrl(rawIframe);
+    if (embed) {
+      const placeholder = `__EMBED_BLOCK_${embedBlocks.length}__`;
+      embedBlocks.push(embed.html);
+      return placeholder;
+    }
+    return rawIframe;
+  });
+
+  src = src.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, _type, url) => {
     const embed = parseEmbedUrl(url.trim());
     if (embed) {
       const placeholder = `__EMBED_BLOCK_${embedBlocks.length}__`;
@@ -98,19 +118,21 @@ export function renderMarkdownToHtml(markdown: string): string {
   let inBlockquote = false;
   let blockquoteBuffer: string[] = [];
 
-  function flushList(): void {
+  function flushList() {
     if (inList) {
-      output.push(inList === "ul" ? "</ul>" : "</ol>");
+      output.push(`</${inList}>`);
       inList = null;
     }
   }
 
-  function flushBlockquote(): void {
+  function flushBlockquote() {
     if (inBlockquote) {
-      const content = blockquoteBuffer.map(processInline).join("<br />");
-      output.push(`<blockquote class="border-l-4 border-accent pl-4 py-1 text-text-muted my-4 italic bg-surface-hover/30 rounded-r-lg">${content}</blockquote>`);
-      inBlockquote = false;
+      const innerHtml = blockquoteBuffer.map((line) => processInline(line)).join("<br />");
+      output.push(
+        `<blockquote class="border-l-4 border-accent pl-4 py-1.5 my-4 bg-accent/5 rounded-r-lg italic text-text-muted text-sm leading-relaxed">${innerHtml}</blockquote>`
+      );
       blockquoteBuffer = [];
+      inBlockquote = false;
     }
   }
 
@@ -129,9 +151,9 @@ export function renderMarkdownToHtml(markdown: string): string {
       inBlockquote = true;
       blockquoteBuffer.push(trimmed.replace(/^>\s*/, ""));
       continue;
-    } else {
-      flushBlockquote();
     }
+
+    flushBlockquote();
 
     const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
     if (headingMatch) {
@@ -218,16 +240,16 @@ function processInline(text: string): string {
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-accent underline underline-offset-2 hover:opacity-80" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-text">$1</strong>')
     .replace(/__(.*?)__/g, '<strong class="font-bold text-text">$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
-    .replace(/_(.*?)_/g, '<em class="italic">$1</em>')
-    .replace(/~~(.*?)~~/g, '<del class="line-through opacity-70">$1</del>');
+    .replace(/\*(.*?)\*/g, '<em class="italic text-text">$1</em>')
+    .replace(/_(.*?)_/g, '<em class="italic text-text">$1</em>')
+    .replace(/~~(.*?)~~/g, '<del class="line-through text-text-muted">$1</del>');
 }
 
 /**
- * Escapes unsafe HTML characters to prevent XSS injection in code blocks.
+ * Encodes special HTML entities in code blocks.
  *
  * @param str - Unescaped raw string.
- * @returns HTML-safe escaped string entity.
+ * @returns HTML-safe escaped string.
  */
 function escapeHtml(str: string): string {
   return str

@@ -29,6 +29,7 @@ export async function generateMetadata({
   return {
     title: `${t("archive")} — ${siteName}`,
     description: t("archive"),
+    icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }
 

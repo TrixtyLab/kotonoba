@@ -65,6 +65,7 @@ export async function generateMetadata({
       description: post.excerpt || undefined,
       images: post.coverImage ? [post.coverImage] : undefined,
     },
+    icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }
 

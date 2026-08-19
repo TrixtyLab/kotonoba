@@ -6,8 +6,9 @@ import { eq, desc, sql } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import { generateId, generateSlug } from "@/lib/utils/slug";
 import { postSchema, validate, type PostInput } from "@/lib/security/validate";
-import { revalidatePath } from "next/cache";
 import { isDubConfigured, createDubLink } from "@/lib/dub";
+import { sendDiscordPostNotification } from "@/lib/discord";
+import { revalidatePath } from "next/cache";
 
 /**
  * Result payload returned from post creation or update operations.
@@ -137,7 +138,18 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
     }
   }
 
-  revalidatePath("/", "layout");
+  if (status === "published") {
+    sendDiscordPostNotification(siteId, {
+      id: postId,
+      title,
+      slug: postSlug,
+      excerpt,
+      coverImage,
+      publishedAt: now,
+      locale,
+    }).catch(() => {});
+  }
+
   return { success: true, postId };
 }
 
@@ -223,7 +235,19 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
     }
   }
 
-  revalidatePath("/", "layout");
+  const isNewlyPublished = status === "published" && (!existing.publishedAt || existing.status !== "published");
+  if (isNewlyPublished) {
+    sendDiscordPostNotification(existing.siteId, {
+      id: postId,
+      title,
+      slug: postSlug,
+      excerpt,
+      coverImage,
+      publishedAt: publishedAt || now,
+      locale,
+    }).catch(() => {});
+  }
+
   return { success: true, postId };
 }
 

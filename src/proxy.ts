@@ -22,7 +22,10 @@ export function proxy(request: NextRequest): NextResponse {
     pathname === "/llms.txt" ||
     pathname === "/llms-full.txt" ||
     pathname === "/sitemap.xml" ||
-    pathname === "/robots.txt"
+    pathname === "/robots.txt" ||
+    pathname === "/feed.xml" ||
+    pathname === "/rss.xml" ||
+    pathname === "/favicon.ico"
   ) {
     const response = NextResponse.next();
     applySecurityHeaders(response.headers);

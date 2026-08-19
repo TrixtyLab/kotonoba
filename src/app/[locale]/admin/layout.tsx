@@ -39,16 +39,22 @@ export default async function AdminLayout({
   }));
 
   return (
-    <AdminClientLayout
-      currentSite={currentSiteOption}
-      allSites={allSiteOptions.length > 0 ? allSiteOptions : [currentSiteOption]}
-      user={{
-        displayName: user.email.split("@")[0],
-        email: user.email,
-        role: user.role,
-      }}
-    >
-      {children}
-    </AdminClientLayout>
+    <>
+      <head>
+        <link rel="icon" href={site?.faviconUrl || "/favicon.ico"} />
+        <link rel="shortcut icon" href={site?.faviconUrl || "/favicon.ico"} />
+      </head>
+      <AdminClientLayout
+        currentSite={currentSiteOption}
+        allSites={allSiteOptions.length > 0 ? allSiteOptions : [currentSiteOption]}
+        user={{
+          displayName: user.email.split("@")[0],
+          email: user.email,
+          role: user.role,
+        }}
+      >
+        {children}
+      </AdminClientLayout>
+    </>
   );
 }

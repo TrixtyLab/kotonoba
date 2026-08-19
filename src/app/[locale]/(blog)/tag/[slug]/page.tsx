@@ -32,6 +32,7 @@ export async function generateMetadata({
   return {
     title: tag ? `#${tag.name} — ${siteName}` : t("tag"),
     description: `${t("tag")}: #${tag?.name}`,
+    icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }
 

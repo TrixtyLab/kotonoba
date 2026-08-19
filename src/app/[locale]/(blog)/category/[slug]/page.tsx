@@ -32,6 +32,7 @@ export async function generateMetadata({
   return {
     title: cat ? `${cat.name} — ${siteName}` : t("category"),
     description: cat?.description || `${t("category")}: ${cat?.name}`,
+    icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }
 

@@ -98,3 +98,21 @@ Kotonoba includes a built-in Anti-AI privacy protection toggle in `/admin/settin
 ### C. AI Search Engine Indexing (`/llms.txt` & `/llms-full.txt`)
 - **Disabled by Default:** LLM manifests are disabled out of the box.
 - **Opt-in Indexing:** Can be enabled in `/admin/settings/seo` if you wish to allow AI engines (ChatGPT, Claude, Perplexity) to index and cite your blog posts. Custom system instructions for AI models can also be configured.
+
+---
+
+## 6. Content Integrations & Syndication (`/admin/settings/integrations`)
+
+### A. Discord Webhooks
+Automatically shares newly published articles to your Discord community:
+- **Enable Notifications:** Toggle on/off per blog site.
+- **Webhook URL:** Paste standard Discord webhook URL (`https://discord.com/api/webhooks/...`).
+- **Bot Customization:** Custom username and avatar overrides (defaults to site name and logo).
+- **Embed Styling:** Primary brand color, linked title, excerpt, full cover hero image, and formatted timestamp footer.
+- **Testing:** "Send Test Message" button to verify webhook functionality in real time.
+
+### B. RSS 2.0 & Atom Feeds
+- **Public Feed URL:** `https://<your-blog-domain>/feed.xml` or `/rss.xml`.
+- **Feed Customization:** Control item limit (10, 20, 50, 100) and choose between full HTML formatted content or brief summary excerpts.
+- **Auto-Discovery:** Automatically injected into `<head>` metadata for RSS readers and browser extensions.
+
