@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/db";
 import { sites, settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
  * Payload structure for a Discord webhook message containing rich embeds.
@@ -120,13 +121,13 @@ export async function sendDiscordPostNotification(
     }
 
     const site = db.select().from(sites).where(eq(sites.id, siteId)).get();
-    const siteName = site?.name || "Kotonoba Blog";
+    const postLocale = post.locale || site?.locale || "en";
+    const siteName = getLocalizedText(site?.name, postLocale) || "Kotonoba Blog";
     const siteDomain = site?.domain || "localhost:3000";
     const baseUrl = siteDomain.includes("localhost")
       ? `http://${siteDomain}`
       : `https://${siteDomain}`;
 
-    const postLocale = post.locale || site?.locale || "en";
     const postUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
     const logoUrl = resolveAbsoluteUrl(site?.logoUrl || site?.faviconUrl, baseUrl);
     const coverImageUrl = resolveAbsoluteUrl(post.coverImage, baseUrl);

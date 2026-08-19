@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { posts, sites, settings } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { getSiteForHost, getActiveSite } from "@/lib/tenant";
+import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
  * Escapes XML special characters within string literals.
@@ -109,15 +110,18 @@ export async function GET(): Promise<NextResponse> {
     })
     .join("\n");
 
+  const channelTitle = getLocalizedText(site.name, siteLocale);
+  const channelDesc = getLocalizedText(site.subtitle || site.description || site.name, siteLocale);
+
   const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" 
   xmlns:dc="http://purl.org/dc/elements/1.1/" 
   xmlns:content="http://purl.org/rss/1.0/modules/content/" 
   xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title><![CDATA[${site.name}]]></title>
+    <title><![CDATA[${channelTitle}]]></title>
     <link>${escapeXml(baseUrl)}</link>
-    <description><![CDATA[${site.subtitle || site.description || site.name}]]></description>
+    <description><![CDATA[${channelDesc}]]></description>
     <language>${escapeXml(siteLocale)}</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
     <atom:link href="${escapeXml(`${baseUrl}/feed.xml`)}" rel="self" type="application/rss+xml"/>

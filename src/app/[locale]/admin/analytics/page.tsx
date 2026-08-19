@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Link } from "@/i18n/routing";
 import { ResetAnalyticsButton } from "@/components/admin/analytics/ResetAnalyticsButton";
+import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
  * Normalizes referrer strings into clean root domains.
@@ -200,7 +201,7 @@ export default async function AdminAnalyticsPage({
             <span>{t("title")}</span>
           </h1>
           <p className="text-xs text-text-muted mt-0.5">
-            {t("subtitle", { site: site.name })}
+            {t("subtitle", { site: getLocalizedText(site.name, locale) })}
           </p>
         </div>
 

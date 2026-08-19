@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { posts, sites, settings } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
+import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
  * Route handler delivering complete full-text markdown corpus of published blog posts for RAG and deep LLM ingestion.
@@ -38,7 +39,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  const siteName = site.name || "Kotonoba";
+  const siteLocale = site.locale || "en";
+  const siteName = getLocalizedText(site.name, siteLocale) || "Kotonoba";
   const baseUrl = `https://${site.domain || host}`;
 
   const topPosts = db

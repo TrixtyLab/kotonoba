@@ -5,6 +5,7 @@ import { sendDiscordTestNotification } from "@/lib/discord";
 import { getDb } from "@/lib/db";
 import { sites } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
  * Server action testing Discord Webhook integration from the settings dashboard.
@@ -24,7 +25,7 @@ export async function testDiscordWebhookAction(
   const site = db.select().from(sites).where(eq(sites.id, siteId)).get();
 
   return await sendDiscordTestNotification(webhookUrl, {
-    name: site?.name,
+    name: getLocalizedText(site?.name, site?.locale || "en"),
     logoUrl: site?.logoUrl || site?.faviconUrl || undefined,
     primaryColor: site?.primaryColor || undefined,
   });

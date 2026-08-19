@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils/date";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { getStorageStatus } from "@/lib/storage";
+import { getLocalizedText } from "@/lib/utils/localization";
 import {
   FileText, CheckCircle2, Clock, Eye, Plus,
   FolderTree, Settings, Sparkles, TrendingUp, ArrowRight,
@@ -114,7 +115,7 @@ export default async function AdminDashboardPage({
         <div>
           <h1 className="text-xl font-bold text-text tracking-tight">{t("dashboardTitle")}</h1>
           <p className="text-xs text-text-muted mt-0.5">
-            {t("managing")} <span className="font-semibold text-text">{site?.name}</span> ({site?.domain})
+            {t("managing")} <span className="font-semibold text-text">{getLocalizedText(site?.name, locale)}</span> ({site?.domain})
           </p>
         </div>
 
