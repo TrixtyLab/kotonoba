@@ -30,10 +30,7 @@ export async function resetAnalyticsAction(siteId: string): Promise<AnalyticsMut
   try {
     const db = getDb();
 
-    // 1. Delete all traffic and beacon records associated with the site
     db.delete(analytics).where(eq(analytics.siteId, siteId)).run();
-
-    // 2. Reset view metrics on all posts for this site
     db.update(posts).set({ views: 0 }).where(eq(posts.siteId, siteId)).run();
 
     revalidatePath("/admin/analytics");

@@ -15,6 +15,8 @@ export interface AdminClientLayoutProps {
   currentSite: SiteOption;
   /** Catalog of all registered sites for tenant switching. */
   allSites: SiteOption[];
+  /** Flag indicating whether the caller has permissions to create/manage sites (super_admin). */
+  canManageSites?: boolean;
   /** Authenticated user identity metadata. */
   user: {
     displayName: string;
@@ -29,7 +31,7 @@ export interface AdminClientLayoutProps {
  * @param props - AdminClientLayoutProps configuring sites, user metadata, and children.
  * @returns React JSX dashboard layout shell.
  */
-export function AdminClientLayout({ children, currentSite, allSites, user }: AdminClientLayoutProps) {
+export function AdminClientLayout({ children, currentSite, allSites, canManageSites = false, user }: AdminClientLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -48,6 +50,7 @@ export function AdminClientLayout({ children, currentSite, allSites, user }: Adm
         onCloseMobile={() => setMobileSidebarOpen(false)}
         currentSite={currentSite}
         allSites={allSites}
+        canManageSites={canManageSites}
       />
 
       <div

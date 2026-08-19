@@ -1,7 +1,5 @@
-import { getDb } from "@/lib/db";
-import { users } from "@/lib/db/schema";
-import { or, eq, sql } from "drizzle-orm";
-import { redirect } from "next/navigation";
+import { hasAdminUser } from "@/lib/tenant";
+import { redirect } from "@/i18n/routing";
 import { SetupWizardClient } from "@/components/setup/SetupWizardClient";
 
 /**
@@ -16,16 +14,9 @@ export default async function SetupWizardPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const db = getDb();
 
-  const existingAdmin = db
-    .select({ count: sql<number>`count(*)` })
-    .from(users)
-    .where(or(eq(users.role, "super_admin"), eq(users.role, "admin")))
-    .get();
-
-  if (existingAdmin && existingAdmin.count > 0) {
-    redirect(`/${locale}/login`);
+  if (hasAdminUser()) {
+    redirect({ href: "/login", locale });
   }
 
   return <SetupWizardClient />;

@@ -117,3 +117,26 @@ export const aiConfigSchema = z.object({
   enabled: z.boolean().default(true),
 });
 export type AiConfigInput = z.infer<typeof aiConfigSchema>;
+
+/** Schema validating user creation payload by administrators. */
+export const createUserSchema = z.object({
+  email: z.string().email().max(255),
+  displayName: z.string().min(1).max(100),
+  password: z.string().min(8).max(128),
+  role: z.enum(["super_admin", "admin", "editor", "author"]).default("author"),
+  siteId: z.string().optional().nullable(),
+  avatarUrl: z.string().max(2000).optional().nullable(),
+});
+export type CreateUserInput = z.infer<typeof createUserSchema>;
+
+/** Schema validating user modification payload. */
+export const updateUserSchema = z.object({
+  email: z.string().email().max(255).optional(),
+  displayName: z.string().min(1).max(100).optional(),
+  password: z.string().min(8).max(128).optional().or(z.literal("")),
+  role: z.enum(["super_admin", "admin", "editor", "author"]).optional(),
+  siteId: z.string().optional().nullable(),
+  avatarUrl: z.string().max(2000).optional().nullable(),
+});
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+

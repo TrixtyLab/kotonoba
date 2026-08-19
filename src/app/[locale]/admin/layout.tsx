@@ -44,23 +44,40 @@ export default async function AdminLayout({
     return null;
   }
 
-  const site = await getActiveSite();
   const allSites = await getAllSites();
 
-  const currentSiteOption = site
-    ? { id: site.id, name: getLocalizedText(site.name, locale), domain: site.domain }
+  // If user is super_admin or user.siteId is null/empty -> Global (access to all sites)
+  // Otherwise -> Restricted strictly to user's assigned site
+  const isGlobalUser = user.role === "super_admin" || !user.siteId;
+  const accessibleSites = isGlobalUser
+    ? allSites
+    : allSites.filter((s) => s.id === user.siteId);
+
+  const site = await getActiveSite();
+
+  // Fallback to assigned site if activeSite is not accessible to this user
+  const effectiveSite =
+    site && accessibleSites.some((s) => s.id === site.id)
+      ? site
+      : accessibleSites[0] || site;
+
+  const currentSiteOption = effectiveSite
+    ? { id: effectiveSite.id, name: getLocalizedText(effectiveSite.name, locale), domain: effectiveSite.domain }
     : { id: "default", name: "Default Blog", domain: "localhost" };
 
-  const allSiteOptions = allSites.map((s) => ({
+  const allSiteOptions = accessibleSites.map((s) => ({
     id: s.id,
     name: getLocalizedText(s.name, locale),
     domain: s.domain,
   }));
 
+  const canManageSites = user.role === "super_admin";
+
   return (
     <AdminClientLayout
       currentSite={currentSiteOption}
       allSites={allSiteOptions.length > 0 ? allSiteOptions : [currentSiteOption]}
+      canManageSites={canManageSites}
       user={{
         displayName: user.email.split("@")[0],
         email: user.email,

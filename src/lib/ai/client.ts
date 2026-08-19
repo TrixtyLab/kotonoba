@@ -61,7 +61,6 @@ export function extractAiResponseText(responseText: string): string {
   const trimmed = responseText.trim();
   if (!trimmed) return "";
 
-  // 1. Check if the response contains Server-Sent Events (SSE) stream format
   if (trimmed.startsWith("data:") || trimmed.includes("\ndata:") || trimmed.includes("\r\ndata:")) {
     const lines = trimmed.split(/\r?\n/);
     let accumulated = "";
@@ -105,7 +104,6 @@ export function extractAiResponseText(responseText: string): string {
     }
   }
 
-  // 2. Standard JSON response parsing
   try {
     const json = JSON.parse(trimmed);
     if (json.error?.message) {
