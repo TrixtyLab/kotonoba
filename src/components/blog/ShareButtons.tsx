@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { FaXTwitter, FaFacebook, FaLinkedin, FaWhatsapp } from "react-icons/fa6";
+import { FaXTwitter, FaFacebook, FaWhatsapp, FaBluesky } from "react-icons/fa6";
 import { Link2, Check } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
@@ -10,14 +10,14 @@ import { useTranslations } from "next-intl";
  * Properties configuring social share buttons.
  */
 export interface ShareButtonsProps {
-  /** Target canonical URL to share. */
+  /** Target canonical or shortened URL to share. */
   url: string;
   /** Article title used as share post caption. */
   title: string;
 }
 
 /**
- * Social sharing button cluster supporting X (Twitter), LinkedIn, Facebook, WhatsApp, and clipboard copy.
+ * Social sharing button cluster supporting X (Twitter), Bluesky, Facebook, WhatsApp, and clipboard copy.
  *
  * @param props - ShareButtonsProps configuring target article URL and title.
  * @returns React JSX sharing buttons cluster.
@@ -36,6 +36,7 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
 
   const encodedUrl = encodeURIComponent(url);
   const encodedTitle = encodeURIComponent(title);
+  const bskyText = encodeURIComponent(`${title} ${url}`);
 
   const buttonClass =
     "p-2.5 rounded-full bg-surface-hover hover:bg-primary/10 hover:text-primary transition-colors text-text-muted";
@@ -53,14 +54,14 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
         <FaXTwitter className="w-4 h-4" />
       </a>
       <a
-        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`}
+        href={`https://bsky.app/intent/compose?text=${bskyText}`}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Compartir en LinkedIn"
+        aria-label="Compartir en Bluesky"
         className={buttonClass}
-        title="Compartir en LinkedIn"
+        title="Compartir en Bluesky"
       >
-        <FaLinkedin className="w-4 h-4" />
+        <FaBluesky className="w-4 h-4" />
       </a>
       <a
         href={`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`}

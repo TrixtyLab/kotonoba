@@ -42,20 +42,26 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testLoading, setTestLoading] = useState(false);
 
+  const hasSavedKey = initialSettings.has_ai_api_key === "true" || !!initialSettings.ai_api_key_masked;
+
   async function handleTestConnection() {
-    if (!aiKey) {
+    if (!aiKey && !hasSavedKey) {
       toast.error(t("enterApiKeyToTest"));
       return;
     }
     setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await testAiConnection(aiUrl, aiKey, aiModel);
+      const res = await testAiConnection(siteId, {
+        apiUrl: aiUrl,
+        apiKey: aiKey || undefined,
+        model: aiModel,
+      });
 
       if (res.success) {
         setTestResult({
           success: true,
-          message: t("aiConnectionSuccess"),
+          message: `${t("aiConnectionSuccess")}${res.reply ? ` (${res.reply.trim()})` : ""}`,
         });
         toast.success(t("aiConnectionSuccess"));
       } else {
@@ -65,12 +71,13 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
         });
         toast.error(res.error || t("aiConnectionFailed"));
       }
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("aiConnectionFailed");
       setTestResult({
         success: false,
-        message: t("aiConnectionFailed"),
+        message: msg,
       });
-      toast.error(t("aiConnectionFailed"));
+      toast.error(msg);
     } finally {
       setTestLoading(false);
     }
@@ -81,13 +88,14 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
       const res = await saveAiSettings(siteId, {
         enabled: aiEnabled,
         apiUrl: aiUrl,
-        apiKey: aiKey || undefined,
+        apiKey: aiKey ? aiKey.trim() : undefined,
         model: aiModel,
         temperature: aiTemperature,
       });
 
       if (res.success) {
         toast.success(t("saveSuccess"));
+        setAiKey("");
         router.refresh();
       } else {
         toast.error(t("saveError"));
@@ -121,13 +129,24 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
             required
           />
 
-          <Input
-            label={t("aiApiKey")}
-            type="password"
-            value={aiKey}
-            onChange={(e) => setAiKey(e.target.value)}
-            placeholder={initialSettings.ai_api_key ? `•••••••••••••••• (${t("leaveBlankToKeep")})` : "sk-..."}
-          />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-text">{t("aiApiKey")}</label>
+              {hasSavedKey && (
+                <span className="text-[11px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>{initialSettings.ai_api_key_masked || "Configured"}</span>
+                </span>
+              )}
+            </div>
+            <Input
+              type="password"
+              value={aiKey}
+              onChange={(e) => setAiKey(e.target.value)}
+              placeholder={hasSavedKey ? `•••••••••••••••• (${t("leaveBlankToKeep")})` : "sk-..."}
+              helperText={hasSavedKey ? t("leaveBlankToKeep") : undefined}
+            />
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input

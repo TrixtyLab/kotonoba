@@ -74,14 +74,27 @@ export async function callAiChat(
     throw new Error("No API key configured for OpenAI-compatible endpoint.");
   }
 
-  const cleanUrl = config.apiUrl.replace(/\/+$/, "");
-  const endpoint = `${cleanUrl}/chat/completions`;
+  let rawUrl = (config.apiUrl || "https://api.openai.com/v1").trim();
+  if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
+    rawUrl = `https://${rawUrl}`;
+  }
+
+  let endpoint = rawUrl.replace(/\/+$/, "");
+  if (!endpoint.endsWith("/chat/completions")) {
+    if (endpoint === "https://api.openai.com" || endpoint === "http://api.openai.com") {
+      endpoint = `${endpoint}/v1/chat/completions`;
+    } else {
+      endpoint = `${endpoint}/chat/completions`;
+    }
+  }
 
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${config.apiKey.trim()}`,
+      "HTTP-Referer": "https://kotonoba.cms",
+      "X-Title": "Kotonoba CMS",
     },
     body: JSON.stringify({
       model: config.model,
@@ -90,11 +103,23 @@ export async function callAiChat(
     }),
   });
 
+  const responseText = await res.text();
+
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`AI API call failed with status ${res.status}: ${errorText}`);
+    let errorDetail = responseText;
+    try {
+      const parsed = JSON.parse(responseText);
+      if (parsed.error?.message) errorDetail = parsed.error.message;
+    } catch {}
+    throw new Error(`AI API call failed (HTTP ${res.status}): ${errorDetail}`);
   }
 
-  const json = await res.json();
+  let json: any;
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid JSON returned from AI provider: ${responseText.slice(0, 200)}`);
+  }
+
   return json.choices?.[0]?.message?.content || "";
 }

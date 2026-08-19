@@ -98,6 +98,7 @@ export default async function PostEntryPage({
       coverImage: posts.coverImage,
       publishedAt: posts.publishedAt,
       views: posts.views,
+      shortUrl: posts.shortUrl,
       authorName: users.displayName,
       authorAvatar: users.avatarUrl,
     })
@@ -172,6 +173,7 @@ export default async function PostEntryPage({
     .all();
 
   const postUrl = `https://${site.domain}/entry/${post.slug}`;
+  const shareUrl = post.shortUrl || postUrl;
 
   const mermaidDiagrams: string[] = [];
   const regex = /```mermaid\n([\s\S]*?)```/g;
@@ -267,7 +269,7 @@ export default async function PostEntryPage({
         {/* Share buttons */}
         <div className="pt-4 flex items-center justify-between border-t border-border/50 text-xs text-text-muted">
           <span>{t("shareArticle")}:</span>
-          <ShareButtons url={postUrl} title={post.title} />
+          <ShareButtons url={shareUrl} title={post.title} />
         </div>
 
         {/* Prev / Next article link */}

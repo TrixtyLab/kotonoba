@@ -113,47 +113,106 @@ export async function saveAiSettings(
 
 /**
  * Performs a test ping to an OpenAI-compatible endpoint to verify connectivity and API key validity.
+ * Supports testing either candidate form input or the currently saved encrypted key in SQLite.
  *
- * @param apiUrl - Target API endpoint URL.
- * @param apiKey - Candidate secret API key.
- * @param model - Model identifier string.
+ * @param siteId - Unique database identifier of the active site.
+ * @param input - Object containing candidate API URL, optional candidate API key, and model name.
  * @returns A Promise resolving to an AiTestConnectionResponse with response reply or error message.
  * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function testAiConnection(
-  apiUrl: string,
-  apiKey: string,
-  model: string
+  siteId: string,
+  input: {
+    apiUrl?: string;
+    apiKey?: string;
+    model?: string;
+  }
 ): Promise<AiTestConnectionResponse> {
   await requireAuth(["super_admin", "admin"]);
 
-  if (!apiUrl || !apiKey) {
-    return { success: false, error: "API URL and API Key are required." };
+  const db = getDb();
+  let effectiveKey = input.apiKey?.trim();
+
+  // If no new key was provided in the input, fall back to the existing saved secret in SQLite
+  if (!effectiveKey && siteId) {
+    const row = db
+      .select()
+      .from(settings)
+      .where(and(eq(settings.siteId, siteId), eq(settings.key, "ai_api_key")))
+      .get();
+    if (row?.value) {
+      effectiveKey = decryptSecret(row.value);
+    }
   }
 
+  if (!effectiveKey) {
+    return { success: false, error: "API Key is required to test the connection." };
+  }
+
+  let rawUrl = (input.apiUrl || "https://api.openai.com/v1").trim();
+  if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
+    rawUrl = `https://${rawUrl}`;
+  }
+
+  let endpoint = rawUrl.replace(/\/+$/, "");
+  if (!endpoint.endsWith("/chat/completions")) {
+    if (endpoint === "https://api.openai.com" || endpoint === "http://api.openai.com") {
+      endpoint = `${endpoint}/v1/chat/completions`;
+    } else {
+      endpoint = `${endpoint}/chat/completions`;
+    }
+  }
+
+  const model = input.model?.trim() || "gpt-4o";
+
   try {
-    const cleanUrl = apiUrl.replace(/\/+$/, "");
-    const endpoint = `${cleanUrl}/chat/completions`;
+    const payload: Record<string, any> = {
+      model,
+      messages: [{ role: "user", content: "Ping. Reply with 'pong'." }],
+    };
+
+    if (!model.toLowerCase().startsWith("o1") && !model.toLowerCase().startsWith("o3")) {
+      payload.max_tokens = 10;
+    }
 
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${effectiveKey}`,
+        "HTTP-Referer": "https://kotonoba.cms",
+        "X-Title": "Kotonoba CMS",
       },
-      body: JSON.stringify({
-        model: model || "gpt-4o",
-        messages: [{ role: "user", content: "Ping. Reply with 'pong'." }],
-        max_tokens: 10,
-      }),
+      body: JSON.stringify(payload),
     });
 
+    const responseText = await res.text();
+
     if (!res.ok) {
-      const err = await res.text();
-      return { success: false, error: `HTTP ${res.status}: ${err}` };
+      let errorMsg = `HTTP ${res.status}: ${responseText}`;
+      try {
+        const errorJson = JSON.parse(responseText);
+        if (errorJson.error?.message) {
+          errorMsg = `HTTP ${res.status}: ${errorJson.error.message}`;
+        }
+      } catch {
+        if (responseText.includes("<html") || responseText.includes("<!DOCTYPE")) {
+          errorMsg = `HTTP ${res.status}: Endpoint returned HTML instead of JSON. Check the URL (${endpoint}).`;
+        }
+      }
+      return { success: false, error: errorMsg };
     }
 
-    const json = await res.json();
+    let json: any;
+    try {
+      json = JSON.parse(responseText);
+    } catch {
+      return {
+        success: false,
+        error: `Endpoint returned invalid JSON: "${responseText.slice(0, 150)}"`,
+      };
+    }
+
     const reply = json.choices?.[0]?.message?.content || "";
     return { success: true, reply };
   } catch (err) {
@@ -180,6 +239,7 @@ export async function getSiteSettings(siteId: string): Promise<Record<string, st
   if (map.ai_api_key) {
     const decrypted = decryptSecret(map.ai_api_key);
     map.ai_api_key_masked = decrypted ? `${decrypted.slice(0, 4)}...${decrypted.slice(-4)}` : "";
+    map.has_ai_api_key = decrypted ? "true" : "false";
     delete map.ai_api_key;
   }
   return map;

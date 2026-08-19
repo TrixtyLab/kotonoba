@@ -8,6 +8,7 @@ import { generateId, generateSlug } from "@/lib/utils/slug";
 import { postSchema, validate, type PostInput } from "@/lib/security/validate";
 import { isDubConfigured, createDubLink } from "@/lib/dub";
 import { sendDiscordPostNotification } from "@/lib/discord";
+import { sendBlueskyPostNotification } from "@/lib/bluesky";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -139,7 +140,7 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
   }
 
   if (status === "published") {
-    sendDiscordPostNotification(siteId, {
+    const notifPayload = {
       id: postId,
       title,
       slug: postSlug,
@@ -147,7 +148,11 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
       coverImage,
       publishedAt: now,
       locale,
-    }).catch(() => {});
+      shortUrl: finalShortUrl,
+      tagIds,
+    };
+    sendDiscordPostNotification(siteId, notifPayload).catch(() => {});
+    sendBlueskyPostNotification(siteId, notifPayload).catch(() => {});
   }
 
   return { success: true, postId };
@@ -202,6 +207,33 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
   const publishedAt =
     status === "published" && !existing.publishedAt ? now : status === "published" ? existing.publishedAt : null;
 
+  let finalShortUrl = shortUrl !== undefined ? shortUrl : existing.shortUrl;
+  let finalDubLinkId = dubLinkId !== undefined ? dubLinkId : existing.dubLinkId;
+
+  if (status === "published" && !finalShortUrl && isDubConfigured()) {
+    try {
+      const site = db.select({ domain: sites.domain }).from(sites).where(eq(sites.id, existing.siteId)).get();
+      const siteDomain = site?.domain || "localhost:3000";
+      const fullUrl = siteDomain.includes("localhost")
+        ? `http://${siteDomain}/entry/${postSlug}`
+        : `https://${siteDomain}/entry/${postSlug}`;
+
+      const dubResult = await createDubLink({
+        url: fullUrl,
+        slug: postSlug,
+        tags: ["blog", locale || existing.locale],
+        comments: `Article: ${title.slice(0, 50)}`,
+      });
+
+      if (dubResult) {
+        finalShortUrl = dubResult.shortUrl;
+        finalDubLinkId = dubResult.id;
+      }
+    } catch {
+      // Non-blocking on external API failure
+    }
+  }
+
   db.update(posts)
     .set({
       title,
@@ -215,8 +247,8 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
       publishedAt,
       updatedAt: now,
       pinned,
-      shortUrl: shortUrl !== undefined ? shortUrl : existing.shortUrl,
-      dubLinkId: dubLinkId !== undefined ? dubLinkId : existing.dubLinkId,
+      shortUrl: finalShortUrl,
+      dubLinkId: finalDubLinkId,
     })
     .where(eq(posts.id, postId))
     .run();
@@ -237,7 +269,7 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
 
   const isNewlyPublished = status === "published" && (!existing.publishedAt || existing.status !== "published");
   if (isNewlyPublished) {
-    sendDiscordPostNotification(existing.siteId, {
+    const notifPayload = {
       id: postId,
       title,
       slug: postSlug,
@@ -245,7 +277,11 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
       coverImage,
       publishedAt: publishedAt || now,
       locale,
-    }).catch(() => {});
+      shortUrl: finalShortUrl,
+      tagIds,
+    };
+    sendDiscordPostNotification(existing.siteId, notifPayload).catch(() => {});
+    sendBlueskyPostNotification(existing.siteId, notifPayload).catch(() => {});
   }
 
   return { success: true, postId };

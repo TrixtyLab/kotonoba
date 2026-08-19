@@ -98,6 +98,7 @@ export async function sendDiscordPostNotification(
     coverImage?: string | null;
     publishedAt?: Date | null;
     locale?: string;
+    shortUrl?: string | null;
   }
 ): Promise<boolean> {
   try {
@@ -128,7 +129,8 @@ export async function sendDiscordPostNotification(
       ? `http://${siteDomain}`
       : `https://${siteDomain}`;
 
-    const postUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
+    const canonicalPostUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
+    const postUrl = post.shortUrl || canonicalPostUrl;
     const logoUrl = resolveAbsoluteUrl(site?.logoUrl || site?.faviconUrl, baseUrl);
     const coverImageUrl = resolveAbsoluteUrl(post.coverImage, baseUrl);
     const colorInt = hexToDecimalColor(site?.primaryColor || "#3b82f6");
