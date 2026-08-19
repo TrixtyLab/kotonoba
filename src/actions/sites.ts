@@ -89,7 +89,11 @@ export async function createSite(inputData: Partial<SiteInput>): Promise<SiteMut
  * @throws {Error} When the caller is not authenticated as an admin or super_admin.
  */
 export async function updateSite(siteId: string, inputData: Partial<SiteInput>): Promise<SiteMutationResponse> {
-  await requireAuth(["super_admin", "admin"]);
+  const currentUser = await requireAuth(["super_admin", "admin"]);
+  if (currentUser.role === "admin" && currentUser.siteId && currentUser.siteId !== siteId) {
+    return { success: false, error: "You can only edit settings for your assigned site." };
+  }
+
   const db = getDb();
   const existing = db.select().from(sites).where(eq(sites.id, siteId)).get();
   if (!existing) {
@@ -108,8 +112,8 @@ export async function updateSite(siteId: string, inputData: Partial<SiteInput>):
     primaryColor: inputData.primaryColor !== undefined ? inputData.primaryColor : existing.primaryColor,
     fontFamily: inputData.fontFamily !== undefined ? inputData.fontFamily : existing.fontFamily,
     navLinks: inputData.navLinks !== undefined ? inputData.navLinks : (existing.navLinks || "[]"),
-    navAlignment: inputData.navAlignment !== undefined ? inputData.navAlignment : (existing.navAlignment as "left" | "center" | "right" || "left"),
-    supportedLocales: inputData.supportedLocales !== undefined ? inputData.supportedLocales : existing.supportedLocales,
+    navAlignment: inputData.navAlignment !== undefined ? inputData.navAlignment : (existing.navAlignment as any || "left"),
+    supportedLocales: inputData.supportedLocales !== undefined ? inputData.supportedLocales : (existing.supportedLocales || '["en"]'),
   };
 
   const validation = validate(siteSchema, merged);
@@ -176,7 +180,14 @@ export async function deleteSite(siteId: string): Promise<SiteMutationResponse> 
  * @throws {Error} When the caller lacks an authorized administrative session.
  */
 export async function setActiveSiteAction(siteId: string): Promise<{ success: boolean }> {
-  await requireAuth(["super_admin", "admin", "editor", "author"]);
+  const currentUser = await requireAuth(["super_admin", "admin", "editor", "author"]);
+  
+  // If user is not super_admin and is assigned to a specific site, verify authorization
+  const isGlobalUser = currentUser.role === "super_admin" || !currentUser.siteId;
+  if (!isGlobalUser && currentUser.siteId !== siteId) {
+    return { success: false };
+  }
+
   const db = getDb();
   const exists = db.select().from(sites).where(eq(sites.id, siteId)).get();
   if (!exists) {

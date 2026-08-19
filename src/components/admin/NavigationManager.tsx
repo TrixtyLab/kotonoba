@@ -225,7 +225,6 @@ export function NavigationManager({
 
   return (
     <div className="space-y-6">
-      {/* 1. Alignment Selector */}
       <div className="bg-surface-hover/30 border border-border rounded-xl p-5 space-y-3.5 shadow-xs">
         <div>
           <h3 className="text-sm font-bold text-text">
@@ -278,7 +277,6 @@ export function NavigationManager({
         </div>
       </div>
 
-      {/* 2. Navigation Items List */}
       <div className="bg-surface-hover/30 border border-border rounded-xl p-5 space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
           <div>

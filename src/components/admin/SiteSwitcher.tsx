@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Globe, ChevronDown, Check, Plus, Loader2, Edit3, Trash2, ExternalLink } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { setActiveSiteAction, createSite, updateSite, deleteSite } from "@/actions/sites";
@@ -42,6 +42,8 @@ export interface SiteSwitcherProps {
   currentSite: SiteOption;
   /** All available registered sites. */
   allSites: SiteOption[];
+  /** Flag indicating whether the caller has permissions to create and manage sites (super_admin). */
+  canManageSites?: boolean;
   /** Flag indicating whether the parent sidebar is collapsed. */
   collapsed?: boolean;
 }
@@ -55,6 +57,7 @@ export interface SiteSwitcherProps {
 export function SiteSwitcher({
   currentSite,
   allSites: initialSites,
+  canManageSites = false,
   collapsed = false,
 }: SiteSwitcherProps) {
   const t = useTranslations("sites");
@@ -69,6 +72,11 @@ export function SiteSwitcher({
 
   // Sites management state
   const [sites, setSites] = useState<SiteOption[]>(initialSites);
+
+  useEffect(() => {
+    setSites(initialSites);
+  }, [initialSites]);
+
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [siteToDelete, setSiteToDelete] = useState<string | null>(null);
@@ -287,36 +295,40 @@ export function SiteSwitcher({
                 )})}
               </div>
 
-              <div className="pt-1 mt-1 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    setEditingSiteId(null);
-                    setIsCreatingNew(false);
-                    setManageModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-accent font-semibold hover:bg-accent/10 rounded-lg transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{t("manageSites")}</span>
-                </button>
-              </div>
+              {canManageSites && (
+                <div className="pt-1 mt-1 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      setEditingSiteId(null);
+                      setIsCreatingNew(false);
+                      setManageModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-accent font-semibold hover:bg-accent/10 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t("manageSites")}</span>
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
 
-      {/* Direct Manage & Add Sites Modal */}
-      <Modal
-        isOpen={manageModalOpen}
-        onClose={() => {
-          setManageModalOpen(false);
-          setEditingSiteId(null);
-          setIsCreatingNew(false);
-        }}
-        title={t("siteManager")}
-      >
+      {/* Direct Manage & Add Sites Modal (super_admin only) */}
+      {canManageSites && (
+        <>
+          <Modal
+            isOpen={manageModalOpen}
+            onClose={() => {
+              setManageModalOpen(false);
+              setEditingSiteId(null);
+              setIsCreatingNew(false);
+            }}
+            title={t("siteManager")}
+          >
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           {/* Header Action */}
           <div className="flex items-center justify-between pb-2 border-b border-border">
@@ -500,6 +512,8 @@ export function SiteSwitcher({
         variant="danger"
         isLoading={isPending}
       />
+      </>
+      )}
     </>
   );
 }

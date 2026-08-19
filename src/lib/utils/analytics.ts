@@ -20,7 +20,6 @@ export function parseDeviceAndBrowser(userAgent: string): ParsedClientInfo {
 
   const ua = userAgent.toLowerCase();
 
-  // 1. Device category detection
   let device: "desktop" | "mobile" | "tablet" = "desktop";
   if (/ipad|tablet|playbook|silk/i.test(ua) || (ua.includes("android") && !ua.includes("mobile"))) {
     device = "tablet";
@@ -28,7 +27,6 @@ export function parseDeviceAndBrowser(userAgent: string): ParsedClientInfo {
     device = "mobile";
   }
 
-  // 2. Browser vendor detection (order-sensitive due to compound User-Agent strings)
   let browser = "Other";
   if (ua.includes("edg/") || ua.includes("edge/")) {
     browser = "Edge";

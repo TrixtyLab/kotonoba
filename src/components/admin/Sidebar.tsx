@@ -4,7 +4,7 @@ import React from "react";
 import { usePathname, Link } from "@/i18n/routing";
 import {
   LayoutDashboard, FileText, Image as ImageIcon, FolderTree, Tag, BarChart3,
-  Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink
+  Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users
 } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { useRouter } from "@/i18n/routing";
@@ -25,6 +25,8 @@ export interface SidebarProps {
   currentSite: SiteOption;
   /** Catalog of all registered sites for multi-tenant switching. */
   allSites: SiteOption[];
+  /** Flag indicating whether the caller can manage and create sites (super_admin). */
+  canManageSites?: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ export function Sidebar({
   onCloseMobile,
   currentSite,
   allSites,
+  canManageSites = false,
 }: SidebarProps) {
   const t = useTranslations("common");
   const pathname = usePathname();
@@ -64,6 +67,7 @@ export function Sidebar({
       title: t("configuration"),
       items: [
         { label: t("analytics"), href: "/admin/analytics", icon: BarChart3 },
+        { label: t("users"), href: "/admin/users", icon: Users },
         { label: t("settings"), href: "/admin/settings", icon: Settings },
       ],
     },
@@ -115,6 +119,7 @@ export function Sidebar({
         <SiteSwitcher
           currentSite={currentSite}
           allSites={allSites}
+          canManageSites={canManageSites}
           collapsed={!isOpen}
         />
       </div>

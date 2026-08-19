@@ -235,7 +235,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
         <p className="text-xs text-text-muted mt-0.5">{t("generalDesc")}</p>
       </div>
 
-      {/* 1. Default Main Details */}
       <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div>
@@ -273,7 +272,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
         </div>
       </div>
 
-      {/* 2. Optional Additional Translations */}
       <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
           <div>
@@ -368,7 +366,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
         )}
       </div>
 
-      {/* 3. Visible Blog Languages Selector (Checkboxes) */}
       <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
         <div className="border-b border-border pb-3">
           <h3 className="text-sm font-bold text-text flex items-center gap-2">
@@ -418,7 +415,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
         )}
       </div>
 
-      {/* 4. Global Site Parameters */}
       <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
         <div className="border-b border-border pb-3">
           <h3 className="text-sm font-bold text-text">{t("domainAndLocaleParams")}</h3>

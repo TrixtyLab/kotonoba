@@ -35,6 +35,30 @@ export function proxy(request: NextRequest): NextResponse {
     return response;
   }
 
+  // If a dedicated ADMIN_DOMAIN is configured, redirect admin/auth routes from blog domains to ADMIN_DOMAIN
+  const rawAdminDomain = process.env.ADMIN_DOMAIN;
+  if (rawAdminDomain) {
+    const adminDomain = rawAdminDomain.toLowerCase().replace(/^https?:\/\//, "").split(":")[0].replace(/\/$/, "").trim();
+    const rawHost = request.headers.get("host") || "";
+    const cleanHost = rawHost.toLowerCase().replace(/^https?:\/\//, "").split(":")[0].replace(/\/$/, "").trim();
+    const isLocal =
+      cleanHost === "localhost" ||
+      cleanHost === "127.0.0.1" ||
+      cleanHost === "::1" ||
+      cleanHost.endsWith(".localhost");
+
+    const isAdminOrAuthRoute =
+      pathname.includes("/admin") ||
+      pathname.includes("/login") ||
+      pathname.includes("/setup");
+
+    if (isAdminOrAuthRoute && cleanHost !== adminDomain && !isLocal) {
+      const protocol = request.nextUrl.protocol || "https:";
+      const targetUrl = new URL(`${protocol}//${adminDomain}${pathname}${request.nextUrl.search}`);
+      return NextResponse.redirect(targetUrl);
+    }
+  }
+
   const intlResponse = intlMiddleware(request);
 
   if (pathname.includes("/admin")) {
