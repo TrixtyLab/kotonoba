@@ -1,123 +1,282 @@
 "use client";
 
-import { useState } from "react";
-import { Link } from "@/i18n/routing";
+import React, { useState, useEffect, useMemo } from "react";
+import { Link, usePathname } from "@/i18n/routing";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { Menu, X, Shield } from "lucide-react";
+import { SearchModal, type SearchPostItem } from "@/components/blog/SearchModal";
+import { NavIcon } from "@/components/blog/NavIcon";
+import { Search, Menu, X } from "lucide-react";
+import { useTranslations, useLocale } from "next-intl";
 
+/**
+ * Custom navigation menu item structure supporting bilingual labels and icons.
+ */
+export interface CustomNavItem {
+  /** Unique item identifier. */
+  id: string;
+  /** Primary label fallback string. */
+  label: string;
+  /** Spanish label string. */
+  label_es?: string;
+  /** English label string. */
+  label_en?: string;
+  /** Multilingual dictionary of labels. */
+  labels?: Record<string, string>;
+  /** Destination route path or external URL. */
+  url: string;
+  /** Lucide icon identifier string. */
+  icon?: string;
+  /** Link target attribute. */
+  target?: "_self" | "_blank";
+  /** Flag denoting whether the item is fixed in the navigation bar. */
+  isFixed?: boolean;
+}
+
+/**
+ * Configuration properties for the blog Header component.
+ */
 export interface HeaderProps {
+  /** Site branding and navigation links configuration. */
   site: {
     name: string;
     subtitle?: string | null;
     logoUrl?: string | null;
+    navLinks?: string | null;
+    navAlignment?: "left" | "center" | "right" | null;
   };
-  categories: Array<{ id: string; name: string; slug: string }>;
+  /** Category taxonomy items for menu fallback. */
+  categories?: Array<{ id: string; name: string; slug: string }>;
+  /** Searchable post items list. */
+  searchPosts?: SearchPostItem[];
 }
 
 /**
- * Public blog header navigation with responsive mobile menu, locale switcher, and theme toggle.
+ * Clean blog navigation header with uppercase text links, search modal trigger, and theme toggle controls.
+ *
+ * @param props - HeaderProps configuring site branding, navigation links, and searchable posts.
+ * @returns React JSX header element.
  */
-export function Header({ site, categories }: HeaderProps) {
+export function Header({ site, categories = [], searchPosts = [] }: HeaderProps) {
+  const t = useTranslations("blog");
+  const locale = useLocale();
+  const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  function getNavItemLabel(item: CustomNavItem): string {
+    if (item.id === "home" || item.isFixed || item.url === "/") {
+      return t("top").toUpperCase();
+    }
+    if (item.labels && item.labels[locale]) {
+      return item.labels[locale].toUpperCase();
+    }
+    if (locale === "es" && item.label_es) return item.label_es.toUpperCase();
+    if (locale === "en" && item.label_en) return item.label_en.toUpperCase();
+    return item.label.toUpperCase();
+  }
+
+  const navItems = useMemo<CustomNavItem[]>(() => {
+    let customList: CustomNavItem[] = [];
+
+    if (site.navLinks) {
+      try {
+        const parsed = JSON.parse(site.navLinks);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          customList = parsed;
+        }
+      } catch {
+        // Fall back
+      }
+    }
+
+    if (customList.length > 0) {
+      const homeConfig = customList.find((i) => i.id === "home" || i.url === "/" || i.isFixed);
+      const nonHomeCustomLinks = customList.filter((i) => i.id !== "home" && i.url !== "/" && !i.isFixed);
+
+      const homeItem: CustomNavItem = {
+        id: "home",
+        label: homeConfig?.label || t("top").toUpperCase(),
+        label_es: homeConfig?.label_es,
+        label_en: homeConfig?.label_en,
+        labels: homeConfig?.labels,
+        url: "/",
+        icon: homeConfig?.icon,
+        isFixed: true,
+      };
+
+      return [homeItem, ...nonHomeCustomLinks];
+    }
+
+    const defaultHome: CustomNavItem = {
+      id: "home",
+      label: t("top").toUpperCase(),
+      url: "/",
+      isFixed: true,
+    };
+
+    const categoryItems: CustomNavItem[] = categories.slice(0, 5).map((c) => ({
+      id: `cat-${c.id}`,
+      label: c.name.toUpperCase(),
+      url: `/category/${c.slug}`,
+    }));
+
+    const archiveItem: CustomNavItem = {
+      id: "archive",
+      label: t("archive").toUpperCase(),
+      url: "/archive",
+    };
+
+    return [defaultHome, ...categoryItems, archiveItem];
+  }, [site.navLinks, categories, t]);
+
+  const alignmentClass = useMemo(() => {
+    switch (site.navAlignment) {
+      case "left":
+        return "justify-start";
+      case "right":
+        return "justify-end";
+      case "center":
+      default:
+        return "justify-center";
+    }
+  }, [site.navAlignment]);
 
   return (
-    <header className="sticky top-0 z-40 w-full glass border-b border-border/80 transition-colors">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3 group">
-          {site.logoUrl ? (
-            <img src={site.logoUrl} alt={site.name} className="w-8 h-8 rounded-md object-contain" />
-          ) : (
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-base shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
-              {site.name.slice(0, 1).toUpperCase()}
-            </div>
-          )}
-          <div>
-            <span className="font-bold text-base sm:text-lg text-text tracking-tight block">
-              {site.name}
-            </span>
-            {site.subtitle && (
-              <span className="text-[11px] text-text-muted hidden md:block line-clamp-1">
-                {site.subtitle}
-              </span>
-            )}
-          </div>
-        </Link>
+    <>
+      <header className="sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-md border-b border-border/80 transition-colors">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14 gap-4">
+            <nav className={`hidden md:flex items-stretch gap-8 h-full flex-1 ${alignmentClass}`}>
+              {navItems.map((item) => {
+                const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+                const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
+                const label = getNavItemLabel(item);
 
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-text-muted">
-          <Link href="/" className="hover:text-primary transition-colors">
-            Home
-          </Link>
-          {categories.slice(0, 4).map((c) => (
-            <Link key={c.id} href={`/category/${c.slug}`} className="hover:text-primary transition-colors">
-              {c.name}
-            </Link>
-          ))}
-          <Link href="/archive" className="hover:text-primary transition-colors">
-            Archive
-          </Link>
-        </nav>
+                if (isExternal) {
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.url}
+                      target={item.target || "_blank"}
+                      rel="noopener noreferrer"
+                      className="relative h-full flex items-center px-1 text-xs sm:text-[13px] font-bold tracking-wider text-text-muted hover:text-accent transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] after:bg-transparent hover:after:bg-accent/40"
+                    >
+                      {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
+                      <span>{label}</span>
+                    </a>
+                  );
+                }
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <LocaleSwitcher />
-          <ThemeToggle />
-          <Link
-            href="/admin"
-            className="hidden sm:inline-flex p-2 rounded-md text-text-muted hover:text-primary hover:bg-surface-hover transition-colors"
-            title="Admin Dashboard"
-            aria-label="Admin Dashboard"
-          >
-            <Shield className="w-4 h-4" />
-          </Link>
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.url}
+                    target={item.target}
+                    className={`relative h-full flex items-center px-1 text-xs sm:text-[13px] font-bold tracking-wider transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] ${
+                      isActive
+                        ? "text-accent font-extrabold after:bg-accent"
+                        : "text-text-muted hover:text-text after:bg-transparent hover:after:bg-text-muted/40"
+                    }`}
+                  >
+                    {item.icon && (
+                      <NavIcon
+                        name={item.icon}
+                        className={`w-4 h-4 ${isActive ? "text-accent" : "text-text-muted"}`}
+                      />
+                    )}
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
 
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
-            aria-label="Toggle navigation menu"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
-      </div>
-
-      {mobileMenuOpen && (
-        <div className="md:hidden glass border-b border-border p-4 animate-slide-down space-y-3">
-          <div className="flex flex-col space-y-2 text-sm font-medium">
-            <Link
-              href="/"
-              onClick={() => setMobileMenuOpen(false)}
-              className="px-3 py-2 rounded-md hover:bg-surface-hover text-text"
-            >
-              Home
-            </Link>
-            {categories.map((c) => (
-              <Link
-                key={c.id}
-                href={`/category/${c.slug}`}
-                onClick={() => setMobileMenuOpen(false)}
-                className="px-3 py-2 rounded-md hover:bg-surface-hover text-text-muted hover:text-text"
+            {/* Right toolbar: Search, Locale Switcher, Theme Toggle, Mobile Trigger */}
+            <div className="flex items-center gap-2.5 ml-auto shrink-0">
+              <button
+                onClick={() => setSearchOpen(true)}
+                aria-label="Buscar artículos"
+                title="Buscar (⌘K)"
+                className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
               >
-                {c.name}
-              </Link>
-            ))}
-            <Link
-              href="/archive"
-              onClick={() => setMobileMenuOpen(false)}
-              className="px-3 py-2 rounded-md hover:bg-surface-hover text-text-muted hover:text-text"
-            >
-              Archive
-            </Link>
-            <Link
-              href="/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className="px-3 py-2 rounded-md hover:bg-surface-hover text-primary font-semibold flex items-center gap-2"
-            >
-              <Shield className="w-4 h-4" />
-              Admin Portal
-            </Link>
+                <Search className="w-4 h-4" />
+              </button>
+
+              <LocaleSwitcher />
+              <ThemeToggle />
+
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
-      )}
-    </header>
+
+        {/* Mobile Navigation Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-1 animate-slide-down">
+            {navItems.map((item) => {
+              const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+              const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
+              const label = getNavItemLabel(item);
+
+              if (isExternal) {
+                return (
+                  <a
+                    key={item.id}
+                    href={item.url}
+                    target={item.target || "_blank"}
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-text-muted hover:text-text hover:bg-surface-hover uppercase tracking-wider"
+                  >
+                    {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
+                    <span>{label}</span>
+                  </a>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.id}
+                  href={item.url}
+                  target={item.target}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider ${
+                    isActive
+                      ? "text-accent font-bold bg-accent/10"
+                      : "text-text-muted hover:text-text hover:bg-surface-hover"
+                  }`}
+                >
+                  {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </header>
+
+      <SearchModal
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        posts={searchPosts}
+      />
+    </>
   );
 }

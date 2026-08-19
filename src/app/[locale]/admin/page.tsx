@@ -1,18 +1,23 @@
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, tags, analytics, users } from "@/lib/db/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { getStorageStatus } from "@/lib/storage";
 import {
-  FileText, CheckCircle, Clock, Eye, Plus,
-  FolderTree, Settings, Sparkles, TrendingUp, ArrowRight
+  FileText, CheckCircle2, Clock, Eye, Plus,
+  FolderTree, Settings, Sparkles, TrendingUp, ArrowRight,
+  Image as ImageIcon, HardDrive, Cloud, Compass, Globe
 } from "lucide-react";
 
 /**
- * Admin dashboard overview displaying site KPIs, recent publishing activity, and quick navigation actions.
+ * Main administrative dashboard overview displaying publication metrics, recent post logs, storage status, and quick action shortcuts.
+ *
+ * @param props - Object containing route params Promise with active locale.
+ * @returns React JSX dashboard overview element.
  */
 export default async function AdminDashboardPage({
   params,
@@ -24,6 +29,7 @@ export default async function AdminDashboardPage({
   const db = getDb();
 
   const siteId = site?.id || "default";
+  const storageStatus = getStorageStatus();
 
   const postStats = db
     .select({
@@ -36,6 +42,12 @@ export default async function AdminDashboardPage({
     .where(eq(posts.siteId, siteId))
     .get();
 
+  const categoryCount = db
+    .select({ count: sql<number>`count(*)` })
+    .from(categories)
+    .where(eq(categories.siteId, siteId))
+    .get();
+
   const recentPosts = db
     .select({
       id: posts.id,
@@ -45,6 +57,7 @@ export default async function AdminDashboardPage({
       views: posts.views,
       publishedAt: posts.publishedAt,
       createdAt: posts.createdAt,
+      coverImage: posts.coverImage,
       authorName: users.displayName,
     })
     .from(posts)
@@ -62,141 +75,216 @@ export default async function AdminDashboardPage({
 
   const metrics = [
     {
-      label: "Total Articles",
+      label: "Artículos Totales",
       value: postStats?.total || 0,
       icon: FileText,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      label: "Published",
-      value: postStats?.published || 0,
-      icon: CheckCircle,
-      color: "text-success",
-      bg: "bg-success/10",
-    },
-    {
-      label: "Drafts",
-      value: postStats?.drafts || 0,
-      icon: Clock,
-      color: "text-warning",
-      bg: "bg-warning/10",
-    },
-    {
-      label: "Total Page Views",
-      value: (postStats?.totalViews || 0) + (totalHits?.count || 0),
-      icon: Eye,
       color: "text-accent",
       bg: "bg-accent/10",
+    },
+    {
+      label: "Publicados",
+      value: postStats?.published || 0,
+      icon: CheckCircle2,
+      color: "text-emerald-500",
+      bg: "bg-emerald-500/10",
+    },
+    {
+      label: "Borradores",
+      value: postStats?.drafts || 0,
+      icon: Clock,
+      color: "text-amber-500",
+      bg: "bg-amber-500/10",
+    },
+    {
+      label: "Vistas Totales",
+      value: (postStats?.totalViews || 0) + (totalHits?.count || 0),
+      icon: Eye,
+      color: "text-indigo-500",
+      bg: "bg-indigo-500/10",
     },
   ];
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:p-6 bg-surface border border-border rounded-xl shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-text tracking-tight">Dashboard Overview</h1>
-          <p className="text-xs text-text-muted">
-            Managing <span className="font-semibold text-text">{site?.name}</span> ({site?.domain})
+          <h1 className="text-xl font-bold text-text tracking-tight">Panel de Control</h1>
+          <p className="text-xs text-text-muted mt-0.5">
+            Gestionando <span className="font-semibold text-text">{site?.name}</span> ({site?.domain})
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <Link href="/admin/media">
+            <Button size="sm" variant="outline" icon={<ImageIcon className="w-3.5 h-3.5 text-accent" />}>
+              Medios
+            </Button>
+          </Link>
           <Link href="/admin/posts/new">
-            <Button size="sm" variant="primary" icon={<Plus className="w-4 h-4" />}>
-              New Article
+            <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />}>
+              Nuevo Artículo
             </Button>
           </Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {metrics.map((m) => {
           const Icon = m.icon;
           return (
-            <div key={m.label} className="glass p-5 rounded-xl border border-border flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl ${m.bg} ${m.color} flex items-center justify-center shrink-0`}>
-                <Icon className="w-6 h-6" />
+            <div
+              key={m.label}
+              className="p-4 rounded-xl bg-surface border border-border flex items-center gap-3.5 shadow-xs"
+            >
+              <div className={`w-10 h-10 rounded-lg ${m.bg} ${m.color} flex items-center justify-center shrink-0`}>
+                <Icon className="w-5 h-5" />
               </div>
-              <div className="truncate">
-                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">{m.label}</p>
-                <p className="text-2xl font-bold text-text tabular-nums">{m.value}</p>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-text-muted truncate">{m.label}</p>
+                <p className="text-xl font-bold text-text tabular-nums mt-0.5">{m.value}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 glass rounded-xl border border-border p-5 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-border/50">
-            <h2 className="text-base font-bold text-text">Recent Articles</h2>
-            <Link href="/admin/posts" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
+      {/* 2-Column Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Recent Articles */}
+        <div className="lg:col-span-8 bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <div>
+              <h2 className="text-sm font-bold text-text">Artículos Recientes</h2>
+              <p className="text-xs text-text-muted mt-0.5">Últimas publicaciones y borradores del blog</p>
+            </div>
+            <Link
+              href="/admin/posts"
+              className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
+            >
+              Ver todos <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
-          <div className="divide-y divide-border/40 overflow-x-auto">
+          <div className="divide-y divide-border/60">
             {recentPosts.map((post) => (
-              <div key={post.id} className="py-3 flex items-center justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/admin/posts/${post.id}`}
-                    className="text-sm font-semibold text-text hover:text-primary transition-colors block truncate"
-                  >
-                    {post.title}
-                  </Link>
-                  <p className="text-[11px] text-text-muted">
-                    {post.publishedAt ? `Published ${formatDate(post.publishedAt, locale)}` : "Draft"} • {post.views} views
-                  </p>
+              <div key={post.id} className="py-3 flex items-center justify-between gap-4 group">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  {post.coverImage ? (
+                    <div className="w-10 h-10 rounded-lg border border-border overflow-hidden shrink-0 bg-surface-hover/30">
+                      <img src={post.coverImage} alt={post.title} className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg border border-border bg-surface-hover/40 flex items-center justify-center text-text-muted shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <Link
+                      href={`/admin/posts/${post.id}`}
+                      className="text-xs font-semibold text-text group-hover:text-accent transition-colors block truncate"
+                    >
+                      {post.title}
+                    </Link>
+                    <p className="text-[11px] text-text-muted flex items-center gap-2">
+                      <span>{post.publishedAt ? formatDate(post.publishedAt, locale) : "Borrador"}</span>
+                      <span>•</span>
+                      <span>{post.views} vistas</span>
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+
+                <div className="flex items-center gap-2.5 shrink-0">
                   <Badge variant={post.status === "published" ? "success" : "warning"}>
-                    {post.status}
+                    {post.status === "published" ? "Publicado" : "Borrador"}
                   </Badge>
                   <Link href={`/admin/posts/${post.id}`}>
-                    <Button variant="ghost" size="sm">Edit</Button>
+                    <Button variant="ghost" size="sm" className="text-xs">
+                      Editar
+                    </Button>
                   </Link>
                 </div>
               </div>
             ))}
+
             {recentPosts.length === 0 && (
-              <div className="py-8 text-center text-xs text-text-muted">No articles created yet.</div>
+              <div className="py-10 text-center text-xs text-text-muted space-y-1">
+                <FileText className="w-6 h-6 opacity-30 mx-auto" />
+                <p>No hay artículos aún.</p>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="glass rounded-xl border border-border p-5 space-y-3">
-            <h3 className="text-sm font-bold text-text pb-2 border-b border-border/50">Quick Actions</h3>
-            <div className="grid grid-cols-1 gap-2 text-xs">
+        {/* Sidebar Cards */}
+        <div className="lg:col-span-4 space-y-5">
+          {/* Storage Status */}
+          <div className="bg-surface border border-border rounded-xl p-5 space-y-3 shadow-xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-2">
+              {storageStatus.provider === "r2" ? (
+                <Cloud className="w-4 h-4 text-accent" />
+              ) : (
+                <HardDrive className="w-4 h-4 text-text-muted" />
+              )}
+              <span>Motor de Almacenamiento</span>
+            </h3>
+
+            <div className="p-3 rounded-lg bg-surface-hover/40 border border-border text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Motor:</span>
+                <span className="font-semibold text-text">
+                  {storageStatus.provider === "r2" ? "Cloudflare R2" : "Carpeta Local"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Estado:</span>
+                <span className="font-semibold text-emerald-500">Operativo</span>
+              </div>
+            </div>
+
+            <Link href="/admin/media" className="block">
+              <Button variant="outline" size="sm" className="w-full text-xs">
+                <ImageIcon className="w-3.5 h-3.5 mr-1 text-accent" />
+                Biblioteca de Medios
+              </Button>
+            </Link>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-surface border border-border rounded-xl p-5 space-y-2.5 shadow-xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border">
+              Accesos Rápidos
+            </h3>
+            <div className="space-y-1.5 text-xs">
               <Link
                 href="/admin/posts/new"
-                className="p-2.5 rounded-lg bg-surface-hover hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5 font-semibold text-text"
+                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
-                <Plus className="w-4 h-4 text-primary" />
-                <span>Compose New Post</span>
-              </Link>
-              <Link
-                href="/admin/categories"
-                className="p-2.5 rounded-lg bg-surface-hover hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5 font-semibold text-text"
-              >
-                <FolderTree className="w-4 h-4 text-secondary" />
-                <span>Manage Categories</span>
+                <Plus className="w-4 h-4 text-accent shrink-0" />
+                <span>Escribir Artículo</span>
               </Link>
               <Link
                 href="/admin/settings"
-                className="p-2.5 rounded-lg bg-surface-hover hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5 font-semibold text-text"
+                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
-                <Settings className="w-4 h-4 text-accent" />
-                <span>Site Settings & AI</span>
+                <Compass className="w-4 h-4 text-accent shrink-0" />
+                <span>Configurar Navbar</span>
+              </Link>
+              <Link
+                href="/admin/categories"
+                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
+              >
+                <FolderTree className="w-4 h-4 text-accent shrink-0" />
+                <span>Categorías ({categoryCount?.count || 0})</span>
               </Link>
               <Link
                 href="/admin/analytics"
-                className="p-2.5 rounded-lg bg-surface-hover hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5 font-semibold text-text"
+                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
-                <TrendingUp className="w-4 h-4 text-success" />
-                <span>Traffic Analytics</span>
+                <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>Estadísticas y Tráfico</span>
               </Link>
             </div>
           </div>

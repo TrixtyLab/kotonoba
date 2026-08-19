@@ -2,11 +2,17 @@ import { sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 
+/**
+ * Type alias for an active BetterSQLite3 Drizzle database instance.
+ */
 export type DatabaseInstance = BetterSQLite3Database<typeof schema>;
 
 /**
- * Runs Drizzle/SQLite table creation if tables do not exist.
- * Designed to execute idempotently upon initial connection.
+ * Idempotently executes table definitions and schema migrations on SQLite startup.
+ * Creates any missing database tables and applies incremental column additions safely.
+ *
+ * @param dbInstance - The Drizzle ORM database instance to migrate.
+ * @returns Void.
  */
 export function runMigrations(dbInstance: DatabaseInstance): void {
   const db = dbInstance;
@@ -24,9 +30,18 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     custom_css TEXT DEFAULT '',
     primary_color TEXT DEFAULT '#6366f1',
     font_family TEXT DEFAULT 'Inter',
+    nav_links TEXT DEFAULT '[]',
+    nav_alignment TEXT DEFAULT 'left',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`);
+
+  try {
+    db.run(sql`ALTER TABLE sites ADD COLUMN nav_links TEXT DEFAULT '[]'`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE sites ADD COLUMN nav_alignment TEXT DEFAULT 'left'`);
+  } catch {}
 
   db.run(sql`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -55,8 +70,17 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     views INTEGER NOT NULL DEFAULT 0,
-    pinned INTEGER NOT NULL DEFAULT 0
+    pinned INTEGER NOT NULL DEFAULT 0,
+    short_url TEXT,
+    dub_link_id TEXT
   )`);
+
+  try {
+    db.run(sql`ALTER TABLE posts ADD COLUMN short_url TEXT`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE posts ADD COLUMN dub_link_id TEXT`);
+  } catch {}
 
   db.run(sql`CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
@@ -88,27 +112,71 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
   db.run(sql`CREATE TABLE IF NOT EXISTS analytics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    post_id TEXT REFERENCES posts(id) ON DELETE SET NULL,
+    post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
     path TEXT NOT NULL,
-    referrer TEXT,
-    user_agent TEXT,
-    country TEXT,
-    timestamp INTEGER NOT NULL
+    referrer TEXT DEFAULT '',
+    user_agent TEXT DEFAULT '',
+    ip_hash TEXT NOT NULL,
+    country TEXT DEFAULT '',
+    city TEXT DEFAULT '',
+    device TEXT DEFAULT 'desktop',
+    browser TEXT DEFAULT '',
+    os TEXT DEFAULT '',
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
+    utm_term TEXT,
+    utm_content TEXT,
+    created_at INTEGER NOT NULL
   )`);
+
+  try {
+    db.run(sql`ALTER TABLE analytics ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0`);
+    db.run(sql`UPDATE analytics SET created_at = timestamp WHERE created_at = 0 AND timestamp IS NOT NULL`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_source TEXT`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_medium TEXT`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_campaign TEXT`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_term TEXT`);
+  } catch {}
+  try {
+    db.run(sql`ALTER TABLE analytics ADD COLUMN utm_content TEXT`);
+  } catch {}
 
   db.run(sql`CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     key TEXT NOT NULL,
-    value TEXT NOT NULL DEFAULT ''
+    value TEXT NOT NULL
   )`);
 
-  db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS settings_site_key_idx ON settings(site_id, key)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS posts_site_slug_idx ON posts(site_id, slug)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS posts_site_status_idx ON posts(site_id, status)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS posts_published_at_idx ON posts(published_at)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS categories_site_slug_idx ON categories(site_id, slug)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS tags_site_slug_idx ON tags(site_id, slug)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS analytics_site_ts_idx ON analytics(site_id, timestamp)`);
-  db.run(sql`CREATE INDEX IF NOT EXISTS analytics_post_idx ON analytics(post_id)`);
+  const indexes = [
+    sql`CREATE INDEX IF NOT EXISTS sites_domain_idx ON sites(domain)`,
+    sql`CREATE INDEX IF NOT EXISTS users_email_idx ON users(email)`,
+    sql`CREATE INDEX IF NOT EXISTS posts_site_slug_idx ON posts(site_id, slug)`,
+    sql`CREATE INDEX IF NOT EXISTS posts_site_status_idx ON posts(site_id, status)`,
+    sql`CREATE INDEX IF NOT EXISTS posts_published_at_idx ON posts(published_at)`,
+    sql`CREATE INDEX IF NOT EXISTS categories_site_slug_idx ON categories(site_id, slug)`,
+    sql`CREATE INDEX IF NOT EXISTS tags_site_slug_idx ON tags(site_id, slug)`,
+    sql`CREATE INDEX IF NOT EXISTS pc_post_idx ON post_categories(post_id)`,
+    sql`CREATE INDEX IF NOT EXISTS pc_category_idx ON post_categories(category_id)`,
+    sql`CREATE INDEX IF NOT EXISTS pt_post_idx ON post_tags(post_id)`,
+    sql`CREATE INDEX IF NOT EXISTS pt_tag_idx ON post_tags(tag_id)`,
+    sql`CREATE INDEX IF NOT EXISTS analytics_site_idx ON analytics(site_id)`,
+    sql`CREATE INDEX IF NOT EXISTS analytics_created_idx ON analytics(created_at)`,
+    sql`CREATE INDEX IF NOT EXISTS settings_site_key_idx ON settings(site_id, key)`,
+  ];
+
+  for (const idxQuery of indexes) {
+    try {
+      db.run(idxQuery);
+    } catch {}
+  }
 }

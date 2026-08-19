@@ -17,6 +17,7 @@ import { ensureDir } from "@/lib/utils/fs";
 import { generateId } from "@/lib/utils/slug";
 import { getUploadDir } from "./export";
 
+/** Raw category record structure extracted from backup JSON. */
 export interface BackupDataCategory {
   id?: string;
   name?: string;
@@ -25,22 +26,26 @@ export interface BackupDataCategory {
   sortOrder?: number;
 }
 
+/** Raw tag record structure extracted from backup JSON. */
 export interface BackupDataTag {
   id?: string;
   name?: string;
   slug?: string;
 }
 
+/** Raw post-category relation extracted from backup JSON. */
 export interface BackupDataPostCategory {
   postId: string;
   categoryId: string;
 }
 
+/** Raw post-tag relation extracted from backup JSON. */
 export interface BackupDataPostTag {
   postId: string;
   tagId: string;
 }
 
+/** Raw post record structure extracted from backup JSON. */
 export interface BackupDataPost {
   id?: string;
   title?: string;
@@ -58,11 +63,13 @@ export interface BackupDataPost {
   pinned?: boolean | number;
 }
 
+/** Raw setting record structure extracted from backup JSON. */
 export interface BackupDataSetting {
   key?: string;
   value?: string;
 }
 
+/** Root deserialized database dump schema from backup data.json. */
 export interface BackupData {
   categories?: BackupDataCategory[];
   tags?: BackupDataTag[];
@@ -72,13 +79,19 @@ export interface BackupData {
   settings?: BackupDataSetting[];
 }
 
+/** Configuration options governing the restoration strategy. */
 export interface RestoreOptions {
+  /** Restoration mode: 'merge' to upsert records, 'replace' to purge existing site data before inserting. */
   mode: "merge" | "replace";
+  /** Fallback user ID to assign to posts if author records cannot be matched. */
   currentUserId: string;
 }
 
+/** Result outcome of a backup restoration execution. */
 export interface RestoreResult {
+  /** Success status indicator. */
   success: boolean;
+  /** Numerical summary of restored entities. */
   stats: {
     posts: number;
     categories: number;
@@ -86,12 +99,18 @@ export interface RestoreResult {
     settings: number;
     media: number;
   };
+  /** Error description string if restoration failed. */
   error?: string;
 }
 
 /**
- * Restores a site backup from a ZIP buffer into the target site.
- * Supports both "merge" (upsert without deleting existing items) and "replace" (clean overwrite) modes.
+ * Restores a tenant site's database records and media assets from a provided ZIP backup archive.
+ * Supports both non-destructive merge (upsert) and full clean replace restoration strategies.
+ *
+ * @param zipBuffer - Binary Buffer containing the ZIP archive.
+ * @param targetSiteId - Unique identifier of the tenant site receiving the restored data.
+ * @param options - Restoration options specifying mode ('merge' | 'replace') and fallback user.
+ * @returns A Promise resolving to a RestoreResult object with entity counts or failure reasons.
  */
 export async function restoreSiteBackupZip(
   zipBuffer: Buffer,
@@ -100,7 +119,6 @@ export async function restoreSiteBackupZip(
 ): Promise<RestoreResult> {
   const db = getDb();
 
-  // 1. Verify target site exists
   const targetSite = db.select().from(sites).where(eq(sites.id, targetSiteId)).get();
   if (!targetSite) {
     return {
@@ -110,7 +128,6 @@ export async function restoreSiteBackupZip(
     };
   }
 
-  // 2. Load ZIP
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(zipBuffer);
@@ -122,7 +139,6 @@ export async function restoreSiteBackupZip(
     };
   }
 
-  // 3. Extract manifest and data JSON
   const dataFile = zip.file("data.json");
   if (!dataFile) {
     return {
@@ -157,16 +173,13 @@ export async function restoreSiteBackupZip(
   let restoredSettings = 0;
   let restoredMedia = 0;
 
-  // 4. If mode is "replace", purge existing site data
   if (options.mode === "replace") {
-    // Delete existing posts (cascades postCategories and postTags)
     db.delete(posts).where(eq(posts.siteId, targetSiteId)).run();
     db.delete(categories).where(eq(categories.siteId, targetSiteId)).run();
     db.delete(tags).where(eq(tags.siteId, targetSiteId)).run();
     db.delete(settings).where(eq(settings.siteId, targetSiteId)).run();
   }
 
-  // 5. Restore Categories
   const categoryIdMap = new Map<string, string>();
   for (const cat of importedCategories) {
     if (!cat.name || !cat.slug) continue;
@@ -204,7 +217,6 @@ export async function restoreSiteBackupZip(
     restoredCategories++;
   }
 
-  // 6. Restore Tags
   const tagIdMap = new Map<string, string>();
   for (const tag of importedTags) {
     if (!tag.name || !tag.slug) continue;
@@ -232,7 +244,6 @@ export async function restoreSiteBackupZip(
     restoredTags++;
   }
 
-  // 7. Check valid authors or fallback to existing/current user
   const allUsers = db.select({ id: users.id }).from(users).all();
   const validUserIds = new Set(allUsers.map((u) => u.id));
   let fallbackUserId = options.currentUserId && validUserIds.has(options.currentUserId)
@@ -253,7 +264,6 @@ export async function restoreSiteBackupZip(
     validUserIds.add(defaultId);
   }
 
-  // 8. Restore Posts
   for (const post of importedPosts) {
     if (!post.title || !post.slug) continue;
 
@@ -289,7 +299,6 @@ export async function restoreSiteBackupZip(
         .where(eq(posts.id, existingPost.id))
         .run();
 
-      // Clear existing relations to avoid duplicate keys
       db.delete(postCategories).where(eq(postCategories.postId, existingPost.id)).run();
       db.delete(postTags).where(eq(postTags.postId, existingPost.id)).run();
     } else {
@@ -317,7 +326,6 @@ export async function restoreSiteBackupZip(
         .run();
     }
 
-    // Restore Post Categories
     const matchingPostCats = post.id
       ? importedPostCategories.filter((pc) => pc.postId === post.id)
       : [];
@@ -329,12 +337,11 @@ export async function restoreSiteBackupZip(
             .values({ postId: targetPostId, categoryId: mappedCatId })
             .run();
         } catch {
-          // ignore duplicate relation constraint
+          // Ignore duplicate constraint
         }
       }
     }
 
-    // Restore Post Tags
     const matchingPostTags = post.id
       ? importedPostTags.filter((pt) => pt.postId === post.id)
       : [];
@@ -346,7 +353,7 @@ export async function restoreSiteBackupZip(
             .values({ postId: targetPostId, tagId: mappedTagId })
             .run();
         } catch {
-          // ignore duplicate relation constraint
+          // Ignore duplicate constraint
         }
       }
     }
@@ -354,7 +361,6 @@ export async function restoreSiteBackupZip(
     restoredPosts++;
   }
 
-  // 9. Restore Settings
   for (const s of importedSettings) {
     if (!s.key) continue;
     const existing = db
@@ -380,7 +386,6 @@ export async function restoreSiteBackupZip(
     restoredSettings++;
   }
 
-  // 10. Extract Media Files to data/uploads
   const uploadDir = getUploadDir();
   ensureDir(uploadDir);
 
@@ -388,7 +393,6 @@ export async function restoreSiteBackupZip(
   for (const entryPath of entries) {
     if (entryPath.startsWith("uploads/") && !zip.files[entryPath].dir) {
       const filename = path.basename(entryPath);
-      // Prevent directory traversal or invalid hidden files
       if (!filename || filename.startsWith(".") || filename.includes("/") || filename.includes("\\")) {
         continue;
       }

@@ -2,8 +2,8 @@ import { getRequestConfig } from "next-intl/server";
 import { routing, type Locale } from "./routing";
 
 /**
- * Loads localized messages for request execution.
- * Merges requested locale with fallback English messages to ensure zero missing keys.
+ * Server-side request configuration loader for Next-Intl.
+ * Dynamically loads translation dictionaries, automatically merging fallback strings to prevent missing key errors.
  */
 export default getRequestConfig(async ({ requestLocale }) => {
   let locale = await requestLocale;

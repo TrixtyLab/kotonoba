@@ -5,8 +5,10 @@ import { redirect } from "@/i18n/routing";
 import { AdminClientLayout } from "@/components/admin/AdminClientLayout";
 
 /**
- * Server layout for admin portal enforcing role-based session authentication
- * and injecting multi-tenant site metadata.
+ * Server layout component enforcing role-based authentication and supplying multi-tenant site context to the admin panel shell.
+ *
+ * @param props - Object containing children elements and route params Promise.
+ * @returns React JSX authenticated admin layout shell.
  */
 export default async function AdminLayout({
   children,

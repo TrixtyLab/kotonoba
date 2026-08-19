@@ -1,22 +1,42 @@
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { posts } from "@/lib/db/schema";
+import { posts, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { formatDate } from "@/lib/utils/date";
+import { LineSidebar } from "@/components/blog/LineSidebar";
 import { Link } from "@/i18n/routing";
-import { Calendar, ArrowLeft } from "lucide-react";
+import { BookOpen } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
-export async function generateMetadata(): Promise<Metadata> {
+import { getLocalizedText } from "@/lib/utils/localization";
+
+/**
+ * Generates SEO metadata for the chronological blog archive.
+ *
+ * @param props - Object containing route params with locale.
+ * @returns Metadata object with archive title.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   const site = await getActiveSite();
+  const t = await getTranslations({ locale, namespace: "blog" });
+  const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
   return {
-    title: `Archive — ${site?.name || "Blog"}`,
-    description: "Chronological history of all published articles",
+    title: `${t("archive")} — ${siteName}`,
+    description: t("archive"),
   };
 }
 
 /**
- * Chronological archive page grouping articles by publication year.
+ * Public monthly archive page displaying grouped historical posts cataloged by year and month.
+ *
+ * @param props - Object containing route params Promise.
+ * @returns React JSX monthly archive view.
  */
 export default async function ArchivePage({
   params,
@@ -26,19 +46,29 @@ export default async function ArchivePage({
   const { locale } = await params;
   const site = await getActiveSite();
   const db = getDb();
+  const t = await getTranslations({ locale, namespace: "blog" });
 
   const allPosts = site
     ? db
-        .select()
+        .select({
+          id: posts.id,
+          title: posts.title,
+          slug: posts.slug,
+          excerpt: posts.excerpt,
+          publishedAt: posts.publishedAt,
+          views: posts.views,
+        })
         .from(posts)
         .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
         .orderBy(desc(posts.publishedAt))
         .all()
     : [];
 
+  const allCategories = site ? db.select().from(categories).where(eq(categories.siteId, site.id)).all() : [];
+
   const groupedByYear: Record<string, typeof allPosts> = {};
   for (const post of allPosts) {
-    const year = post.publishedAt ? post.publishedAt.getFullYear().toString() : "Undated";
+    const year = post.publishedAt ? post.publishedAt.getFullYear().toString() : "Other";
     if (!groupedByYear[year]) groupedByYear[year] = [];
     groupedByYear[year].push(post);
   }
@@ -46,50 +76,58 @@ export default async function ArchivePage({
   const years = Object.keys(groupedByYear).sort((a, b) => Number(b) - Number(a));
 
   return (
-    <div className="space-y-8 max-w-3xl mx-auto">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-primary transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to all articles
-      </Link>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+      {/* Left Column: Chronological Post List */}
+      <div className="lg:col-span-8 space-y-10">
+        <div className="pb-4 border-b border-border/70">
+          <h1 className="text-2xl font-bold text-text">{t("archive")}</h1>
+          <p className="text-xs text-text-muted mt-1">{t("totalArticles", { count: allPosts.length })}</p>
+        </div>
 
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-text">Article Archive</h1>
-        <p className="text-sm text-text-muted">Chronological timeline of all published content.</p>
+        <div className="space-y-10">
+          {years.map((year) => (
+            <section key={year} className="space-y-4">
+              <h2 className="text-base font-bold text-text pb-2 border-b border-border/60">
+                {year}
+              </h2>
+
+              <ul className="space-y-3 pl-2">
+                {groupedByYear[year].map((post) => (
+                  <li key={post.id} className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 text-sm">
+                    <Link
+                      href={`/entry/${post.slug}`}
+                      className="hover:text-primary transition-colors font-medium line-clamp-1"
+                    >
+                      {post.title}
+                    </Link>
+                    {post.publishedAt && (
+                      <span className="text-xs text-text-muted shrink-0">
+                        {formatDate(post.publishedAt, locale)}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+
+          {years.length === 0 && (
+            <div className="py-20 text-center space-y-3">
+              <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
+              <p className="text-sm text-text-muted">{t("noPosts")}</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-10 pt-4">
-        {years.map((year) => (
-          <section key={year} className="space-y-4">
-            <h2 className="text-xl font-bold text-primary flex items-center gap-2 pb-2 border-b border-border">
-              <Calendar className="w-5 h-5" />
-              <span>{year}</span>
-            </h2>
-            <ul className="divide-y divide-border/40">
-              {groupedByYear[year].map((post) => (
-                <li key={post.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 group">
-                  <Link
-                    href={`/entry/${post.slug}`}
-                    className="text-sm font-semibold text-text group-hover:text-primary transition-colors"
-                  >
-                    {post.title}
-                  </Link>
-                  {post.publishedAt && (
-                    <span className="text-xs text-text-muted shrink-0 font-mono">
-                      {formatDate(post.publishedAt, locale)}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-
-        {years.length === 0 && (
-          <div className="text-center py-16 text-text-muted text-sm">No published articles yet.</div>
-        )}
+      {/* Right Column: Profile Sidebar */}
+      <div className="lg:col-span-4 lg:sticky lg:top-8">
+        <LineSidebar
+          site={site || { name: "Blog" }}
+          latestPosts={allPosts.slice(0, 5)}
+          categories={allCategories}
+          locale={locale}
+        />
       </div>
     </div>
   );

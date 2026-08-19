@@ -1,28 +1,52 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { createSite, updateSite, deleteSite } from "@/actions/sites";
+import React, { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
+import { createSite, updateSite, deleteSite, setActiveSiteAction } from "@/actions/sites";
 import { Button } from "@/components/ui/Button";
-import { Input, Textarea } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
 import { Plus, Edit3, Trash2, Globe, ExternalLink, Check } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
+import { getLocalizedText } from "@/lib/utils/localization";
 
+/**
+ * Complete database entity model representation of a website instance.
+ */
 export interface SiteModel {
+  /** Unique database identifier. */
   id: string;
+  /** Display title of the site. */
   name: string;
+  /** Hostname domain. */
   domain: string;
+  /** Subtitle tagline. */
   subtitle?: string | null;
+  /** Descriptive overview. */
   description?: string | null;
+  /** Default language locale code. */
   locale: string;
+  /** Active theme scheme. */
   theme: "dark" | "light";
+  /** Primary accent color hex code. */
   primaryColor?: string | null;
+  /** Active typography font family. */
   fontFamily?: string | null;
+  /** Serialized navigation links JSON string. */
+  navLinks?: string | null;
+  /** Navigation alignment setting. */
+  navAlignment?: "left" | "center" | "right" | null;
 }
 
 /**
- * Multi-tenant site manager allowing creation and maintenance of distinct blog domains and branding.
+ * Multi-site management panel allowing administrators to provision new blog domains, update site branding, and activate workspaces.
+ *
+ * @param props - Object containing the currentSiteId and initial SiteModel list.
+ * @returns React JSX multi-site workspace manager view.
  */
 export function SitesManagerClient({
   currentSiteId,
@@ -31,16 +55,21 @@ export function SitesManagerClient({
   currentSiteId: string;
   initialSites: SiteModel[];
 }) {
+  const t = useTranslations("admin");
+  const ts = useTranslations("settings");
+  const tc = useTranslations("common");
   const router = useRouter();
+  const toast = useToast();
   const [sites, setSites] = useState(initialSites);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [siteToDelete, setSiteToDelete] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [locale, setLocale] = useState("en");
+  const [locale, setLocale] = useState("es");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [primaryColor, setPrimaryColor] = useState("#6366f1");
+  const [primaryColor, setPrimaryColor] = useState("#3b82f6");
   const [isPending, startTransition] = useTransition();
 
   function openCreateModal() {
@@ -48,9 +77,9 @@ export function SitesManagerClient({
     setName("");
     setDomain("");
     setSubtitle("");
-    setLocale("en");
+    setLocale("es");
     setTheme("dark");
-    setPrimaryColor("#6366f1");
+    setPrimaryColor("#3b82f6");
     setModalOpen(true);
   }
 
@@ -59,14 +88,21 @@ export function SitesManagerClient({
     setName(site.name);
     setDomain(site.domain);
     setSubtitle(site.subtitle || "");
-    setLocale(site.locale || "en");
+    setLocale(site.locale || "es");
     setTheme(site.theme || "dark");
-    setPrimaryColor(site.primaryColor || "#6366f1");
+    setPrimaryColor(site.primaryColor || "#3b82f6");
     setModalOpen(true);
   }
 
   async function handleSave() {
-    if (!name.trim() || !domain.trim()) return;
+    if (!name.trim()) {
+      toast.error(ts("siteName"));
+      return;
+    }
+    if (!domain.trim()) {
+      toast.error(ts("domain"));
+      return;
+    }
 
     startTransition(async () => {
       const payload = {
@@ -87,6 +123,9 @@ export function SitesManagerClient({
             prev.map((s) => (s.id === editingId ? { ...s, ...payload } : s))
           );
           setModalOpen(false);
+          toast.success(t("siteUpdated"));
+        } else {
+          toast.error(ts("saveError"));
         }
       } else {
         const res = await createSite(payload);
@@ -96,102 +135,128 @@ export function SitesManagerClient({
             { id: res.id as string, ...payload },
           ]);
           setModalOpen(false);
+          toast.success(t("siteCreated"));
+        } else {
+          toast.error(ts("saveError"));
         }
       }
     });
   }
 
-  async function handleDelete(id: string) {
+  function handleDeleteClick(id: string) {
     if (sites.length <= 1) {
-      alert("Cannot delete the only remaining blog.");
+      toast.error("No es posible eliminar el único blog registrado.");
       return;
     }
-    if (!confirm("Are you sure you want to delete this blog and all its articles? This cannot be undone.")) {
-      return;
-    }
+    setSiteToDelete(id);
+  }
 
+  async function handleConfirmDelete() {
+    if (!siteToDelete) return;
+    const id = siteToDelete;
     startTransition(async () => {
       const res = await deleteSite(id);
       if (res.success) {
         setSites((prev) => prev.filter((s) => s.id !== id));
+        toast.success(t("siteDeleted"));
+      } else {
+        toast.error(ts("saveError"));
       }
+      setSiteToDelete(null);
     });
   }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text tracking-tight">Multi-Blog Manager</h1>
-          <p className="text-xs text-text-muted">Host and govern multiple independent blogs with custom domains/subdomains</p>
+          <h1 className="text-xl font-bold text-text tracking-tight">{t("siteManager")}</h1>
+          <p className="text-xs text-text-muted mt-0.5">
+            {t("siteManager")} ({sites.length} {tc("sites").toLowerCase()}).
+          </p>
         </div>
 
-        <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-4 h-4" />}>
-          Create New Blog
+        <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-3.5 h-3.5" />}>
+          {t("addSite")}
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sites.map((s) => {
           const isCurrent = s.id === currentSiteId;
+          const displayName = getLocalizedText(s.name, s.locale);
+          const displaySubtitle = getLocalizedText(s.subtitle, s.locale);
 
           return (
             <div
               key={s.id}
-              className={`glass p-6 rounded-2xl border flex flex-col justify-between space-y-4 transition-all ${
-                isCurrent ? "border-primary ring-2 ring-primary/20 shadow-xl" : "border-border hover:border-border/80"
+              className={`p-5 rounded-xl border flex flex-col justify-between space-y-4 transition-all bg-surface ${
+                isCurrent
+                  ? "border-accent ring-1 ring-accent shadow-xs"
+                  : "border-border hover:border-border-hover shadow-2xs"
               }`}
             >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-primary" />
-                    <h3 className="text-base font-bold text-text truncate">{s.name}</h3>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Globe className="w-4 h-4 text-accent shrink-0" />
+                    <h3 className="text-sm font-bold text-text truncate">{displayName}</h3>
                   </div>
                   {isCurrent ? (
-                    <Badge variant="primary" className="bg-primary/20 text-primary">
-                      <Check className="w-3 h-3 mr-1" /> Active
+                    <Badge variant="success">
+                      <Check className="w-3 h-3 mr-1" /> {t("activeSite")}
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">Inactive</Badge>
+                    <Badge variant="secondary">Inactivo</Badge>
                   )}
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-xs font-mono text-primary font-semibold truncate">{s.domain}</p>
-                  {s.subtitle && <p className="text-xs text-text-muted line-clamp-2">{s.subtitle}</p>}
+                <div className="space-y-0.5">
+                  <p className="text-xs font-mono text-accent font-semibold truncate">{s.domain}</p>
+                  {displaySubtitle && <p className="text-xs text-text-muted line-clamp-2">{displaySubtitle}</p>}
                 </div>
 
-                <div className="flex items-center gap-3 text-[11px] text-text-muted pt-2">
+                <div className="flex items-center gap-2.5 text-[11px] text-text-muted pt-2 border-t border-border">
                   <span className="uppercase font-mono font-semibold">{s.locale}</span>
                   <span>•</span>
-                  <span className="capitalize">{s.theme} mode</span>
+                  <span className="capitalize">{s.theme === "dark" ? ts("themeDark") : ts("themeLight")}</span>
                   <span>•</span>
-                  <span className="inline-block w-3 h-3 rounded-full border" style={{ backgroundColor: s.primaryColor || "#6366f1" }} />
+                  <span
+                    className="inline-block w-3 h-3 rounded-full border border-border"
+                    style={{ backgroundColor: s.primaryColor || "#3b82f6" }}
+                  />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                <div className="flex items-center gap-1">
-                  {!isCurrent && (
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <div className="flex items-center gap-2">
+                  {!isCurrent ? (
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="primary"
+                      disabled={isPending}
                       onClick={() => {
-                        router.push(`/admin?site=${s.id}`);
-                        router.refresh();
+                        startTransition(async () => {
+                          await setActiveSiteAction(s.id);
+                          toast.success(t("siteActivated"));
+                          router.refresh();
+                        });
                       }}
-                      className="text-xs text-primary hover:underline p-0 mr-2"
+                      className="text-xs"
                     >
-                      Switch Here
+                      {tc("admin")}
                     </Button>
+                  ) : (
+                    <span className="text-xs text-accent font-semibold">{t("activeSite")}</span>
                   )}
                   <a
                     href={`http://${s.domain}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-1.5 rounded hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-                    title="Visit site"
+                    className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
+                    title={tc("view")}
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -199,17 +264,19 @@ export function SitesManagerClient({
 
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
                     onClick={() => openEditModal(s)}
-                    className="p-1.5 rounded hover:bg-surface-hover text-text-muted hover:text-primary transition-colors"
-                    title="Edit blog settings"
+                    className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
+                    title={tc("edit")}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
                   {sites.length > 1 && (
                     <button
-                      onClick={() => handleDelete(s.id)}
-                      className="p-1.5 rounded hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
-                      title="Delete blog"
+                      type="button"
+                      onClick={() => handleDeleteClick(s.id)}
+                      className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
+                      title={tc("delete")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -221,92 +288,75 @@ export function SitesManagerClient({
         })}
       </div>
 
+      {/* Modal */}
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? "Edit Blog Instance" : "Create New Blog Instance"}
+        title={editingId ? tc("edit") : t("addSite")}
       >
-        <div className="space-y-4">
+        <div className="space-y-3 text-xs">
           <Input
-            label="Blog Name"
-            placeholder="e.g. Mobile Engineering Blog"
+            label={ts("siteName")}
+            placeholder="ej. Blog de Tecnología"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <Input
-            label="Domain / Subdomain (Host header)"
-            placeholder="e.g. mobile.mycompany.com"
+            label={t("domain")}
+            placeholder="ej. blog.midominio.com"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
           />
           <Input
-            label="Subtitle / Tagline"
-            placeholder="iOS, Android & React Native deep dives"
+            label={ts("siteSubtitle")}
+            placeholder="Tutoriales, artículos y tecnología"
             value={subtitle}
             onChange={(e) => setSubtitle(e.target.value)}
           />
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
-                Default Language
-              </label>
-              <select
-                value={locale}
-                onChange={(e) => setLocale(e.target.value)}
-                className="w-full bg-input border border-border rounded-md px-3 py-2 text-xs text-text focus:outline-none focus:border-primary"
-              >
-                <option value="en">English (en)</option>
-                <option value="es">Español (es)</option>
-                <option value="fr">Français (fr)</option>
-                <option value="de">Deutsch (de)</option>
-                <option value="pt">Português (pt)</option>
-                <option value="zh">中文 (zh)</option>
-                <option value="ja">日本語 (ja)</option>
-              </select>
-            </div>
+            <Select
+              label={ts("defaultLocale")}
+              value={locale}
+              onChange={(val) => setLocale(val)}
+              options={[
+                { value: "es", label: "Español (es)" },
+                { value: "en", label: "English (en)" },
+              ]}
+            />
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
-                Theme
-              </label>
-              <select
-                value={theme}
-                onChange={(e) => setTheme(e.target.value === "light" ? "light" : "dark")}
-                className="w-full bg-input border border-border rounded-md px-3 py-2 text-xs text-text focus:outline-none focus:border-primary"
-              >
-                <option value="dark">Dark Theme</option>
-                <option value="light">Light Theme</option>
-              </select>
-            </div>
+            <Select
+              label={ts("theme")}
+              value={theme}
+              onChange={(val) => setTheme(val === "light" ? "light" : "dark")}
+              options={[
+                { value: "dark", label: ts("themeDark") },
+                { value: "light", label: ts("themeLight") },
+              ]}
+            />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
-              Theme Accent Color
-            </label>
-            <div className="flex gap-2.5">
-              {["#6366f1", "#8b5cf6", "#ec4899", "#3b82f6", "#10b981", "#f59e0b"].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setPrimaryColor(c)}
-                  style={{ backgroundColor: c }}
-                  className={`w-7 h-7 rounded-full transition-transform btn-press ${
-                    primaryColor === c ? "ring-2 ring-white scale-110" : "opacity-80 hover:opacity-100"
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-border/50">
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave} loading={isPending}>
-              {editingId ? "Save Changes" : "Create Blog"}
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={() => setModalOpen(false)}>
+              {tc("cancel")}
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleSave} loading={isPending}>
+              {editingId ? t("saveChanges") : t("addSite")}
             </Button>
           </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        isOpen={Boolean(siteToDelete)}
+        onClose={() => setSiteToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={tc("delete")}
+        message={tc("confirmDelete")}
+        confirmText={tc("delete")}
+        cancelText={tc("cancel")}
+        variant="danger"
+        isLoading={isPending}
+      />
     </div>
   );
 }

@@ -6,7 +6,10 @@ import { useTheme } from "./ThemeProvider";
 import { generateId } from "@/lib/utils/slug";
 
 /**
- * Dynamically renders Mermaid diagrams in both light and dark modes with error fallbacks.
+ * Dynamic client-side renderer for Mermaid flowchart and sequence diagrams with theme synchronization.
+ *
+ * @param props - Object containing the raw chart definition string.
+ * @returns React JSX SVG container or syntax error fallback.
  */
 export function MermaidRenderer({ chart }: { chart: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -17,7 +20,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
   useEffect(() => {
     let isMounted = true;
 
-    async function renderChart() {
+    async function renderChart(): Promise<void> {
       if (!chart.trim()) return;
 
       try {
@@ -59,10 +62,18 @@ export function MermaidRenderer({ chart }: { chart: string }) {
     );
   }
 
+  if (!svgHtml) {
+    return (
+      <div className="p-4 my-3 text-center text-text-muted text-xs bg-surface-hover/30 rounded-md animate-pulse">
+        Rendering diagram…
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
-      className="my-6 p-4 rounded-lg bg-surface/50 border border-border flex justify-center items-center overflow-x-auto"
+      className="my-4 flex justify-center overflow-x-auto p-4 bg-surface rounded-xl border border-border"
       dangerouslySetInnerHTML={{ __html: svgHtml }}
     />
   );

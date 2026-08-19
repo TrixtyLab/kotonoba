@@ -7,7 +7,10 @@ import { Plus } from "lucide-react";
 import { PostsListClient } from "@/components/admin/PostsListClient";
 
 /**
- * Article management table page providing search, status filtering, and bulk operations.
+ * Server page component loading and rendering the administrative posts management table for the active blog site.
+ *
+ * @param props - Object containing route params Promise with active locale.
+ * @returns React JSX posts list view.
  */
 export default async function AdminPostsPage({
   params,

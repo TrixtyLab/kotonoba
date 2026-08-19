@@ -3,28 +3,46 @@
 import { getDb } from "@/lib/db";
 import { users, sites, categories, posts, postCategories, settings } from "@/lib/db/schema";
 import { hashPassword } from "@/lib/auth/password";
-import { signAccessToken } from "@/lib/auth/jwt";
+import { signAccessToken, signRefreshToken, getSessionDuration, getRefreshDuration } from "@/lib/auth/jwt";
 import { generateId, generateSlug } from "@/lib/utils/slug";
 import { cookies } from "next/headers";
 import { sql } from "drizzle-orm";
+import { renderMarkdownToHtml } from "@/lib/utils/markdown";
 
+/**
+ * Input configuration payload provided by the initial setup wizard.
+ */
 export interface SetupWizardData {
+  /** Full display name of the primary administrator. */
   adminName: string;
+  /** Primary administrator email address. */
   adminEmail: string;
+  /** Plaintext administrator password to hash. */
   adminPassword: string;
+  /** Display title for the initial blog site. */
   siteName: string;
+  /** Subtitle and tagline for the initial blog site. */
   siteSubtitle: string;
+  /** Bound domain hostname for routing (e.g., 'localhost', 'myblog.com'). */
   domain: string;
+  /** Default BCP 47 language code for the blog. */
   locale: string;
+  /** Default visual theme mode. */
   theme: "dark" | "light";
+  /** Primary branding color in hex format. */
   primaryColor: string;
+  /** Default typography font family name. */
   fontFamily: string;
+  /** Name of the default starter category. */
   categoryName: string;
 }
 
 /**
- * Initializes the entire CMS in a single atomic transaction:
- * Creates the primary site, the super_admin account, initial category, welcome post, and default settings.
+ * Initializes the entire application state during first-time deployment.
+ * Provisions the primary site entity, root administrator account, starter category, welcome blog post, default settings, and signs in the administrator.
+ *
+ * @param data - Full setup wizard configuration payload.
+ * @returns A Promise resolving to an object indicating success with siteId and userId, or error message if already initialized.
  */
 export async function completeSetupWizard(data: SetupWizardData) {
   const db = getDb();
@@ -56,7 +74,7 @@ export async function completeSetupWizard(data: SetupWizardData) {
       domain,
       locale: data.locale || "en",
       theme: data.theme || "dark",
-      primaryColor: data.primaryColor || "#6366f1",
+      primaryColor: data.primaryColor || "#3b82f6",
       fontFamily: data.fontFamily || "Inter",
       createdAt: now,
       updatedAt: now,
@@ -120,7 +138,7 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
       title: postTitle,
       slug: postSlug,
       contentMd: welcomeContent,
-      contentHtml: "",
+      contentHtml: renderMarkdownToHtml(welcomeContent),
       excerpt: "Your new Kotonoba site is up and running. Explore the admin panel, write articles, and customize your theme.",
       status: "published",
       locale: data.locale || "en",
@@ -163,6 +181,10 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
     role: "super_admin",
     siteId,
   });
+  const refreshToken = await signRefreshToken(userId);
+
+  const { maxAgeSeconds: sessionMaxAge } = getSessionDuration();
+  const { maxAgeSeconds: refreshMaxAge } = getRefreshDuration();
 
   const cookieStore = await cookies();
   cookieStore.set("access_token", accessToken, {
@@ -170,7 +192,14 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 15,
+    maxAge: sessionMaxAge,
+  });
+  cookieStore.set("refresh_token", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: refreshMaxAge,
   });
 
   return { success: true, siteId, userId };

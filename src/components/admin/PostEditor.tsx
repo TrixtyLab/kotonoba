@@ -1,27 +1,45 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import React, { useState, useTransition, useMemo, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import ImageExtension from "@tiptap/extension-image";
 import LinkExtension from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Extension } from "@tiptap/core";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { MermaidRenderer } from "@/components/MermaidRenderer";
+import { MediaPickerModal } from "@/components/admin/MediaPickerModal";
 import { createPost, updatePost } from "@/actions/posts";
-import { generateSeoAction, generateExcerptAction, rewriteAction, translateAction } from "@/actions/ai";
+import { createTag } from "@/actions/tags";
+import { generateExcerptAction, rewriteAction, translateAction } from "@/actions/ai";
+import { generateDubLinkAction } from "@/actions/dub";
 import { useRouter } from "@/i18n/routing";
+import { useToast } from "@/components/ui/Toast";
 import {
   Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3,
   List, ListOrdered, Quote, Minus, Undo, Redo, Image as ImageIcon,
-  Sparkles, Save, Globe, Eye, Code2, Tag, Folder, ArrowLeft, Upload
+  Sparkles, Save, ArrowLeft, Clock, FileText, CheckCircle2,
+  Folder, Tag, Link2, X, Eye, SlidersHorizontal, Upload, Loader2,
+  PlaySquare, RefreshCw, Globe, Send, QrCode, Copy, Share2, ExternalLink
 } from "lucide-react";
+import { parseEmbedUrl } from "@/lib/utils/embeds";
 
+/**
+ * Configuration properties for the rich-text article editor.
+ */
 export interface PostEditorProps {
+  /** Unique database identifier of the target blog site. */
   siteId: string;
+  /** List of supported BCP 47 locale codes enabled for authoring. */
+  supportedLocales?: string[];
+  /** Flag indicating whether the Dub.co link shortening integration is enabled. */
+  isDubEnabled?: boolean;
+  /** Pre-existing article data when editing an existing post. */
   initialPost?: {
     id: string;
     title: string;
@@ -32,98 +50,403 @@ export interface PostEditorProps {
     status: "draft" | "published" | "archived";
     locale: string;
     pinned: boolean;
+    shortUrl?: string | null;
     categories?: string[];
     tags?: string[];
   };
+  /** List of available categories for taxonomy assignment. */
   availableCategories: Array<{ id: string; name: string }>;
+  /** List of available tags for taxonomy assignment. */
   availableTags: Array<{ id: string; name: string }>;
 }
 
+/** Predefined catalog of selectable authoring languages. */
+export const ALL_LANGUAGE_OPTIONS = [
+  { value: "es", label: "Español (es)" },
+  { value: "en", label: "English (en)" },
+  { value: "fr", label: "Français (fr)" },
+  { value: "de", label: "Deutsch (de)" },
+  { value: "pt", label: "Português (pt)" },
+  { value: "it", label: "Italiano (it)" },
+  { value: "ja", label: "日本語 (ja)" },
+  { value: "zh", label: "简体中文 (zh)" },
+];
+
 /**
- * Full-featured post editor integrating Tiptap WYSIWYG, live Mermaid diagram previews,
- * AI writing assistance, SEO metadata generation, and responsive management panes.
+ * Custom TipTap extension resetting active marks and heading blocks upon pressing Enter.
  */
-export function PostEditor({ siteId, initialPost, availableCategories, availableTags }: PostEditorProps) {
+const AutoExitBlockOnEnter = Extension.create({
+  name: "autoExitBlockOnEnter",
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { selection } = editor.state;
+        const { $from, empty } = selection;
+        if (!empty) return false;
+
+        const parentType = $from.parent.type.name;
+
+        if (parentType === "listItem" || parentType === "taskItem") {
+          return false;
+        }
+
+        if (parentType === "heading") {
+          const isAtEnd = $from.parentOffset === $from.parent.content.size;
+          if (isAtEnd) {
+            return editor.chain().splitBlock({ keepMarks: false }).setParagraph().unsetAllMarks().run();
+          }
+        }
+
+        if (parentType === "blockquote" && $from.parent.content.size === 0) {
+          return editor.chain().lift("blockquote").setParagraph().unsetAllMarks().run();
+        }
+
+        return editor.chain().splitBlock({ keepMarks: false }).unsetAllMarks().run();
+      },
+    };
+  },
+});
+
+/**
+ * Generates an ASCII URL slug from arbitrary input text.
+ *
+ * @param text - Raw source string.
+ * @returns Clean lowercase hyphenated slug string.
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * Full-featured WYSIWYG rich-text article editor with TipTap engine, AI assistants, Dub.co link provisioning, and responsive live preview.
+ *
+ * @param props - PostEditorProps configuring initial post state, taxonomy lists, and active site ID.
+ * @returns React JSX article editor interface.
+ */
+export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost, availableCategories, availableTags }: PostEditorProps) {
   const router = useRouter();
+  const toast = useToast();
   const [isPending, startTransition] = useTransition();
+
+  const allowedLocales = useMemo(() => {
+    const list = supportedLocales && supportedLocales.length > 0 ? supportedLocales : ["es", "en"];
+    return Array.from(new Set([...list, "es", "en"]));
+  }, [supportedLocales]);
+
+  const availableLanguageOptions = useMemo(() => {
+    return ALL_LANGUAGE_OPTIONS.filter((opt) => allowedLocales.includes(opt.value));
+  }, [allowedLocales]);
 
   const [title, setTitle] = useState(initialPost?.title || "");
   const [slug, setSlug] = useState(initialPost?.slug || "");
-  const [contentMd, setContentMd] = useState(initialPost?.contentMd || "");
+  const [contentHtml, setContentHtml] = useState(initialPost?.contentMd || "");
   const [excerpt, setExcerpt] = useState(initialPost?.excerpt || "");
   const [coverImage, setCoverImage] = useState(initialPost?.coverImage || "");
   const [status, setStatus] = useState<"draft" | "published" | "archived">(initialPost?.status || "draft");
-  const [locale, setLocale] = useState(initialPost?.locale || "en");
-  const [pinned, setPinned] = useState(initialPost?.pinned || false);
+  const [locale, setLocale] = useState(initialPost?.locale || allowedLocales[0] || "es");
+  const [pinned, setPinned] = useState(initialPost?.pinned ?? false);
+  const [shortUrl, setShortUrl] = useState(initialPost?.shortUrl || "");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(initialPost?.categories || []);
   const [selectedTags, setSelectedTags] = useState<string[]>(initialPost?.tags || []);
+  const [localTags, setLocalTags] = useState<Array<{ id: string; name: string }>>(availableTags || []);
   const [newTagInput, setNewTagInput] = useState("");
+  const [showInspector, setShowInspector] = useState(true);
 
-  const [viewMode, setViewMode] = useState<"visual" | "markdown" | "preview">("visual");
-  const [isUploading, setIsUploading] = useState(false);
+  const [dubModalOpen, setDubModalOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState(
+    initialPost?.shortUrl ? `https://api.dub.co/qr?url=${encodeURIComponent(initialPost.shortUrl)}` : ""
+  );
+  const [utmSource, setUtmSource] = useState("");
+  const [utmMedium, setUtmMedium] = useState("");
+  const [utmCampaign, setUtmCampaign] = useState("");
+  const [isGeneratingDub, setIsGeneratingDub] = useState(false);
+
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [mediaTarget, setMediaTarget] = useState<"editor" | "cover">("editor");
+
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [isUploadingInline, setIsUploadingInline] = useState(false);
+  const coverFileInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineFileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const [aiTranslateModalOpen, setAiTranslateModalOpen] = useState(false);
+  const [targetTranslateLocale, setTargetTranslateLocale] = useState(locale === "es" ? "en" : "es");
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  function openAiTranslateModal() {
+    const otherLocale = availableLanguageOptions.find((opt) => opt.value !== locale)?.value || (locale === "es" ? "en" : "es");
+    setTargetTranslateLocale(otherLocale);
+    setAiTranslateModalOpen(true);
+  }
+
+  const [embedModalOpen, setEmbedModalOpen] = useState(false);
+  const [embedUrl, setEmbedUrl] = useState("");
+
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+
+  const [, setEditorTick] = useState(0);
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        link: false,
+        code: {
+          HTMLAttributes: {
+            class: "font-mono bg-surface-hover text-accent px-1.5 py-0.5 rounded text-[13px] border border-border",
+          },
+        },
       }),
-      ImageExtension,
+      AutoExitBlockOnEnter,
+      ImageExtension.configure({
+        allowBase64: true,
+        HTMLAttributes: {
+          class: "rounded-xl border border-border shadow-xs my-5 mx-auto max-w-full",
+        },
+      }),
       LinkExtension.configure({
         openOnClick: false,
+        HTMLAttributes: {
+          class: "text-accent underline underline-offset-2",
+        },
       }),
       Placeholder.configure({
-        placeholder: "Start writing your article, or type markdown directly…",
+        placeholder: "Escribe tu artículo aquí…",
       }),
     ],
     content: initialPost?.contentMd || "",
     onUpdate: ({ editor }) => {
-      setContentMd(editor.getHTML());
+      const html = editor.getHTML();
+      setContentHtml(html);
+      if (editor.isEmpty) {
+        editor.commands.unsetAllMarks();
+      }
+      setEditorTick((t) => t + 1);
+    },
+    onSelectionUpdate: () => {
+      setEditorTick((t) => t + 1);
+    },
+    onTransaction: () => {
+      setEditorTick((t) => t + 1);
     },
   });
 
-  const extractMermaidDiagrams = useCallback((text: string) => {
-    const regex = /```mermaid\n([\s\S]*?)```/g;
-    const diagrams: string[] = [];
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      diagrams.push(match[1].trim());
-    }
-    return diagrams;
-  }, []);
-
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) {
-        setCoverImage(data.url);
-        editor?.chain().focus().setImage({ src: data.url }).run();
-      }
-    } catch {
-      setFeedback({ type: "error", message: "Failed to upload image." });
-    } finally {
-      setIsUploading(false);
+  function toggleMark(mark: "bold" | "italic" | "strike" | "code") {
+    if (!editor) return;
+    if (editor.isActive(mark)) {
+      editor.chain().focus().unsetMark(mark).run();
+    } else {
+      editor.chain().focus().setMark(mark).run();
     }
   }
 
-  async function handleSave(newStatus?: "draft" | "published" | "archived") {
-    const saveStatus = newStatus || status;
-    const rawContent = editor ? editor.getHTML() : contentMd;
+  function toggleHeading(level: 1 | 2 | 3) {
+    if (!editor) return;
+    if (editor.isActive("heading", { level })) {
+      editor.chain().focus().setParagraph().run();
+    } else {
+      editor.chain().focus().setHeading({ level }).run();
+    }
+  }
+
+  function toggleBlockquote() {
+    if (!editor) return;
+    if (editor.isActive("blockquote")) {
+      editor.chain().focus().lift("blockquote").run();
+    } else {
+      editor.chain().focus().wrapIn("blockquote").run();
+    }
+  }
+
+  function toggleBullet() {
+    if (!editor) return;
+    if (editor.isActive("bulletList")) {
+      editor.chain().focus().liftListItem("listItem").run();
+    } else {
+      editor.chain().focus().toggleBulletList().run();
+    }
+  }
+
+  function toggleOrdered() {
+    if (!editor) return;
+    if (editor.isActive("orderedList")) {
+      editor.chain().focus().liftListItem("listItem").run();
+    } else {
+      editor.chain().focus().toggleOrderedList().run();
+    }
+  }
+
+  const { wordCount, readingTime } = useMemo(() => {
+    const textOnly = contentHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    const words = textOnly ? textOnly.split(/\s+/).filter(Boolean).length : 0;
+    const time = Math.max(1, Math.ceil(words / 200));
+    return { wordCount: words, readingTime: time };
+  }, [contentHtml]);
+
+  function handleTitleChange(newTitle: string) {
+    setTitle(newTitle);
+    setSlug(slugify(newTitle));
+  }
+
+  function handleInsertEmbed() {
+    if (!embedUrl.trim()) return;
+    const url = embedUrl.trim();
+    if (editor) {
+      editor.chain().focus().insertContent(`<p>@[embed](${url})</p>`).run();
+    }
+    setEmbedUrl("");
+    setEmbedModalOpen(false);
+    toast.success("Embed multimedia insertado");
+  }
+
+  function openLinkModal() {
+    if (!editor) return;
+    const previousUrl = editor.getAttributes("link").href || "";
+    setLinkUrl(previousUrl);
+    setLinkModalOpen(true);
+  }
+
+  function handleSaveLink() {
+    if (!editor) return;
+    if (!linkUrl.trim()) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href: linkUrl.trim() }).run();
+    }
+    setLinkModalOpen(false);
+    setLinkUrl("");
+  }
+
+  function handleRemoveLink() {
+    if (!editor) return;
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    setLinkModalOpen(false);
+    setLinkUrl("");
+  }
+
+  function openMediaPicker(target: "editor" | "cover") {
+    setMediaTarget(target);
+    setMediaPickerOpen(true);
+  }
+
+  function handleMediaSelect(url: string) {
+    if (mediaTarget === "cover") {
+      setCoverImage(url);
+      toast.success("Imagen de portada asignada");
+    } else {
+      editor?.chain().focus().setImage({ src: url }).run();
+      toast.success("Imagen insertada");
+    }
+  }
+
+  async function handleDirectCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCover(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("folder", "covers");
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        setCoverImage(data.url);
+        toast.success("Portada subida con éxito");
+      } else {
+        toast.error(data.error || "Error al subir portada");
+      }
+    } catch {
+      toast.error("Error de red al subir portada");
+    } finally {
+      setIsUploadingCover(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleDirectInlineUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingInline(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("folder", "articles");
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        editor?.chain().focus().setImage({ src: data.url }).run();
+        toast.success("Imagen subida e insertada");
+      } else {
+        toast.error(data.error || "Error al subir imagen");
+      }
+    } catch {
+      toast.error("Error de red al subir imagen");
+    } finally {
+      setIsUploadingInline(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleAddTag() {
+    const trimmed = newTagInput.trim();
+    if (!trimmed) return;
+
+    const existing = localTags.find((t) => t.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      if (!selectedTags.includes(existing.id)) {
+        setSelectedTags([...selectedTags, existing.id]);
+      }
+      setNewTagInput("");
+      return;
+    }
+
+    const tagSlug = slugify(trimmed);
+    const res = await createTag(siteId, { name: trimmed, slug: tagSlug });
+    if (res.success) {
+      const newTagObj = { id: res.id, name: trimmed };
+      setLocalTags((prev) => [...prev, newTagObj]);
+      setSelectedTags((prev) => [...prev, res.id]);
+      setNewTagInput("");
+      toast.success(`Etiqueta "${trimmed}" creada y añadida`);
+    } else {
+      toast.error(res.error || "Error al crear etiqueta");
+    }
+  }
+
+  async function handleSave(forcedStatus?: "draft" | "published" | "archived") {
+    const saveStatus = forcedStatus !== undefined ? forcedStatus : status;
+    const rawContent = editor ? editor.getHTML() : contentHtml;
+
+    if (!title.trim()) {
+      toast.error("El título del artículo es obligatorio");
+      return;
+    }
 
     const payload = {
       title,
-      slug,
+      slug: slug || slugify(title),
       contentMd: rawContent,
       contentHtml: rawContent,
       excerpt,
@@ -131,503 +454,1036 @@ export function PostEditor({ siteId, initialPost, availableCategories, available
       status: saveStatus,
       locale,
       pinned,
+      shortUrl: shortUrl || undefined,
       categoryIds: selectedCategories,
       tagIds: selectedTags,
     };
 
     startTransition(async () => {
-      let res;
       if (initialPost?.id) {
-        res = await updatePost(initialPost.id, payload);
-      } else {
-        res = await createPost(siteId, payload);
-      }
-
-      if (res.success) {
-        setStatus(saveStatus);
-        setFeedback({ type: "success", message: "Article saved successfully!" });
-        if (!initialPost?.id && "postId" in res && res.postId) {
-          router.push(`/admin/posts/${res.postId}`);
+        const res = await updatePost(initialPost.id, payload);
+        if (res.success) {
+          setStatus(saveStatus);
+          toast.success(
+            saveStatus === "published"
+              ? "Artículo publicado y actualizado"
+              : saveStatus === "archived"
+              ? "Artículo archivado"
+              : "Borrador guardado"
+          );
+          router.refresh();
+        } else {
+          toast.error(res.error || "Error al guardar cambios");
         }
       } else {
-        const errorMsg = res.error || (res.errors ? Object.values(res.errors).flat().join(", ") : "Validation error");
-        setFeedback({ type: "error", message: errorMsg });
+        const res = await createPost(siteId, payload);
+        if (res.success) {
+          setStatus(saveStatus);
+          toast.success(saveStatus === "published" ? "Artículo publicado" : "Borrador creado");
+          router.push(`/admin/posts/${res.postId}`);
+        } else {
+          toast.error(res.error || "Error al crear artículo");
+        }
       }
     });
   }
 
-  async function handleAiGenerateSeo() {
-    setAiLoading(true);
-    const res = await generateSeoAction(siteId, contentMd);
-    setAiLoading(false);
-    if (res.success) {
-      setExcerpt(res.data.description || excerpt);
-      setFeedback({ type: "success", message: "SEO metadata generated by AI!" });
-    } else {
-      setFeedback({ type: "error", message: res.error });
+  async function handleGenerateDubLink() {
+    if (!slug && !title) {
+      toast.error("El post debe tener título o slug antes de generar el enlace corto");
+      return;
+    }
+    setIsGeneratingDub(true);
+    try {
+      const currentOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+      const postSlug = slug || slugify(title);
+      const fullUrl = `${currentOrigin}/entry/${postSlug}`;
+
+      const res = await generateDubLinkAction({
+        postId: initialPost?.id,
+        originalUrl: fullUrl,
+        customSlug: postSlug,
+        utmSource: utmSource.trim() || undefined,
+        utmMedium: utmMedium.trim() || undefined,
+        utmCampaign: utmCampaign.trim() || undefined,
+      });
+
+      if (res.success && res.shortUrl) {
+        setShortUrl(res.shortUrl);
+        if (res.qrCodeUrl) setQrCodeUrl(res.qrCodeUrl);
+        setDubModalOpen(false);
+        toast.success("Enlace Dub.co generado exitosamente");
+      } else {
+        toast.error(res.error || "Error al generar enlace en Dub.co");
+      }
+    } catch {
+      toast.error("Error al conectar con Dub.co");
+    } finally {
+      setIsGeneratingDub(false);
     }
   }
 
   async function handleAiGenerateExcerpt() {
+    const text = editor ? editor.getText() : "";
+    if (!text && !title) {
+      toast.error("Escribe contenido antes de generar el extracto con IA");
+      return;
+    }
+
     setAiLoading(true);
-    const res = await generateExcerptAction(siteId, contentMd);
-    setAiLoading(false);
-    if (res.success) {
-      setExcerpt(res.excerpt);
-      setFeedback({ type: "success", message: "Excerpt generated by AI!" });
-    } else {
-      setFeedback({ type: "error", message: res.error });
+    try {
+      const res = await generateExcerptAction(siteId, text || title);
+      if (res.success) {
+        setExcerpt(res.excerpt);
+        toast.success("Extracto generado por IA");
+      } else {
+        toast.error(res.error || "No se pudo generar el extracto");
+      }
+    } catch {
+      toast.error("Error al conectar con la IA");
+    } finally {
+      setAiLoading(false);
     }
   }
 
   async function handleAiAssist() {
     if (!aiInstruction.trim()) return;
+    const currentText = editor ? editor.getHTML() : "";
+    if (!currentText) {
+      toast.error("No hay contenido para procesar");
+      return;
+    }
+
     setAiLoading(true);
-    const res = await rewriteAction(siteId, contentMd, aiInstruction);
-    setAiLoading(false);
-    setAiModalOpen(false);
-    if (res.success) {
-      setContentMd(res.result);
-      editor?.commands.setContent(res.result);
-      setFeedback({ type: "success", message: "AI revision applied!" });
-    } else {
-      setFeedback({ type: "error", message: res.error });
+    try {
+      const res = await rewriteAction(siteId, currentText, aiInstruction);
+      if (res.success) {
+        editor?.commands.setContent(res.result);
+        setContentHtml(res.result);
+        setAiModalOpen(false);
+        setAiInstruction("");
+        toast.success("Contenido mejorado por IA");
+      } else {
+        toast.error(res.error || "No se pudo mejorar el contenido");
+      }
+    } catch {
+      toast.error("Error al conectar con la IA");
+    } finally {
+      setAiLoading(false);
     }
   }
 
-  function handleAddTag() {
-    if (!newTagInput.trim()) return;
-    const existing = availableTags.find((t) => t.name.toLowerCase() === newTagInput.trim().toLowerCase());
-    if (existing && !selectedTags.includes(existing.id)) {
-      setSelectedTags([...selectedTags, existing.id]);
+  async function handleAiTranslatePost() {
+    if (!title && (!editor || !editor.getHTML())) {
+      toast.error("Escribe título y contenido antes de traducir con IA");
+      return;
     }
-    setNewTagInput("");
-  }
 
-  const mermaidDiagrams = extractMermaidDiagrams(contentMd);
+    setIsTranslating(true);
+    try {
+      if (title.trim()) {
+        const resTitle = await translateAction(siteId, title, targetTranslateLocale);
+        if (resTitle.success) {
+          setTitle(resTitle.translated);
+          setSlug(slugify(resTitle.translated));
+        }
+      }
+
+      if (excerpt.trim()) {
+        const resExcerpt = await translateAction(siteId, excerpt, targetTranslateLocale);
+        if (resExcerpt.success) {
+          setExcerpt(resExcerpt.translated);
+        }
+      }
+
+      if (editor) {
+        const currentHtml = editor.getHTML();
+        if (currentHtml && currentHtml !== "<p></p>") {
+          const resContent = await translateAction(siteId, currentHtml, targetTranslateLocale);
+          if (resContent.success) {
+            editor.commands.setContent(resContent.translated);
+            setContentHtml(resContent.translated);
+          }
+        }
+      }
+
+      setLocale(targetTranslateLocale);
+      setAiTranslateModalOpen(false);
+      const targetLabel = ALL_LANGUAGE_OPTIONS.find((l) => l.value === targetTranslateLocale)?.label || targetTranslateLocale;
+      toast.success(`Artículo traducido exitosamente a ${targetLabel}`);
+    } catch {
+      toast.error("Error al conectar con el servicio de traducción IA");
+    } finally {
+      setIsTranslating(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {feedback && (
-        <div
-          className={`p-3 rounded-md text-sm flex items-center justify-between animate-slide-down ${
-            feedback.type === "success" ? "bg-success/15 text-success border border-success/30" : "bg-danger/15 text-danger border border-danger/30"
-          }`}
-        >
-          <span>{feedback.message}</span>
-          <button onClick={() => setFeedback(null)} className="font-bold ml-4">✕</button>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-border">
+      {/* Top Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/admin/posts")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/admin/posts")}
+            className="text-text-muted hover:text-text"
+          >
             <ArrowLeft className="w-4 h-4 mr-1" />
-            Posts
+            Artículos
           </Button>
-          <span className="text-text-muted">/</span>
-          <h1 className="text-xl font-bold text-text truncate max-w-[200px] sm:max-w-md">
-            {title || "Untitled Article"}
-          </h1>
-          <Badge variant={status === "published" ? "success" : status === "archived" ? "secondary" : "warning"}>
-            {status}
+
+          <span className="w-px h-4 bg-border" />
+
+          <Badge variant={status === "published" ? "success" : status === "archived" ? "outline" : "warning"}>
+            {status === "published" ? "Publicado" : status === "archived" ? "Archivado" : "Borrador"}
           </Badge>
+
+          <span className="text-[11px] text-text-muted hidden md:inline-flex items-center gap-1 font-mono">
+            <Clock className="w-3 h-3" />
+            {wordCount} palabras • {readingTime} min de lectura
+          </span>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <Button variant="secondary" size="sm" onClick={() => handleSave("draft")} loading={isPending}>
-            <Save className="w-4 h-4 mr-1" />
-            Save Draft
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowInspector(!showInspector)}
+            className="text-xs"
+            title="Ajustes del artículo"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 mr-1" />
+            {showInspector ? "Ocultar Detalles" : "Detalles"}
           </Button>
-          <Button variant="primary" size="sm" onClick={() => handleSave("published")} loading={isPending}>
-            Publish Now
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setAiModalOpen(true)}
+            className="text-accent text-xs font-semibold"
+          >
+            <Sparkles className="w-3.5 h-3.5 mr-1" />
+            Asistente IA
+          </Button>
+
+          {status !== "published" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleSave("draft")}
+              loading={isPending}
+              icon={<Save className="w-3.5 h-3.5" />}
+            >
+              Guardar Borrador
+            </Button>
+          )}
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => handleSave(status === "draft" ? "published" : status)}
+            loading={isPending}
+            icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+          >
+            {status === "published" ? "Guardar Cambios" : status === "archived" ? "Guardar Archivado" : "Publicar"}
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <Input
-            placeholder="Article Title…"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              if (!initialPost?.slug) {
-                setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
-              }
-            }}
-            className="text-xl sm:text-2xl font-bold py-3 bg-surface/50 border-border"
-          />
-
-          <div className="flex items-center justify-between border-b border-border pb-2">
-            <div className="flex items-center gap-1 bg-surface-hover/50 p-1 rounded-md">
-              <button
-                onClick={() => setViewMode("visual")}
-                className={`px-3 py-1 text-xs font-medium rounded ${
-                  viewMode === "visual" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text"
-                }`}
-              >
-                Visual Editor
-              </button>
-              <button
-                onClick={() => setViewMode("markdown")}
-                className={`px-3 py-1 text-xs font-medium rounded ${
-                  viewMode === "markdown" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text"
-                }`}
-              >
-                <Code2 className="w-3.5 h-3.5 inline mr-1" />
-                Raw Markdown
-              </button>
-              <button
-                onClick={() => setViewMode("preview")}
-                className={`px-3 py-1 text-xs font-medium rounded ${
-                  viewMode === "preview" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text"
-                }`}
-              >
-                <Eye className="w-3.5 h-3.5 inline mr-1" />
-                Live Preview
-              </button>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAiModalOpen(true)}
-              className="text-primary hover:text-primary-hover font-semibold text-xs"
-            >
-              <Sparkles className="w-3.5 h-3.5 mr-1" />
-              AI Assistant
-            </Button>
+      {/* Main Grid: Left Editor + Right Inspector */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Editor Main Canvas */}
+        <div className={`${showInspector ? "lg:col-span-8" : "lg:col-span-12"} space-y-4`}>
+          {/* Title Box */}
+          <div className="p-6 bg-surface border border-border rounded-xl shadow-xs space-y-3">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              placeholder="Título del artículo..."
+              className="w-full text-2xl sm:text-3xl font-extrabold bg-transparent border-0 text-text placeholder-text-muted/30 focus:outline-hidden focus:ring-0 leading-tight"
+            />
           </div>
 
-          {viewMode === "visual" && (
-            <div className="border border-border rounded-lg bg-surface/40 overflow-hidden">
-              <div className="flex flex-wrap items-center gap-1 p-2 bg-surface border-b border-border text-text-muted">
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleBold().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("bold") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Bold className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleItalic().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("italic") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Italic className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleStrike().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("strike") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Strikethrough className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleCode().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("code") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Code className="w-4 h-4" />
-                </button>
-                <span className="w-px h-4 bg-border mx-1" />
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("heading", { level: 1 }) ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Heading1 className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("heading", { level: 2 }) ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Heading2 className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("heading", { level: 3 }) ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Heading3 className="w-4 h-4" />
-                </button>
-                <span className="w-px h-4 bg-border mx-1" />
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("bulletList") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <List className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("orderedList") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <ListOrdered className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-                  className={`p-1.5 rounded hover:bg-surface-hover ${editor?.isActive("blockquote") ? "text-primary bg-primary/10" : ""}`}
-                >
-                  <Quote className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editor?.chain().focus().setHorizontalRule().run()}
-                  className="p-1.5 rounded hover:bg-surface-hover"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <span className="w-px h-4 bg-border mx-1" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const snippet = "\n\n```mermaid\ngraph TD\n  A[Start] --> B[Process]\n  B --> C[Done]\n```\n\n";
-                    editor?.chain().focus().insertContent(snippet).run();
-                  }}
-                  className="px-2 py-1 text-xs font-mono rounded bg-surface-hover hover:bg-primary/10 hover:text-primary transition-colors"
-                >
-                  + Mermaid
-                </button>
-                <div className="ml-auto flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => editor?.chain().focus().undo().run()}
-                    disabled={!editor?.can().undo()}
-                    className="p-1.5 rounded hover:bg-surface-hover disabled:opacity-30"
-                  >
-                    <Undo className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => editor?.chain().focus().redo().run()}
-                    disabled={!editor?.can().redo()}
-                    className="p-1.5 rounded hover:bg-surface-hover disabled:opacity-30"
-                  >
-                    <Redo className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <EditorContent editor={editor} className="min-h-[400px] p-4 focus:outline-none prose-blog" />
-            </div>
-          )}
+          {/* WYSIWYG Formatting Toolbar */}
+          <div className="bg-surface border border-border rounded-xl p-2 flex flex-wrap items-center gap-1 shadow-xs sticky top-20 z-20">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleMark("bold")}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("bold") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Negrita (Ctrl+B)"
+            >
+              <Bold className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleMark("italic")}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("italic") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Cursiva (Ctrl+I)"
+            >
+              <Italic className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleMark("strike")}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("strike") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Tachado"
+            >
+              <Strikethrough className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleMark("code")}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("code") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Código en línea"
+            >
+              <Code className="w-4 h-4" />
+            </button>
 
-          {viewMode === "markdown" && (
-            <Textarea
-              value={contentMd}
-              onChange={(e) => {
-                setContentMd(e.target.value);
-                editor?.commands.setContent(e.target.value);
-              }}
-              className="min-h-[450px] font-mono text-sm leading-relaxed bg-surface/50 border-border"
-              placeholder="Write raw markdown with Mermaid diagrams..."
+            <span className="w-px h-4 bg-border mx-1" />
+
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleHeading(1)}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 1 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Título 1"
+            >
+              <Heading1 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleHeading(2)}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 2 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Título 2"
+            >
+              <Heading2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleHeading(3)}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 3 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              title="Título 3"
+            >
+              <Heading3 className="w-4 h-4" />
+            </button>
+
+            <span className="w-px h-4 bg-border mx-1" />
+
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleBullet}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("bulletList") ? "text-accent bg-accent/10" : "text-text"}`}
+              title="Lista de puntos"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleOrdered}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("orderedList") ? "text-accent bg-accent/10" : "text-text"}`}
+              title="Lista numerada"
+            >
+              <ListOrdered className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleBlockquote}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("blockquote") ? "text-accent bg-accent/10" : "text-text"}`}
+              title="Cita"
+            >
+              <Quote className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor?.chain().focus().setHorizontalRule().run()}
+              className="p-1.5 rounded-lg hover:bg-surface-hover text-text"
+              title="Línea divisoria"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+
+            <span className="w-px h-4 bg-border mx-1" />
+
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={openLinkModal}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("link") ? "text-accent bg-accent/10" : "text-text"}`}
+              title="Insertar o editar enlace"
+            >
+              <Link2 className="w-4 h-4" />
+            </button>
+
+            {/* Media Library image insertion */}
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => openMediaPicker("editor")}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text ml-1"
+              title="Insertar Imagen desde la Biblioteca"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-accent" />
+              <span>Biblioteca</span>
+            </button>
+
+            {/* Direct Image upload */}
+            <input
+              ref={inlineFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleDirectInlineUpload}
             />
-          )}
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => inlineFileInputRef.current?.click()}
+              disabled={isUploadingInline}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text"
+              title="Subir Imagen Directamente al Artículo"
+            >
+              {isUploadingInline ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 text-accent" />}
+              <span>Subir</span>
+            </button>
 
-          {viewMode === "preview" && (
-            <div className="border border-border rounded-lg p-6 bg-surface/40 min-h-[400px]">
-              <div className="prose-blog" dangerouslySetInnerHTML={{ __html: contentMd }} />
-              {mermaidDiagrams.map((chart, idx) => (
-                <div key={idx} className="my-6">
-                  <p className="text-xs font-mono text-text-muted mb-1">Diagram {idx + 1}:</p>
-                  <MermaidRenderer chart={chart} />
-                </div>
-              ))}
-            </div>
-          )}
+            {/* Embed Media (YouTube, Vimeo, X, Bluesky) */}
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setEmbedModalOpen(true)}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text"
+              title="Insertar Video, Tweet o Post de Bluesky"
+            >
+              <PlaySquare className="w-3.5 h-3.5 text-accent" />
+              <span>Embed</span>
+            </button>
 
-          {mermaidDiagrams.length > 0 && viewMode !== "preview" && (
-            <div className="border border-border/80 rounded-lg p-4 bg-surface/30">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
-                Live Mermaid Diagrams ({mermaidDiagrams.length})
-              </h3>
-              <div className="space-y-4">
-                {mermaidDiagrams.map((chart, i) => (
-                  <MermaidRenderer key={i} chart={chart} />
-                ))}
-              </div>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor?.chain().focus().undo().run()}
+                disabled={!editor?.can().undo()}
+                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text"
+                title="Deshacer"
+              >
+                <Undo className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor?.chain().focus().redo().run()}
+                disabled={!editor?.can().redo()}
+                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text"
+                title="Rehacer"
+              >
+                <Redo className="w-4 h-4" />
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Editor Canvas */}
+          <div className="bg-surface border border-border rounded-xl p-6 sm:p-8 min-h-[500px] shadow-xs">
+            <EditorContent editor={editor} className="prose-blog focus:outline-hidden" />
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="glass p-4 rounded-lg space-y-4 border border-border">
-            <h3 className="text-sm font-semibold text-text border-b border-border/50 pb-2">Publishing Settings</h3>
+        {/* Right Inspector Sidebar */}
+        {showInspector && (
+          <div className="lg:col-span-4 space-y-4">
+            {/* Slug & Language */}
+            <div className="p-5 rounded-xl bg-surface border border-border space-y-3.5 shadow-xs">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border">
+                Parámetros de Publicación
+              </h3>
 
-            <Input
-              label="URL Slug (/entry/[slug])"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="my-article-slug"
-            />
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-                Language
-              </label>
-              <select
-                value={locale}
-                onChange={(e) => setLocale(e.target.value)}
-                className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
-              >
-                <option value="en">English (en)</option>
-                <option value="es">Español (es)</option>
-                <option value="fr">Français (fr)</option>
-                <option value="de">Deutsch (de)</option>
-                <option value="pt">Português (pt)</option>
-                <option value="zh">中文 (zh)</option>
-                <option value="ja">日本語 (ja)</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <input
-                type="checkbox"
-                id="pinned-checkbox"
-                checked={pinned}
-                onChange={(e) => setPinned(e.target.checked)}
-                className="rounded border-border text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-              />
-              <label htmlFor="pinned-checkbox" className="text-sm font-medium text-text cursor-pointer">
-                Pin to Featured Articles
-              </label>
-            </div>
-          </div>
-
-          <div className="glass p-4 rounded-lg space-y-4 border border-border">
-            <div className="flex items-center justify-between border-b border-border/50 pb-2">
-              <h3 className="text-sm font-semibold text-text">Cover Image</h3>
-            </div>
-            {coverImage && (
-              <div className="relative rounded-md overflow-hidden border border-border h-32 w-full">
-                <img src={coverImage} alt="Cover Preview" className="w-full h-full object-cover" />
-                <button
-                  onClick={() => setCoverImage("")}
-                  className="absolute top-2 right-2 bg-black/60 text-white rounded p-1 text-xs"
-                >
-                  ✕
-                </button>
+              <div className="space-y-1">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <Input
+                      label="Slug de URL (/entry/[slug])"
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      placeholder="mi-articulo-increible"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSlug(slugify(title));
+                      toast.success("Slug regenerado desde el título");
+                    }}
+                    className="text-xs shrink-0"
+                    title="Regenerar slug desde el título"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
-            )}
-            <Input
-              placeholder="https://... image URL"
-              value={coverImage}
-              onChange={(e) => setCoverImage(e.target.value)}
-            />
-            <label className="flex items-center justify-center gap-2 w-full py-2 px-3 border border-dashed border-border rounded-md text-xs text-text-muted hover:text-text hover:border-primary cursor-pointer transition-colors">
-              <Upload className="w-4 h-4" />
-              {isUploading ? "Uploading…" : "Upload from Device"}
-              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-            </label>
-          </div>
 
-          <div className="glass p-4 rounded-lg space-y-4 border border-border">
-            <div className="flex items-center justify-between border-b border-border/50 pb-2">
-              <h3 className="text-sm font-semibold text-text">Categories</h3>
-              <Folder className="w-4 h-4 text-text-muted" />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-text">Idioma del Artículo</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={openAiTranslateModal}
+                    className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Traducir con IA
+                  </Button>
+                </div>
+
+                <Select
+                  value={locale}
+                  onChange={(val) => setLocale(val)}
+                  options={availableLanguageOptions}
+                />
+
+                <Select
+                  label="Estado de Publicación"
+                  value={status}
+                  onChange={(val) => setStatus(val as "draft" | "published" | "archived")}
+                  options={[
+                    { value: "draft", label: "Borrador (Oculto)" },
+                    { value: "published", label: "Publicado (Visible en el blog)" },
+                    { value: "archived", label: "Archivado" },
+                  ]}
+                />
+              </div>
+
+              {/* Resumen / Extracto SEO */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-text">Resumen / Extracto SEO</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAiGenerateExcerpt}
+                    disabled={aiLoading}
+                    className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Generar IA
+                  </Button>
+                </div>
+                <Textarea
+                  placeholder="Breve descripción para buscadores y vista previa…"
+                  value={excerpt}
+                  onChange={(e) => setExcerpt(e.target.value)}
+                  className="min-h-[75px] text-xs"
+                />
+              </div>
+
+              <div className="pt-1">
+                <Checkbox
+                  checked={pinned}
+                  onChange={(val) => setPinned(val)}
+                  label="Fijar en artículos destacados"
+                />
+              </div>
+
+              {/* Dub.co Short Link & UTM Builder */}
+              {isDubEnabled && (
+                <div className="pt-3 border-t border-border space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text flex items-center gap-1.5">
+                      <Share2 className="w-3.5 h-3.5 text-accent" />
+                      <span>Enlace Corto Dub.co</span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDubModalOpen(true)}
+                      className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      {shortUrl ? "UTM Builder" : "Acortar Link"}
+                    </Button>
+                  </div>
+
+                  {shortUrl ? (
+                    <div className="flex items-center gap-1.5 bg-surface-hover/50 p-1.5 rounded-lg border border-border">
+                      <input
+                        type="text"
+                        readOnly
+                        value={shortUrl}
+                        className="bg-transparent text-xs font-mono text-text flex-1 outline-hidden select-all"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(shortUrl);
+                          toast.success("Enlace Dub.co copiado al portapapeles");
+                        }}
+                        className="p-1 h-auto text-xs shrink-0"
+                        title="Copiar enlace corto"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                      {qrCodeUrl && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setQrModalOpen(true)}
+                          className="p-1 h-auto text-xs shrink-0"
+                          title="Ver Código QR"
+                        >
+                          <QrCode className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-text-muted leading-tight">
+                      Acorta este artículo con Dub.co y añade parámetros UTM para rastreo de campañas.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {availableCategories.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-xs text-text cursor-pointer hover:text-primary">
-                  <input
-                    type="checkbox"
+
+            {/* Cover Image */}
+            <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                  Imagen de Portada
+                </h3>
+                {coverImage && (
+                  <button
+                    type="button"
+                    onClick={() => setCoverImage("")}
+                    className="text-[11px] text-rose-500 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" /> Quitar
+                  </button>
+                )}
+              </div>
+
+              {coverImage ? (
+                <div className="relative rounded-xl overflow-hidden border border-border aspect-video w-full bg-surface-hover/30">
+                  <img src={coverImage} alt="Portada" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border bg-surface-hover/20 aspect-video w-full flex items-center justify-center text-text-muted text-xs">
+                  Sin portada asignada
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  ref={coverFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleDirectCoverUpload}
+                />
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => coverFileInputRef.current?.click()}
+                  disabled={isUploadingCover}
+                  icon={isUploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  className="text-xs flex-1"
+                >
+                  {isUploadingCover ? "Subiendo..." : "Subir"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openMediaPicker("cover")}
+                  icon={<ImageIcon className="w-3.5 h-3.5 text-accent" />}
+                  className="text-xs flex-1"
+                >
+                  Biblioteca
+                </Button>
+              </div>
+
+              <Input
+                placeholder="O URL: https://... portada.jpg"
+                value={coverImage || ""}
+                onChange={(e) => setCoverImage(e.target.value)}
+              />
+            </div>
+
+            {/* Categories */}
+            <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                  Categorías
+                </h3>
+                <Folder className="w-3.5 h-3.5 text-text-muted" />
+              </div>
+
+              <div className="space-y-2.5 max-h-40 overflow-y-auto">
+                {availableCategories.map((c) => (
+                  <Checkbox
+                    key={c.id}
                     checked={selectedCategories.includes(c.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
+                    onChange={(checked) => {
+                      if (checked) {
                         setSelectedCategories([...selectedCategories, c.id]);
                       } else {
                         setSelectedCategories(selectedCategories.filter((id) => id !== c.id));
                       }
                     }}
-                    className="rounded border-border text-primary focus:ring-primary w-3.5 h-3.5"
+                    label={c.name}
                   />
-                  <span>{c.name}</span>
-                </label>
-              ))}
-              {availableCategories.length === 0 && (
-                <p className="text-xs text-text-muted">No categories created yet.</p>
+                ))}
+                {availableCategories.length === 0 && (
+                  <p className="text-xs text-text-muted">No hay categorías creadas aún.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                  Etiquetas (Tags)
+                </h3>
+                <Tag className="w-3.5 h-3.5 text-text-muted" />
+              </div>
+
+              {selectedTags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  {selectedTags.map((tId) => {
+                    const tagObj = localTags.find((t) => t.id === tId);
+                    return (
+                      <span
+                        key={tId}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold bg-accent/10 text-accent px-2.5 py-1 rounded-lg border border-accent/20"
+                      >
+                        #{tagObj?.name || tId}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
+                          className="hover:text-rose-500 ml-0.5"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Tag Creation Input */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nueva etiqueta…"
+                  value={newTagInput}
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                  }}
+                />
+                <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
+                  Añadir
+                </Button>
+              </div>
+
+              {/* Quick Select existing tags */}
+              {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
+                <div className="pt-2 border-t border-border/50">
+                  <p className="text-[11px] text-text-muted mb-1.5">Sugerencias existentes:</p>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                    {localTags
+                      .filter((t) => !selectedTags.includes(t.id))
+                      .map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setSelectedTags([...selectedTags, t.id])}
+                          className="text-[11px] bg-surface-hover hover:bg-accent/10 hover:text-accent px-2 py-0.5 rounded border border-border transition-colors text-text-muted"
+                        >
+                          + {t.name}
+                        </button>
+                      ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>
-
-          <div className="glass p-4 rounded-lg space-y-4 border border-border">
-            <div className="flex items-center justify-between border-b border-border/50 pb-2">
-              <h3 className="text-sm font-semibold text-text">Tags</h3>
-              <Tag className="w-4 h-4 text-text-muted" />
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {selectedTags.map((tId) => {
-                const tagObj = availableTags.find((t) => t.id === tId);
-                return (
-                  <span
-                    key={tId}
-                    className="inline-flex items-center gap-1 text-[11px] bg-surface-hover px-2 py-0.5 rounded-full border border-border"
-                  >
-                    #{tagObj?.name || tId}
-                    <button
-                      onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
-                      className="text-text-muted hover:text-danger"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Add tag…"
-                value={newTagInput}
-                onChange={(e) => setNewTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-              />
-              <Button size="sm" variant="secondary" onClick={handleAddTag}>Add</Button>
-            </div>
-          </div>
-
-          <div className="glass p-4 rounded-lg space-y-4 border border-border">
-            <div className="flex items-center justify-between border-b border-border/50 pb-2">
-              <h3 className="text-sm font-semibold text-text">Excerpt & SEO</h3>
-              <Button variant="ghost" size="sm" onClick={handleAiGenerateExcerpt} loading={aiLoading} className="text-xs text-primary p-0">
-                <Sparkles className="w-3 h-3 mr-1" />
-                AI Generate
-              </Button>
-            </div>
-            <Textarea
-              label="Article Excerpt"
-              placeholder="Short summary for SEO and cards…"
-              value={excerpt}
-              onChange={(e) => setExcerpt(e.target.value)}
-              className="min-h-[80px]"
-            />
-          </div>
-        </div>
+        )}
       </div>
 
-      <Modal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} title="AI Writing Assistant">
+      {/* Media Picker Modal */}
+      <MediaPickerModal
+        isOpen={mediaPickerOpen}
+        onClose={() => setMediaPickerOpen(false)}
+        onSelect={handleMediaSelect}
+        title={mediaTarget === "cover" ? "Seleccionar Imagen de Portada" : "Insertar Imagen en el Artículo"}
+      />
+
+      {/* AI Assistant Modal */}
+      <Modal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} title="Asistente de Redacción IA">
         <div className="space-y-4">
           <p className="text-xs text-text-muted">
-            Ask the AI assistant to rewrite, summarize, simplify, or generate new content based on your draft.
+            Pide al asistente de IA que reescriba, resuma, corrija ortografía o mejore el tono de tu artículo.
           </p>
           <Textarea
-            label="Instruction"
-            placeholder="e.g. 'Make the introduction more punchy and fix any grammar errors.'"
+            label="Instrucción para la IA"
+            placeholder="ej. 'Haz la introducción más atractiva y corrige cualquier falta ortográfica.'"
             value={aiInstruction}
             onChange={(e) => setAiInstruction(e.target.value)}
             className="min-h-[90px]"
           />
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setAiModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleAiAssist} loading={aiLoading} icon={<Sparkles className="w-4 h-4" />}>
-              Apply AI Changes
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="ghost" onClick={() => setAiModalOpen(false)} className="text-xs">
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleAiAssist}
+              loading={aiLoading}
+              icon={<Sparkles className="w-4 h-4" />}
+              className="text-xs"
+            >
+              Aplicar Cambios
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* AI Translate Modal */}
+      <Modal isOpen={aiTranslateModalOpen} onClose={() => setAiTranslateModalOpen(false)} title="Traducir Artículo con IA">
+        <div className="space-y-4 text-xs">
+          <p className="text-text-muted">
+            Selecciona el idioma al que deseas traducir todo el artículo (título, contenido Markdown/HTML y extracto SEO). La IA adaptará la redacción manteniendo el formato original.
+          </p>
+
+          <Select
+            label="Idioma Destino"
+            value={targetTranslateLocale}
+            onChange={(val) => setTargetTranslateLocale(val)}
+            options={availableLanguageOptions}
+          />
+
+          <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg text-text space-y-1">
+            <p className="font-semibold text-accent flex items-center gap-1.5">
+              <Globe className="w-4 h-4" /> Traducción Automática Inteligente
+            </p>
+            <p className="text-text-muted">
+              Se traducirá el título, el slug, el extracto y todo el contenido del editor preservando los encabezados, imágenes, tablas y diagramas.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="ghost" onClick={() => setAiTranslateModalOpen(false)} className="text-xs">
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleAiTranslatePost}
+              loading={isTranslating}
+              icon={<Sparkles className="w-4 h-4" />}
+              className="text-xs"
+            >
+              {isTranslating ? "Traduciendo artículo…" : "Comenzar Traducción"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Embed Modal */}
+      <Modal isOpen={embedModalOpen} onClose={() => setEmbedModalOpen(false)} title="Insertar Embed Multimedia">
+        <div className="space-y-4 text-xs">
+          <p className="text-text-muted">
+            Pega el enlace de un video de <strong>YouTube</strong>, <strong>Vimeo</strong>, un tweet/post de <strong>X (Twitter)</strong>, <strong>Bluesky</strong> o un archivo de video directo (MP4).
+          </p>
+
+          <Input
+            label="URL del Video o Publicación Social"
+            placeholder="https://www.youtube.com/watch?v=... o https://x.com/.../status/..."
+            value={embedUrl}
+            onChange={(e) => setEmbedUrl(e.target.value)}
+            helperText="Formatos soportados: YouTube, Vimeo, X.com, Twitter.com, Bluesky (bsky.app), .mp4"
+          />
+
+          <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1 text-text-muted">
+            <p className="font-semibold text-text">Ejemplos válidos:</p>
+            <ul className="list-disc pl-4 space-y-0.5 font-mono text-[11px]">
+              <li>https://www.youtube.com/watch?v=dQw4w9WgXcQ</li>
+              <li>https://x.com/username/status/1234567890</li>
+              <li>https://bsky.app/profile/user.bsky.social/post/3la7xyz</li>
+              <li>https://vimeo.com/76979871</li>
+            </ul>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="ghost" onClick={() => setEmbedModalOpen(false)} className="text-xs">
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleInsertEmbed}
+              disabled={!embedUrl.trim()}
+              icon={<PlaySquare className="w-4 h-4" />}
+              className="text-xs"
+            >
+              Insertar Embed
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Link Modal */}
+      <Modal isOpen={linkModalOpen} onClose={() => setLinkModalOpen(false)} title="Insertar o Editar Enlace">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSaveLink();
+          }}
+          className="space-y-4 text-xs"
+        >
+          <Input
+            label="URL del Enlace"
+            placeholder="https://ejemplo.com"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            helperText="Escribe o pega la dirección URL completa del enlace"
+            autoFocus
+          />
+
+          <div className="flex justify-between items-center pt-2 border-t border-border">
+            {editor?.isActive("link") ? (
+              <Button type="button" variant="danger" onClick={handleRemoveLink} className="text-xs">
+                Quitar Enlace
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => setLinkModalOpen(false)} className="text-xs">
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" className="text-xs">
+                Guardar Enlace
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Dub.co UTM Builder Modal */}
+      <Modal isOpen={dubModalOpen} onClose={() => setDubModalOpen(false)} title="Dub.co • Acortador y Constructor UTM">
+        <div className="space-y-4 text-xs">
+          <p className="text-text-muted">
+            Genera un enlace corto oficial en <strong>Dub.co</strong> con parámetros UTM opcionales para medir con precisión las campañas de tráfico.
+          </p>
+
+          <div className="space-y-3">
+            <Input
+              label="Fuente de Campaña (utm_source)"
+              placeholder="ej. twitter, newsletter, linkedin, youtube"
+              value={utmSource}
+              onChange={(e) => setUtmSource(e.target.value)}
+            />
+
+            <Input
+              label="Medio de Campaña (utm_medium)"
+              placeholder="ej. social, email, cpc, banner"
+              value={utmMedium}
+              onChange={(e) => setUtmMedium(e.target.value)}
+            />
+
+            <Input
+              label="Nombre de Campaña (utm_campaign)"
+              placeholder="ej. lanzamiento_2026, promo_verano"
+              value={utmCampaign}
+              onChange={(e) => setUtmCampaign(e.target.value)}
+            />
+          </div>
+
+          <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1 text-text-muted">
+            <p className="font-semibold text-text flex items-center gap-1.5">
+              <Share2 className="w-3.5 h-3.5 text-accent" />
+              Destino Original:
+            </p>
+            <p className="font-mono text-[11px] truncate">
+              {typeof window !== "undefined" ? window.location.origin : ""}/entry/{slug || slugify(title)}
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="ghost" onClick={() => setDubModalOpen(false)} className="text-xs">
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleGenerateDubLink}
+              loading={isGeneratingDub}
+              icon={<Sparkles className="w-4 h-4" />}
+              className="text-xs"
+            >
+              Generar con Dub.co
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Dub.co QR Code Modal */}
+      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title="Código QR de Dub.co">
+        <div className="space-y-4 text-xs text-center">
+          <p className="text-text-muted">
+            Escanea este código QR con cualquier dispositivo móvil para acceder directamente al artículo.
+          </p>
+
+          {qrCodeUrl && (
+            <div className="flex justify-center py-2">
+              <div className="p-3 bg-white rounded-xl shadow-xs border border-border inline-block">
+                <img src={qrCodeUrl} alt="Código QR" className="w-48 h-48 object-contain" />
+              </div>
+            </div>
+          )}
+
+          {shortUrl && (
+            <div className="flex items-center justify-center gap-2">
+              <span className="font-mono text-xs text-accent font-semibold">{shortUrl}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(shortUrl);
+                  toast.success("Enlace copiado");
+                }}
+                className="text-xs"
+              >
+                <Copy className="w-3.5 h-3.5 mr-1" /> Copiar
+              </Button>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2 border-t border-border">
+            <Button variant="primary" onClick={() => setQrModalOpen(false)} className="text-xs">
+              Cerrar
             </Button>
           </div>
         </div>

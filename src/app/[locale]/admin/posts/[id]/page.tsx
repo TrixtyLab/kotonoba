@@ -5,10 +5,14 @@ import { eq, and } from "drizzle-orm";
 import { getCategories } from "@/actions/categories";
 import { getTags } from "@/actions/tags";
 import { PostEditor } from "@/components/admin/PostEditor";
+import { isDubConfigured } from "@/lib/dub";
 import { notFound } from "next/navigation";
 
 /**
- * Page for editing an existing blog article.
+ * Server page component loading an existing post by identifier and initializing the WYSIWYG editor with its contents.
+ *
+ * @param props - Object containing route params Promise with article ID.
+ * @returns React JSX post editor view.
  */
 export default async function EditPostPage({
   params,
@@ -43,6 +47,8 @@ export default async function EditPostPage({
   return (
     <PostEditor
       siteId={site.id}
+      supportedLocales={["es", "en"]}
+      isDubEnabled={isDubConfigured()}
       initialPost={{
         id: post.id,
         title: post.title,
@@ -53,6 +59,7 @@ export default async function EditPostPage({
         status: post.status,
         locale: post.locale,
         pinned: post.pinned,
+        shortUrl: post.shortUrl,
         categories: assignedCatIds,
         tags: assignedTagIds,
       }}

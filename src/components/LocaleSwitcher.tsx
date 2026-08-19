@@ -7,7 +7,9 @@ import { LOCALES, LOCALE_NAMES, type Locale } from "@/i18n/routing";
 import { Globe, Check, Search } from "lucide-react";
 
 /**
- * Responsive locale switcher dropdown supporting 70+ languages with search filter.
+ * Interactive language switcher dropdown supporting real-time search filtering across 70+ localized languages.
+ *
+ * @returns React JSX locale selector dropdown element.
  */
 export function LocaleSwitcher() {
   const currentLocale = useLocale() as Locale;
@@ -25,7 +27,7 @@ export function LocaleSwitcher() {
     );
   }, [search]);
 
-  function handleSelect(nextLocale: Locale) {
+  function handleSelect(nextLocale: Locale): void {
     setIsOpen(false);
     setSearch("");
     startTransition(() => {

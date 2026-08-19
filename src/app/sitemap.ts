@@ -5,7 +5,9 @@ import { eq, desc } from "drizzle-orm";
 import { LOCALES } from "@/i18n/routing";
 
 /**
- * Generates dynamic sitemaps with multi-language hreflang alternates and priority scores.
+ * Generates dynamic XML sitemaps with multi-language hreflang alternates, change frequencies, and priority weights.
+ *
+ * @returns Array of sitemap entries with URLs and timestamps.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const db = getDb();

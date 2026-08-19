@@ -4,7 +4,9 @@ import { SitesManagerClient } from "@/components/admin/SitesManagerClient";
 import { notFound } from "next/navigation";
 
 /**
- * Admin page for managing multiple tenant blogs and custom domain routing.
+ * Server page component loading all registered website instances and rendering the multi-tenant blog manager.
+ *
+ * @returns React JSX sites manager view.
  */
 export default async function AdminSitesPage() {
   const currentSite = await getActiveSite();

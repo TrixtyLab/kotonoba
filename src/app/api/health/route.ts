@@ -3,9 +3,11 @@ import { getDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
 
 /**
- * Health check endpoint for Docker container orchestration and blue-green validation.
+ * Liveness and readiness health probe verifying database connectivity and reporting server uptime.
+ *
+ * @returns JSON health report status.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     const db = getDb();
     const result = db.get<{ ok: number }>(sql`SELECT 1 as ok`);

@@ -1,30 +1,45 @@
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { posts, tags, postTags, users } from "@/lib/db/schema";
+import { posts, tags, postTags, postCategories, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PostCard } from "@/components/blog/PostCard";
-import { Link } from "@/i18n/routing";
-import { Tag as TagIcon, ArrowLeft } from "lucide-react";
+import { LineSidebar } from "@/components/blog/LineSidebar";
+import { LinePagination } from "@/components/blog/LinePagination";
+import { BookOpen } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
+import { getLocalizedText } from "@/lib/utils/localization";
+
+/**
+ * Generates SEO metadata for a tag archive page.
+ *
+ * @param props - Object containing route params with tag slug and locale.
+ * @returns Metadata object with tag title.
+ */
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug, locale } = await params;
   const site = await getActiveSite();
   const db = getDb();
   const tag = db.select().from(tags).where(eq(tags.slug, slug)).get();
+  const t = await getTranslations({ locale, namespace: "blog" });
+  const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
   return {
-    title: tag ? `#${tag.name} — ${site?.name || "Blog"}` : "Tag",
-    description: `Articles tagged with #${tag?.name}`,
+    title: tag ? `#${tag.name} — ${siteName}` : t("tag"),
+    description: `${t("tag")}: #${tag?.name}`,
   };
 }
 
 /**
- * Tag archive page listing articles associated with a specific hashtag.
+ * Public tag taxonomy archive page filtering articles associated with a specific tag.
+ *
+ * @param props - Object containing route params Promise with tag slug.
+ * @returns React JSX tag archive view.
  */
 export default async function TagPage({
   params,
@@ -35,21 +50,28 @@ export default async function TagPage({
   const site = await getActiveSite();
   if (!site) notFound();
 
+  const t = await getTranslations({ locale, namespace: "blog" });
+
   const db = getDb();
   const tag = db.select().from(tags).where(and(eq(tags.siteId, site.id), eq(tags.slug, slug))).get();
   if (!tag) notFound();
 
-  const matchingPosts = db
+  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
+
+  const rawPosts = db
     .select({
       id: posts.id,
       title: posts.title,
       slug: posts.slug,
       excerpt: posts.excerpt,
+      contentHtml: posts.contentHtml,
+      contentMd: posts.contentMd,
       coverImage: posts.coverImage,
       publishedAt: posts.publishedAt,
       views: posts.views,
       pinned: posts.pinned,
       authorName: users.displayName,
+      authorAvatar: users.avatarUrl,
     })
     .from(postTags)
     .innerJoin(posts, eq(postTags.postId, posts.id))
@@ -58,35 +80,60 @@ export default async function TagPage({
     .orderBy(desc(posts.publishedAt))
     .all();
 
+  const matchingPosts = rawPosts.map((p) => {
+    const postCats = db
+      .select({ id: categories.id, name: categories.name, slug: categories.slug })
+      .from(postCategories)
+      .innerJoin(categories, eq(postCategories.categoryId, categories.id))
+      .where(eq(postCategories.postId, p.id))
+      .all();
+
+    const pTags = db
+      .select({ id: tags.id, name: tags.name, slug: tags.slug })
+      .from(postTags)
+      .innerJoin(tags, eq(postTags.tagId, tags.id))
+      .where(eq(postTags.postId, p.id))
+      .all();
+
+    return { ...p, categories: postCats, tags: pTags };
+  });
+
+  const totalPages = Math.max(1, Math.ceil(matchingPosts.length / 5));
+
   return (
-    <div className="space-y-8">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-primary transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to all articles
-      </Link>
-
-      <div className="glass p-6 sm:p-8 rounded-2xl border border-border space-y-2">
-        <div className="flex items-center gap-2 text-secondary text-xs font-semibold uppercase tracking-wider">
-          <TagIcon className="w-4 h-4" />
-          <span>Tag Archive</span>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+      {/* Left Column: Post Stream */}
+      <div className="lg:col-span-8 space-y-10">
+        <div className="pb-4 border-b border-border/70">
+          <p className="text-xs text-text-muted">{t("tag")}</p>
+          <h1 className="text-2xl font-bold text-text mt-1">#{tag.name}</h1>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-text">#{tag.name}</h1>
+
+        {matchingPosts.length === 0 ? (
+          <div className="py-20 text-center space-y-3">
+            <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
+            <p className="text-sm text-text-muted">{t("noPosts")}</p>
+          </div>
+        ) : (
+          <div className="space-y-12">
+            {matchingPosts.map((post) => (
+              <PostCard key={post.id} post={post} locale={locale} />
+            ))}
+          </div>
+        )}
+
+        <LinePagination currentPage={1} totalPages={totalPages} baseUrl={`/tag/${tag.slug}`} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {matchingPosts.map((p) => (
-          <PostCard key={p.id} post={p} locale={locale} />
-        ))}
+      {/* Right Column: Profile Sidebar */}
+      <div className="lg:col-span-4 lg:sticky lg:top-8">
+        <LineSidebar
+          site={site}
+          latestPosts={matchingPosts.slice(0, 5)}
+          categories={allCategories}
+          locale={locale}
+        />
       </div>
-
-      {matchingPosts.length === 0 && (
-        <div className="text-center py-16 text-text-muted text-sm">
-          No articles associated with this tag yet.
-        </div>
-      )}
     </div>
   );
 }

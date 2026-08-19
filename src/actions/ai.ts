@@ -3,24 +3,41 @@
 import { callAiChat } from "@/lib/ai/client";
 import { requireAuth } from "@/lib/auth/session";
 
+/**
+ * Result payload returned from AI-driven SEO meta generation.
+ */
 export type AiSeoResponse =
   | { success: true; data: { title: string; description: string } }
   | { success: false; error: string };
 
+/**
+ * Result payload returned from AI excerpt generation.
+ */
 export type AiExcerptResponse =
   | { success: true; excerpt: string }
   | { success: false; error: string };
 
+/**
+ * Result payload returned from AI automated translation.
+ */
 export type AiTranslateResponse =
   | { success: true; translated: string }
   | { success: false; error: string };
 
+/**
+ * Result payload returned from AI text refinement.
+ */
 export type AiRewriteResponse =
   | { success: true; result: string }
   | { success: false; error: string };
 
 /**
- * Generates an SEO meta title and description from article markdown content.
+ * Generates an SEO-optimized title and description meta tag pair from markdown article content.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param contentMd - Raw markdown text of the article.
+ * @returns A Promise resolving to an AiSeoResponse containing the structured title and meta description.
+ * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
 export async function generateSeoAction(siteId: string, contentMd: string): Promise<AiSeoResponse> {
   await requireAuth(["super_admin", "admin", "editor", "author"]);
@@ -51,7 +68,12 @@ ${contentMd.slice(0, 3000)}`;
 }
 
 /**
- * Generates a concise 2-sentence excerpt from article content.
+ * Generates a concise two-sentence summary excerpt from the provided article body.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param contentMd - Raw markdown text of the article.
+ * @returns A Promise resolving to an AiExcerptResponse containing the clean excerpt string.
+ * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
 export async function generateExcerptAction(siteId: string, contentMd: string): Promise<AiExcerptResponse> {
   await requireAuth(["super_admin", "admin", "editor", "author"]);
@@ -76,7 +98,13 @@ ${contentMd.slice(0, 2500)}`;
 }
 
 /**
- * Translates article content into the target language.
+ * Translates article markdown text into a target language while preserving markdown structures and diagram blocks.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param text - Raw source text or markdown content to translate.
+ * @param targetLocale - Target BCP 47 language code (e.g., 'es', 'en', 'ja', 'fr').
+ * @returns A Promise resolving to an AiTranslateResponse containing the translated markdown string.
+ * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
 export async function translateAction(siteId: string, text: string, targetLocale: string): Promise<AiTranslateResponse> {
   await requireAuth(["super_admin", "admin", "editor", "author"]);
@@ -99,27 +127,30 @@ ${text}`;
 }
 
 /**
- * Rewrites, expands, or simplifies selected text based on an instruction.
+ * Rewrites and improves the clarity, tone, and grammar of the provided text.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param text - Raw text to refine.
+ * @param tone - Preferred stylistic tone (e.g., 'professional', 'casual', 'concise').
+ * @returns A Promise resolving to an AiRewriteResponse with the rewritten text.
+ * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
-export async function rewriteAction(siteId: string, text: string, instruction: string): Promise<AiRewriteResponse> {
+export async function rewriteAction(siteId: string, text: string, tone = "professional"): Promise<AiRewriteResponse> {
   await requireAuth(["super_admin", "admin", "editor", "author"]);
 
-  if (!text) return { success: false, error: "No text selected." };
+  if (!text) return { success: false, error: "No text provided." };
 
-  const prompt = `Apply the following instruction to the text below. Return only the revised text.
-Instruction: ${instruction}
-
-Text:
+  const prompt = `Rewrite the following text with a ${tone} tone. Improve flow, clarity, and precision while maintaining the core message:
 ${text}`;
 
   try {
     const result = await callAiChat(siteId, [
-      { role: "system", content: "You are a professional writing assistant." },
+      { role: "system", content: "You are an expert editor." },
       { role: "user", content: prompt },
     ]);
     return { success: true, result: result.trim() };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "AI assistance failed.";
+    const message = err instanceof Error ? err.message : "Rewrite failed.";
     return { success: false, error: message };
   }
 }

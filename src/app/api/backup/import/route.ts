@@ -3,10 +3,12 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { restoreSiteBackupZip } from "@/lib/backup/import";
 
 /**
- * Handles uploading and restoring a site backup ZIP archive.
- * Supports "merge" and "replace" modes.
+ * HTTP POST endpoint accepting multipart upload of a backup ZIP archive to restore database entities and media files.
+ *
+ * @param req - The incoming NextRequest containing the multipart ZIP payload.
+ * @returns JSON response summarizing restoration entity counts.
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user || !user.exists || !["super_admin", "admin"].includes(user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

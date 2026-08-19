@@ -1,81 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ListTree } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
+import { List } from "lucide-react";
 
-export interface HeadingItem {
+/** Structure of an extracted heading entry within the table of contents. */
+interface TocItem {
   id: string;
   text: string;
   level: number;
 }
 
 /**
- * Parses article headers to build a sticky interactive Table of Contents with active scrollspy highlights.
+ * Sticky table of contents component automatically extracting H2-H4 headings from article HTML with active section highlighting.
+ *
+ * @param props - Object containing the raw article content HTML string.
+ * @returns React JSX table of contents component or null when fewer than 2 headings exist.
  */
 export function TableOfContents({ contentHtml }: { contentHtml: string }) {
-  const [headings, setHeadings] = useState<HeadingItem[]>([]);
-  const [activeId, setActiveId] = useState<string>("");
+  const [items, setItems] = useState<TocItem[]>([]);
+  const [activeId, setActiveId] = useState("");
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
-    const doc = new DOMParser().parseFromString(contentHtml, "text/html");
-    const elements = doc.querySelectorAll("h1, h2, h3");
-    const items: HeadingItem[] = [];
-
-    elements.forEach((el, index) => {
-      const text = el.textContent || "";
-      const level = parseInt(el.tagName.replace("H", ""), 10);
-      const id = el.id || `heading-${index}-${text.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-      items.push({ id, text, level });
-    });
-
-    setHeadings(items);
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveId(entry.target.id);
-          }
-        });
-      },
-      { rootMargin: "0px 0px -70% 0px" }
-    );
-
-    document.querySelectorAll("article h1, article h2, article h3").forEach((el) => {
-      observer.observe(el);
-    });
-
-    return () => observer.disconnect();
+    const headingRegex = /<h([2-4])\s[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/h[2-4]>/gi;
+    const parsed: TocItem[] = [];
+    let match;
+    while ((match = headingRegex.exec(contentHtml)) !== null) {
+      const text = match[3].replace(/<[^>]+>/g, "").trim();
+      if (text) {
+        parsed.push({ id: match[2], text, level: Number(match[1]) });
+      }
+    }
+    setItems(parsed);
   }, [contentHtml]);
 
-  if (headings.length < 2) return null;
+  useEffect(() => {
+    if (items.length === 0) return;
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length > 0) {
+          setActiveId(visible[0].target.id);
+        }
+      },
+      { rootMargin: "-80px 0px -70% 0px", threshold: 0.1 }
+    );
+
+    items.forEach((item) => {
+      const el = document.getElementById(item.id);
+      if (el) observerRef.current!.observe(el);
+    });
+
+    return () => observerRef.current?.disconnect();
+  }, [items]);
+
+  if (items.length < 2) return null;
 
   return (
-    <nav className="glass p-4 rounded-xl space-y-2.5 border border-border sticky top-24">
-      <div className="flex items-center gap-2 pb-2 border-b border-border/50 text-text font-semibold text-xs uppercase tracking-wider">
-        <ListTree className="w-3.5 h-3.5 text-primary" />
-        <span>Table of Contents</span>
+    <div className="card-clean p-5 sticky top-20 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-semibold text-text pb-3 border-b border-border">
+        <List className="w-4 h-4 text-primary" />
+        <span>Contenido</span>
       </div>
-      <ul className="space-y-1.5 text-xs">
-        {headings.map((h) => (
-          <li
-            key={h.id}
-            style={{ paddingLeft: `${(h.level - 1) * 12}px` }}
-            className="truncate"
-          >
+
+      <nav className="space-y-1 text-xs">
+        {items.map((item) => {
+          const isActive = activeId === item.id;
+          return (
             <a
-              href={`#${h.id}`}
-              className={`block truncate transition-colors ${
-                activeId === h.id
-                  ? "text-primary font-semibold"
+              key={item.id}
+              href={`#${item.id}`}
+              className={`block py-1.5 transition-colors leading-relaxed ${
+                item.level === 3 ? "pl-4" : item.level === 4 ? "pl-8" : "pl-0"
+              } ${
+                isActive
+                  ? "text-primary font-semibold border-l-2 border-primary pl-2"
                   : "text-text-muted hover:text-text"
               }`}
             >
-              {h.text}
+              {item.text}
             </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
+          );
+        })}
+      </nav>
+    </div>
   );
 }

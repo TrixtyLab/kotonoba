@@ -1,26 +1,36 @@
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, users, categories, tags, postCategories, postTags } from "@/lib/db/schema";
-import { eq, and, ne, desc } from "drizzle-orm";
+import { eq, and, desc, lt, gt, asc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils/date";
-import { Badge } from "@/components/ui/Badge";
 import { ShareButtons } from "@/components/blog/ShareButtons";
-import { TableOfContents } from "@/components/blog/TableOfContents";
+import { LineSidebar } from "@/components/blog/LineSidebar";
 import { MermaidRenderer } from "@/components/MermaidRenderer";
-import { PostCard } from "@/components/blog/PostCard";
+import { LikeButton } from "@/components/blog/LikeButton";
 import { Link } from "@/i18n/routing";
-import { Calendar, Clock, ArrowLeft, User } from "lucide-react";
+import { Tag as TagIcon, Eye, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
+import { renderPostContent } from "@/lib/utils/markdown";
+import { getLocalizedText } from "@/lib/utils/localization";
+
+/**
+ * Generates OpenGraph, Twitter, and canonical SEO metadata tags for a published blog post.
+ *
+ * @param props - Object containing route params with post slug and locale.
+ * @returns Metadata object configured for search engines and social cards.
+ */
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug, locale } = await params;
   const site = await getActiveSite();
-  if (!site) return { title: "Article Not Found" };
+  const t = await getTranslations({ locale, namespace: "blog" });
+  if (!site) return { title: t("noPosts") };
 
   const db = getDb();
   const post = db
@@ -29,14 +39,15 @@ export async function generateMetadata({
     .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), eq(posts.status, "published")))
     .get();
 
-  if (!post) return { title: "Article Not Found" };
+  if (!post) return { title: t("noPosts") };
 
   const baseUrl = `https://${site.domain}`;
   const canonicalUrl = `${baseUrl}/entry/${post.slug}`;
 
+  const siteName = getLocalizedText(site.name, locale);
   return {
-    title: `${post.title} — ${site.name}`,
-    description: post.excerpt || `${post.title} on ${site.name}`,
+    title: `${post.title} — ${siteName}`,
+    description: post.excerpt || `${post.title} - ${siteName}`,
     alternates: {
       canonical: canonicalUrl,
     },
@@ -58,10 +69,12 @@ export async function generateMetadata({
 }
 
 /**
- * Public article detail page rendering rich markdown content, inline Mermaid diagrams,
- * responsive Table of Contents, social share buttons, author information, and JSON-LD schema.
+ * Public single article reading view rendering formatted markdown HTML, social share buttons, like reaction triggers, and sequential post navigation.
+ *
+ * @param props - Object containing route params Promise with article slug.
+ * @returns React JSX full article reading page.
  */
-export default async function BlogPostPage({
+export default async function PostEntryPage({
   params,
 }: {
   params: Promise<{ slug: string; locale: string }>;
@@ -69,6 +82,8 @@ export default async function BlogPostPage({
   const { slug, locale } = await params;
   const site = await getActiveSite();
   if (!site) notFound();
+
+  const t = await getTranslations({ locale, namespace: "blog" });
 
   const db = getDb();
   const post = db
@@ -114,44 +129,48 @@ export default async function BlogPostPage({
     .where(eq(postTags.postId, post.id))
     .all();
 
-  const relatedPosts = db
-    .select({
-      id: posts.id,
-      title: posts.title,
-      slug: posts.slug,
-      excerpt: posts.excerpt,
-      coverImage: posts.coverImage,
-      publishedAt: posts.publishedAt,
-    })
+  const prevPost = post.publishedAt
+    ? db
+        .select({ title: posts.title, slug: posts.slug })
+        .from(posts)
+        .where(
+          and(
+            eq(posts.siteId, site.id),
+            eq(posts.status, "published"),
+            lt(posts.publishedAt, post.publishedAt)
+          )
+        )
+        .orderBy(desc(posts.publishedAt))
+        .limit(1)
+        .get()
+    : null;
+
+  const nextPost = post.publishedAt
+    ? db
+        .select({ title: posts.title, slug: posts.slug })
+        .from(posts)
+        .where(
+          and(
+            eq(posts.siteId, site.id),
+            eq(posts.status, "published"),
+            gt(posts.publishedAt, post.publishedAt)
+          )
+        )
+        .orderBy(asc(posts.publishedAt))
+        .limit(1)
+        .get()
+    : null;
+
+  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
+  const latestPosts = db
+    .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })
     .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published"), ne(posts.id, post.id)))
+    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
     .orderBy(desc(posts.publishedAt))
-    .limit(3)
+    .limit(5)
     .all();
 
-  const readTime = Math.max(1, Math.ceil((post.contentMd?.length || 1000) / 800));
   const postUrl = `https://${site.domain}/entry/${post.slug}`;
-
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    headline: post.title,
-    description: post.excerpt,
-    image: post.coverImage || undefined,
-    datePublished: post.publishedAt?.toISOString(),
-    author: {
-      "@type": "Person",
-      name: post.authorName || "Author",
-    },
-    publisher: {
-      "@type": "Organization",
-      name: site.name,
-    },
-    mainEntityOfPage: {
-      "@type": "WebPage",
-      "@id": postUrl,
-    },
-  };
 
   const mermaidDiagrams: string[] = [];
   const regex = /```mermaid\n([\s\S]*?)```/g;
@@ -162,122 +181,128 @@ export default async function BlogPostPage({
   }
 
   return (
-    <div className="space-y-12">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-primary transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to all articles
-      </Link>
-
-      <header className="space-y-6 max-w-4xl">
-        <div className="flex flex-wrap items-center gap-2">
-          {assignedCategories.map((c) => (
-            <Link key={c.id} href={`/category/${c.slug}`}>
-              <Badge variant="primary">{c.name}</Badge>
-            </Link>
-          ))}
-        </div>
-
-        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-text tracking-tight leading-tight">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+      {/* Left Column: Article Content */}
+      <article className="lg:col-span-8 space-y-6">
+        {/* Article Title (as in Screenshot 1) */}
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-text tracking-tight leading-snug">
           {post.title}
         </h1>
 
-        {post.excerpt && (
-          <p className="text-base sm:text-lg text-text-muted leading-relaxed">
-            {post.excerpt}
+        {/* Date & Time */}
+        {post.publishedAt && (
+          <p className="text-xs text-text-muted">
+            {formatDate(post.publishedAt, locale)}
           </p>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-border/60 text-xs text-text-muted">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              {post.authorAvatar ? (
-                <img src={post.authorAvatar} alt="" className="w-7 h-7 rounded-full object-cover" />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
-                  <User className="w-3.5 h-3.5" />
-                </div>
-              )}
-              <span className="font-semibold text-text">{post.authorName || "Author"}</span>
+        {/* Cover Image */}
+        {post.coverImage && (
+          <div className="py-2">
+            <img src={post.coverImage} alt={post.title} className="max-w-full h-auto object-cover rounded-xl" />
+          </div>
+        )}
+
+        {/* Body Content */}
+        <div
+          className="prose-blog pt-2"
+          dangerouslySetInnerHTML={{
+            __html: renderPostContent(post.contentHtml || post.contentMd || ""),
+          }}
+        />
+
+        {/* Mermaid Diagrams */}
+        {mermaidDiagrams.length > 0 && (
+          <div className="space-y-6 pt-4">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-text pb-2.5 border-b border-border">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <span>Diagrams ({mermaidDiagrams.length})</span>
             </div>
-            {post.publishedAt && (
-              <span className="flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" />
-                {formatDate(post.publishedAt, locale)}
+            {mermaidDiagrams.map((chart, idx) => (
+              <MermaidRenderer key={idx} chart={chart} />
+            ))}
+          </div>
+        )}
+
+        {/* Bottom Reactions & Tags Bar (as in Screenshot 2) */}
+        <div className="pt-8 border-t border-border/70 flex flex-wrap items-center justify-between gap-4 text-xs text-text-muted">
+          <div className="flex items-center gap-4">
+            <LikeButton postId={post.id} initialLikes={Math.floor((post.views || 0) / 8)} size="md" />
+
+            {post.views !== undefined && post.views > 0 && (
+              <span className="flex items-center gap-1 font-mono text-xs text-text-muted tabular-nums">
+                <Eye className="w-3.5 h-3.5" />
+                {post.views}
               </span>
             )}
-            <span className="flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              {readTime} min read
-            </span>
           </div>
 
-          <ShareButtons url={postUrl} title={post.title} />
-        </div>
-      </header>
-
-      {post.coverImage && (
-        <div className="w-full max-h-[460px] rounded-2xl overflow-hidden border border-border shadow-xl">
-          <img src={post.coverImage} alt={post.title} className="w-full h-full object-cover" />
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <article className="lg:col-span-8">
-          <div
-            className="prose-blog text-text/90"
-            dangerouslySetInnerHTML={{ __html: post.contentHtml || post.contentMd || "" }}
-          />
-
-          {mermaidDiagrams.length > 0 && (
-            <div className="my-8 space-y-6">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-text-muted pb-2 border-b border-border/50">
-                Diagrams ({mermaidDiagrams.length})
-              </h3>
-              {mermaidDiagrams.map((chart, idx) => (
-                <MermaidRenderer key={idx} chart={chart} />
-              ))}
-            </div>
-          )}
-
-          {assignedTags.length > 0 && (
-            <div className="pt-8 mt-12 border-t border-border flex flex-wrap gap-2 items-center">
-              <span className="text-xs font-semibold text-text-muted">Tags:</span>
+          {/* Tags list (🏷️ tag1 tag2) */}
+          {(assignedTags.length > 0 || assignedCategories.length > 0) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <TagIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
               {assignedTags.map((t) => (
                 <Link
                   key={t.id}
                   href={`/tag/${t.slug}`}
-                  className="text-xs px-3 py-1 rounded-full bg-surface-hover hover:bg-primary/15 hover:text-primary transition-colors border border-border"
+                  className="hover:text-primary transition-colors"
                 >
-                  #{t.name}
+                  {t.name}
+                </Link>
+              ))}
+              {assignedCategories.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/category/${c.slug}`}
+                  className="hover:text-primary transition-colors font-medium"
+                >
+                  {c.name}
                 </Link>
               ))}
             </div>
           )}
-        </article>
+        </div>
 
-        <aside className="lg:col-span-4 space-y-6">
-          <TableOfContents contentHtml={post.contentHtml || post.contentMd || ""} />
-        </aside>
+        {/* Share buttons */}
+        <div className="pt-4 flex items-center justify-between border-t border-border/50 text-xs text-text-muted">
+          <span>{t("shareArticle")}:</span>
+          <ShareButtons url={postUrl} title={post.title} />
+        </div>
+
+        {/* Prev / Next article link */}
+        <div className="flex items-center justify-between pt-6 border-t border-border/50 text-xs">
+          {prevPost ? (
+            <Link
+              href={`/entry/${prevPost.slug}`}
+              className="hover:text-primary transition-colors inline-flex items-center gap-1 max-w-[45%] truncate"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">« {t("previousPost")}: {prevPost.title}</span>
+            </Link>
+          ) : (
+            <div />
+          )}
+
+          {nextPost && (
+            <Link
+              href={`/entry/${nextPost.slug}`}
+              className="hover:text-primary transition-colors inline-flex items-center gap-1 max-w-[45%] truncate text-right ml-auto"
+            >
+              <span className="truncate">{t("nextPost")}: {nextPost.title} »</span>
+              <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+            </Link>
+          )}
+        </div>
+      </article>
+
+      <div className="lg:col-span-4 lg:sticky lg:top-8">
+        <LineSidebar
+          site={site}
+          latestPosts={latestPosts}
+          categories={allCategories}
+          locale={locale}
+        />
       </div>
-
-      {relatedPosts.length > 0 && (
-        <section className="pt-12 border-t border-border space-y-6">
-          <h3 className="text-xl font-bold text-text">More Articles You Might Like</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {relatedPosts.map((rp) => (
-              <PostCard key={rp.id} post={rp} locale={locale} />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

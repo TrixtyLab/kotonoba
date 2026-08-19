@@ -7,24 +7,44 @@ import { requireAuth } from "@/lib/auth/session";
 import { encryptSecret, decryptSecret } from "@/lib/security/crypto";
 import { revalidatePath } from "next/cache";
 
+/**
+ * Parameter payload for saving AI assistant integration settings.
+ */
 export interface AiSettingsInput {
-  apiUrl: string;
-  apiKey: string;
-  model: string;
-  temperature: number;
-  enabled: boolean;
+  /** Target API endpoint URL. */
+  apiUrl?: string;
+  /** Plaintext API secret key to encrypt before storage. */
+  apiKey?: string;
+  /** Language model identifier. */
+  model?: string;
+  /** Sampling temperature. */
+  temperature?: number;
+  /** Active status toggle. */
+  enabled?: boolean;
 }
 
+/**
+ * Result payload returned from settings mutation operations.
+ */
 export type SettingsMutationResponse =
   | { success: true }
   | { success: false; error?: string };
 
+/**
+ * Result payload returned from an AI endpoint connectivity probe.
+ */
 export type AiTestConnectionResponse =
   | { success: true; reply?: string }
   | { success: false; error: string };
 
 /**
- * Saves or updates arbitrary key-value settings for a site.
+ * Upserts key-value configuration pairs associated with a specific tenant site.
+ * Automatically triggers cache revalidation for the site's layout tree.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param keyValuePairs - Dictionary of configuration keys and string values.
+ * @returns A Promise resolving to a SettingsMutationResponse.
+ * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function saveSiteSettings(
   siteId: string,
@@ -57,11 +77,17 @@ export async function saveSiteSettings(
   }
 
   revalidatePath("/", "layout");
+  revalidatePath("/[locale]", "layout");
   return { success: true };
 }
 
 /**
- * Encrypts and securely persists AI configuration in SQLite.
+ * Encrypts sensitive API keys using AES-256-GCM and persists AI assistant parameters to SQLite.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param input - AI configuration parameters.
+ * @returns A Promise resolving to a SettingsMutationResponse.
+ * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function saveAiSettings(
   siteId: string,
@@ -86,7 +112,13 @@ export async function saveAiSettings(
 }
 
 /**
- * Tests connection to a custom OpenAI-compatible endpoint with provided credentials.
+ * Performs a test ping to an OpenAI-compatible endpoint to verify connectivity and API key validity.
+ *
+ * @param apiUrl - Target API endpoint URL.
+ * @param apiKey - Candidate secret API key.
+ * @param model - Model identifier string.
+ * @returns A Promise resolving to an AiTestConnectionResponse with response reply or error message.
+ * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function testAiConnection(
   apiUrl: string,
@@ -131,7 +163,11 @@ export async function testAiConnection(
 }
 
 /**
- * Retrieves all settings map for a site with masked AI key.
+ * Retrieves all stored key-value settings for a site with AI secret keys securely masked.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @returns A Promise resolving to a key-value dictionary with sensitive keys redacted.
+ * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function getSiteSettings(siteId: string): Promise<Record<string, string>> {
   await requireAuth(["super_admin", "admin"]);

@@ -8,10 +8,16 @@ import { generateId, generateSlug } from "@/lib/utils/slug";
 import { categorySchema, validate, type CategoryInput } from "@/lib/security/validate";
 import { revalidatePath } from "next/cache";
 
+/**
+ * Result payload returned from category creation or update operations.
+ */
 export type CategoryMutationResponse =
   | { success: true; id?: string }
   | { success: false; error?: string; errors?: Record<string, string[]> };
 
+/**
+ * Plain object representation of a persisted category record.
+ */
 export interface CategoryRecord {
   id: string;
   siteId: string;
@@ -23,7 +29,12 @@ export interface CategoryRecord {
 }
 
 /**
- * Creates a category under the specified site.
+ * Creates a new category classification under a specific blog site.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @param inputData - Category attributes including name, custom slug, description, and hierarchy order.
+ * @returns A Promise resolving to a CategoryMutationResponse with the created category ID or validation errors.
+ * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
 export async function createCategory(siteId: string, inputData: Partial<CategoryInput>): Promise<CategoryMutationResponse> {
   await requireAuth(["super_admin", "admin", "editor"]);
@@ -55,7 +66,12 @@ export async function createCategory(siteId: string, inputData: Partial<Category
 }
 
 /**
- * Updates a category details.
+ * Updates an existing category's name, slug, description, or sort hierarchy.
+ *
+ * @param categoryId - Unique database identifier of the category to update.
+ * @param inputData - Updated category attributes.
+ * @returns A Promise resolving to a CategoryMutationResponse indicating success status or validation errors.
+ * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
 export async function updateCategory(categoryId: string, inputData: Partial<CategoryInput>): Promise<CategoryMutationResponse> {
   await requireAuth(["super_admin", "admin", "editor"]);
@@ -85,7 +101,11 @@ export async function updateCategory(categoryId: string, inputData: Partial<Cate
 }
 
 /**
- * Deletes a category.
+ * Deletes a category by ID and removes all associated post-category relations.
+ *
+ * @param categoryId - Unique database identifier of the category to delete.
+ * @returns A Promise resolving to an object indicating success.
+ * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function deleteCategory(categoryId: string): Promise<{ success: true }> {
   await requireAuth(["super_admin", "admin"]);
@@ -96,7 +116,10 @@ export async function deleteCategory(categoryId: string): Promise<{ success: tru
 }
 
 /**
- * Retrieves all categories for a given site.
+ * Retrieves all categories associated with a given site, ordered by sort hierarchy.
+ *
+ * @param siteId - Unique database identifier of the target site.
+ * @returns A Promise resolving to an array of CategoryRecord objects.
  */
 export async function getCategories(siteId: string): Promise<CategoryRecord[]> {
   const db = getDb();
@@ -104,5 +127,6 @@ export async function getCategories(siteId: string): Promise<CategoryRecord[]> {
     .select()
     .from(categories)
     .where(eq(categories.siteId, siteId))
+    .orderBy(categories.sortOrder, categories.name)
     .all();
 }

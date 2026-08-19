@@ -1,95 +1,21 @@
 import { defineRouting } from "next-intl/routing";
 import { createNavigation } from "next-intl/navigation";
 
-export const LOCALES = [
-  "en", "es", "fr", "de", "it", "pt", "nl", "ru", "zh", "ja",
-  "ko", "ar", "hi", "tr", "pl", "sv", "da", "fi", "no", "el",
-  "he", "th", "vi", "id", "ms", "cs", "ro", "hu", "uk", "bg",
-  "hr", "sk", "lt", "lv", "et", "sl", "fa", "ur", "bn", "ta",
-  "te", "mr", "gu", "kn", "ml", "pa", "sw", "af", "is", "ga",
-  "cy", "eu", "ca", "gl", "az", "ka", "hy", "kk", "uz", "mn",
-  "ne", "si", "my", "km", "lo", "am", "so", "tl", "sq", "mk",
-  "bs", "sr", "mt"
-] as const;
+/** List of supported BCP 47 locale codes across the application. */
+export const LOCALES = ["en", "es"] as const;
 
+/** Type union of supported language codes. */
 export type Locale = (typeof LOCALES)[number];
 
+/** Human-readable language display names mapped by locale code. */
 export const LOCALE_NAMES: Record<Locale, string> = {
   en: "English",
   es: "Español",
-  fr: "Français",
-  de: "Deutsch",
-  it: "Italiano",
-  pt: "Português",
-  nl: "Nederlands",
-  ru: "Русский",
-  zh: "中文",
-  ja: "日本語",
-  ko: "한국어",
-  ar: "العربية",
-  hi: "हिन्दी",
-  tr: "Türkçe",
-  pl: "Polski",
-  sv: "Svenska",
-  da: "Dansk",
-  fi: "Suomi",
-  no: "Norsk",
-  el: "Ελληνικά",
-  he: "עברית",
-  th: "ไทย",
-  vi: "Tiếng Việt",
-  id: "Bahasa Indonesia",
-  ms: "Bahasa Melayu",
-  cs: "Čeština",
-  ro: "Română",
-  hu: "Magyar",
-  uk: "Українська",
-  bg: "Български",
-  hr: "Hrvatski",
-  sk: "Slovenčina",
-  lt: "Lietuvių",
-  lv: "Latviešu",
-  et: "Eesti",
-  sl: "Slovenščina",
-  fa: "فارسی",
-  ur: "اردو",
-  bn: "বাংলা",
-  ta: "தமிழ்",
-  te: "తెలుగు",
-  mr: "मराठी",
-  gu: "ગુજરાતી",
-  kn: "ಕನ್ನಡ",
-  ml: "മലയാളം",
-  pa: "ਪੰਜਾਬੀ",
-  sw: "Kiswahili",
-  af: "Afrikaans",
-  is: "Íslenska",
-  ga: "Gaeilge",
-  cy: "Cymraeg",
-  eu: "Euskara",
-  ca: "Català",
-  gl: "Galego",
-  az: "Azərbaycan",
-  ka: "ქართული",
-  hy: "Հայերեն",
-  kk: "Қазақша",
-  uz: "O'zbek",
-  mn: "Монгол",
-  ne: "नेपाली",
-  si: "සිංහල",
-  my: "မြန်မာ",
-  km: "ខ្មែរ",
-  lo: "ລາວ",
-  am: "አማርኛ",
-  so: "Soomaali",
-  tl: "Tagalog",
-  sq: "Shqip",
-  mk: "Македонски",
-  bs: "Bosanski",
-  sr: "Српски",
-  mt: "Malti",
 };
 
+/**
+ * Global Next-Intl routing configuration defining default locale and prefix behaviors.
+ */
 export const routing = defineRouting({
   locales: LOCALES,
   defaultLocale: "en",

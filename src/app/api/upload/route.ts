@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { ensureDir } from "@/lib/utils/fs";
-import { generateId } from "@/lib/utils/slug";
-import path from "path";
-import fs from "fs/promises";
-
-function getUploadDir(): string {
-  if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR;
-  if (process.env.NODE_ENV === "production") return "/app/data/uploads";
-  return path.join(process.cwd(), "data", "uploads");
-}
+import { uploadToStorage } from "@/lib/storage";
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -22,10 +13,12 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_FILE_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE || "10485760", 10);
 
 /**
- * Handles image and media uploads for the Tiptap editor and site branding.
- * Validates authentication, mime-type, and file size before persisting to disk.
+ * Multipart file upload endpoint accepting image files and uploading them to active storage (Local filesystem, S3, or Cloudflare R2).
+ *
+ * @param req - The incoming NextRequest containing the multipart file payload.
+ * @returns JSON response containing public URL, filename, and file size.
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user || !user.exists) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -34,6 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const folder = (formData.get("folder") as string) || "";
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -47,24 +41,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "File exceeds maximum upload size (10MB)" }, { status: 400 });
     }
 
-    const uploadDir = getUploadDir();
-    ensureDir(uploadDir);
-
-    const ext = path.extname(file.name) || ".jpg";
-    const filename = `${generateId()}${ext}`;
-    const destinationPath = path.join(/*turbopackIgnore: true*/ uploadDir, filename);
-
     const bytes = await file.arrayBuffer();
-    await fs.writeFile(destinationPath, Buffer.from(bytes));
+    const buffer = Buffer.from(bytes);
 
-    const publicUrl = `/api/uploads/${filename}`;
+    const result = await uploadToStorage(buffer, file.name, file.type, folder);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
-      filename,
-      size: file.size,
-      mimeType: file.type,
+      url: result.url,
+      filename: result.filename,
+      path: result.path,
+      size: result.size,
+      mimeType: result.mimeType,
+      provider: result.provider,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to upload file";

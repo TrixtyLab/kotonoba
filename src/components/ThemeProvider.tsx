@@ -3,25 +3,36 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { Sun, Moon } from "lucide-react";
 
+/** Supported color theme schemes. */
 type Theme = "dark" | "light";
 
 const ThemeContext = createContext<{
   theme: Theme;
   toggle: () => void;
-}>({ theme: "dark", toggle: () => {} });
+}>({ theme: "light", toggle: () => {} });
 
+/**
+ * Hook providing access to the current theme state and toggle handler.
+ *
+ * @returns Object containing active theme mode and toggle function.
+ */
 export function useTheme() {
   return useContext(ThemeContext);
 }
 
+/**
+ * Root theme context provider syncing active light/dark mode with localStorage and HTML root attributes.
+ *
+ * @param props - Children element tree.
+ * @returns React JSX provider element.
+ */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("theme") as Theme | null;
-    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initial = stored || (systemPrefersDark ? "dark" : "light");
+    const initial = stored || "light";
     setTheme(initial);
     document.documentElement.setAttribute("data-theme", initial);
     setMounted(true);
@@ -45,6 +56,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Interactive button component for toggling between dark and light color modes.
+ *
+ * @returns React JSX button toggle element.
+ */
 export function ThemeToggle() {
   const { theme, toggle } = useTheme();
 

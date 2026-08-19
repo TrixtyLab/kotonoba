@@ -1,13 +1,14 @@
-/**
- * In-memory sliding window rate limiter.
- * No Redis needed — suitable for single-instance Docker deployment.
- */
 const windows = new Map<string, { count: number; resetAt: number }>();
 
 const CLEANUP_INTERVAL = 60_000;
 let lastCleanup = Date.now();
 
-function cleanup() {
+/**
+ * Periodically sweeps and removes expired rate limiting records from the in-memory store.
+ *
+ * @returns Void.
+ */
+function cleanup(): void {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL) return;
   lastCleanup = now;
@@ -16,11 +17,19 @@ function cleanup() {
   }
 }
 
+/**
+ * Rate limit policy configuration specifying the request threshold and rolling window duration.
+ */
 export interface RateLimitConfig {
+  /** Maximum number of allowed requests within the defined time window. */
   maxRequests: number;
+  /** Window duration in milliseconds. */
   windowMs: number;
 }
 
+/**
+ * Predefined rate limiting configurations categorized by route sensitivity.
+ */
 export const RATE_LIMITS = {
   default: { maxRequests: 100, windowMs: 60_000 },
   auth: { maxRequests: 10, windowMs: 60_000 },
@@ -29,6 +38,13 @@ export const RATE_LIMITS = {
   ai: { maxRequests: 30, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
+/**
+ * Evaluates whether an incoming request from a specific identifier (such as an IP address) exceeds the configured rate limit.
+ *
+ * @param key - The unique tracking key, typically the client IP or user ID.
+ * @param config - The rate limit configuration rule to apply. Defaults to the default tier.
+ * @returns An evaluation object indicating whether the request is allowed, remaining requests, and retry delay in seconds.
+ */
 export function checkRateLimit(
   key: string,
   config: RateLimitConfig = RATE_LIMITS.default

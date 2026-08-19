@@ -6,8 +6,9 @@ import { runMigrations } from "./migrate";
 import path from "path";
 
 /**
- * Initializes and exports the SQLite database singleton using Drizzle ORM.
- * Automatically runs table migrations on startup and configures SQLite pragmas for WAL mode.
+ * Resolves the absolute filesystem location of the SQLite database file based on environment configuration.
+ *
+ * @returns An absolute filesystem path to the blog database file.
  */
 function resolveDbPath(): string {
   if (process.env.DB_PATH) {
@@ -21,6 +22,11 @@ function resolveDbPath(): string {
 
 let _db: ReturnType<typeof createDb> | null = null;
 
+/**
+ * Instantiates the better-sqlite3 database connection, activates WAL mode, and executes migrations.
+ *
+ * @returns Configured Drizzle ORM database instance bound to the SQLite connection.
+ */
 function createDb() {
   const dbPath = resolveDbPath();
   ensureDir(path.dirname(dbPath));
@@ -33,6 +39,11 @@ function createDb() {
   return drizzleDb;
 }
 
+/**
+ * Retrieves the global SQLite database singleton instance, initializing it lazily on first access.
+ *
+ * @returns The active Drizzle ORM database instance.
+ */
 export function getDb() {
   if (!_db) {
     _db = createDb();
@@ -40,4 +51,5 @@ export function getDb() {
   return _db;
 }
 
-export type DbClient = ReturnType<typeof getDb>;
+export type Db = ReturnType<typeof getDb>;
+export { schema };

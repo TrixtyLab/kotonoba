@@ -7,10 +7,12 @@ import { applySecurityHeaders } from "@/lib/security/headers";
 const intlMiddleware = createMiddleware(routing);
 
 /**
- * Next.js 16 proxy replacing legacy middleware.
- * Orchestrates multi-language route resolution, defense-in-depth security headers, and admin session routing.
+ * Root Edge middleware handler executing security header enforcement, internationalization routing, and protected dashboard redirection.
+ *
+ * @param request - The incoming NextRequest object.
+ * @returns An outgoing NextResponse with applied security headers or internationalization redirects.
  */
-export function proxy(request: NextRequest) {
+export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
   if (
@@ -33,7 +35,7 @@ export function proxy(request: NextRequest) {
   const intlResponse = intlMiddleware(request);
 
   if (pathname.includes("/admin")) {
-    const token = request.cookies.get("access_token")?.value;
+    const token = request.cookies.get("access_token")?.value || request.cookies.get("refresh_token")?.value;
     if (!token) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("redirect", pathname);

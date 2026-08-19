@@ -4,7 +4,9 @@ import { CategoriesManagerClient } from "@/components/admin/CategoriesManagerCli
 import { notFound } from "next/navigation";
 
 /**
- * Admin page for managing blog categories.
+ * Server page component loading site categories and rendering the category taxonomy manager interface.
+ *
+ * @returns React JSX categories manager view.
  */
 export default async function AdminCategoriesPage() {
   const site = await getActiveSite();

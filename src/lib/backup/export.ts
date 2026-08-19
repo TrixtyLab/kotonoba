@@ -15,15 +15,23 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 
+/**
+ * Metadata manifest included within the exported site backup archive.
+ */
 export interface BackupManifest {
+  /** Format schema version. */
   version: string;
+  /** Schema identifier for compatibility verification. */
   format: string;
+  /** ISO 8601 timestamp when the backup was generated. */
   exportedAt: string;
+  /** Core identity metadata of the exported site. */
   site: {
     id: string;
     name: string;
     domain: string;
   };
+  /** Summary of bundled entity record counts. */
   counts: {
     posts: number;
     categories: number;
@@ -33,6 +41,11 @@ export interface BackupManifest {
   };
 }
 
+/**
+ * Resolves the absolute directory path where local media uploads are stored.
+ *
+ * @returns Absolute filesystem path string.
+ */
 export function getUploadDir(): string {
   if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR;
   if (process.env.NODE_ENV === "production") return "/app/data/uploads";
@@ -40,18 +53,21 @@ export function getUploadDir(): string {
 }
 
 /**
- * Creates a complete ZIP backup buffer containing database records and uploaded media files for a site.
+ * Compiles and generates a self-contained ZIP backup archive for a specific tenant site.
+ * Packages relational database records (posts, categories, tags, settings, author details) and media upload assets.
+ *
+ * @param siteId - Unique identifier of the site to export.
+ * @returns A Promise resolving to an object containing the ZIP buffer, default filename, and manifest details.
+ * @throws {Error} When the target site ID does not exist in the database.
  */
 export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }> {
   const db = getDb();
 
-  // 1. Fetch site data
   const siteRecord = db.select().from(sites).where(eq(sites.id, siteId)).get();
   if (!siteRecord) {
     throw new Error(`Site with ID "${siteId}" not found`);
   }
 
-  // 2. Fetch all relational data
   const settingsList = db.select().from(settings).where(eq(settings.siteId, siteId)).all();
   const categoriesList = db.select().from(categories).where(eq(categories.siteId, siteId)).all();
   const tagsList = db.select().from(tags).where(eq(tags.siteId, siteId)).all();
@@ -76,7 +92,6 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
       }).from(users).where(inArray(users.id, authorIds)).all()
     : [];
 
-  // 3. Collect media files to bundle
   const zip = new JSZip();
   const uploadsFolder = zip.folder("uploads");
   const uploadDir = getUploadDir();
@@ -95,11 +110,10 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
         }
       }
     } catch {
-      // If uploads directory read fails or is empty, proceed with 0 files
+      // Continue if upload folder is inaccessible
     }
   }
 
-  // 4. Create manifest & database dump
   const manifest: BackupManifest = {
     version: "1.0.0",
     format: "kotonoba-backup",
@@ -132,7 +146,6 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
   zip.file("data.json", JSON.stringify(databaseDump, null, 2));
 
-  // 5. Generate ZIP buffer
   const buffer = await zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",

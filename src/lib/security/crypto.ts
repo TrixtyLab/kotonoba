@@ -3,13 +3,21 @@ import crypto from "crypto";
 const ALGORITHM = "aes-256-gcm";
 const SECRET = process.env.JWT_SECRET || "default-fallback-secret-for-encryption-32ch";
 
+/**
+ * Derives a 256-bit cryptographic key from the configured JWT_SECRET environment variable.
+ *
+ * @returns A 32-byte Buffer representing the derived AES encryption key.
+ */
 function getKey(): Buffer {
   return crypto.createHash("sha256").update(SECRET).digest();
 }
 
 /**
- * Encrypts a plaintext string using AES-256-GCM authenticated encryption.
- * The encryption key is derived securely from JWT_SECRET to avoid extra environment variables.
+ * Encrypts sensitive plaintext strings (such as AI API keys and external secrets) using authenticated AES-256-GCM.
+ * Formats the resulting cipher into a colon-delimited string containing the IV, auth tag, and ciphertext.
+ *
+ * @param plainText - The unencrypted sensitive string to protect.
+ * @returns A colon-separated encrypted payload string formatted as `iv:authTag:ciphertext`.
  */
 export function encryptSecret(plainText: string): string {
   if (!plainText) return "";
@@ -23,7 +31,10 @@ export function encryptSecret(plainText: string): string {
 }
 
 /**
- * Decrypts an AES-256-GCM encrypted payload.
+ * Decrypts an authenticated AES-256-GCM encrypted payload and verifies its integrity.
+ *
+ * @param encryptedPayload - The colon-separated encrypted payload string (`iv:authTag:ciphertext`).
+ * @returns The original decrypted UTF-8 plaintext string, or an empty string if decryption/authentication fails.
  */
 export function decryptSecret(encryptedPayload: string): string {
   if (!encryptedPayload) return "";

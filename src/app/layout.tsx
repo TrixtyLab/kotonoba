@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
   title: "Kotonoba",
   description: "Self-hosted multi-tenant blog CMS",
 };
 
+/**
+ * Root HTML layout shell configuring global font preconnections, theme context provider, and toast alert provider.
+ *
+ * @param props - Object containing root children elements.
+ * @returns React JSX root document layout.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,7 +31,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen">
         <ThemeProvider>
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

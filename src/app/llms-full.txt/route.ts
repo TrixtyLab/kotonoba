@@ -1,24 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { posts, sites } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { posts, sites, settings } from "@/lib/db/schema";
+import { eq, desc, and } from "drizzle-orm";
 
 /**
- * Returns full concatenated markdown of published articles for deep LLM consumption.
+ * Route handler delivering complete full-text markdown corpus of published blog posts for RAG and deep LLM ingestion.
+ *
+ * @param req - The incoming NextRequest object.
+ * @returns Plaintext complete article markdown response.
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   const db = getDb();
   const host = req.headers.get("host")?.split(":")[0] || "localhost";
   const site = db.select().from(sites).where(eq(sites.domain, host)).get() || db.select().from(sites).limit(1).get();
 
-  const siteName = site?.name || "Kotonoba";
-  const siteDesc = site?.description || "High-performance multi-tenant blog CMS";
-  const baseUrl = `https://${site?.domain || host}`;
+  if (!site) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  const llmsSetting = db
+    .select()
+    .from(settings)
+    .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_enabled")))
+    .get();
+
+  if (llmsSetting && llmsSetting.value === "false") {
+    return new NextResponse("LLMs.txt is disabled on this site.", { status: 404 });
+  }
+
+  const siteName = site.name || "Kotonoba";
+  const baseUrl = `https://${site.domain || host}`;
 
   const topPosts = db
     .select()
     .from(posts)
-    .where(eq(posts.status, "published"))
+    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
     .orderBy(desc(posts.publishedAt))
     .limit(20)
     .all();

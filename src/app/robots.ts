@@ -3,7 +3,9 @@ import { getDb } from "@/lib/db";
 import { sites } from "@/lib/db/schema";
 
 /**
- * Generates dynamic robots.txt adhering to crawl budget guidelines.
+ * Generates dynamic robots.txt crawlers configuration adhering to crawl budget guidelines and sitemap discovery.
+ *
+ * @returns MetadataRoute Robots definition object.
  */
 export default function robots(): MetadataRoute.Robots {
   const db = getDb();

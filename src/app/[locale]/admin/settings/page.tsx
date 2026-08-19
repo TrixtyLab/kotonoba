@@ -1,24 +1,15 @@
-import { getActiveSite } from "@/lib/tenant";
-import { getSiteSettings } from "@/actions/settings";
-import { SettingsClient } from "@/components/admin/SettingsClient";
-import { notFound } from "next/navigation";
+import { redirect } from "@/i18n/routing";
 
 /**
- * Admin settings page for configuring theme, domain, SEO, and AI endpoints.
+ * Administrative settings index route immediately redirecting visitors to the general settings sub-panel.
+ *
+ * @param props - Object containing route params Promise with active locale.
  */
-export default async function AdminSettingsPage() {
-  const site = await getActiveSite();
-  if (!site) notFound();
-
-  const settingsMap = await getSiteSettings(site.id);
-
-  return (
-    <SettingsClient
-      site={{
-        ...site,
-        theme: (site.theme as "dark" | "light") || "dark",
-      }}
-      initialSettings={settingsMap}
-    />
-  );
+export default async function AdminSettingsIndexPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  redirect({ href: "/admin/settings/general", locale });
 }

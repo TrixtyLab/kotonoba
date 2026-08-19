@@ -1,38 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { posts, sites, categories } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { posts, sites, categories, settings } from "@/lib/db/schema";
+import { eq, desc, and } from "drizzle-orm";
 
 /**
- * Generates standard llms.txt file for AI search engines (Perplexity, ChatGPT, Claude, Gemini).
+ * Route handler generating standard `llms.txt` document for AI web crawlers and LLM search systems.
+ *
+ * @param req - The incoming NextRequest object.
+ * @returns Plaintext llms.txt markdown response or 404 if disabled.
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   const db = getDb();
   const host = req.headers.get("host")?.split(":")[0] || "localhost";
   const site = db.select().from(sites).where(eq(sites.domain, host)).get() || db.select().from(sites).limit(1).get();
 
-  const siteName = site?.name || "Kotonoba";
-  const siteDesc = site?.description || "High-performance multi-tenant blog CMS";
-  const baseUrl = `https://${site?.domain || host}`;
+  if (!site) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  const llmsSetting = db
+    .select()
+    .from(settings)
+    .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_enabled")))
+    .get();
+
+  if (llmsSetting && llmsSetting.value === "false") {
+    return new NextResponse("LLMs.txt is disabled on this site.", { status: 404 });
+  }
+
+  const customInstructions = db
+    .select()
+    .from(settings)
+    .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_custom")))
+    .get()?.value;
+
+  const siteName = site.name || "Kotonoba";
+  const siteDesc = site.description || "High-performance multi-tenant blog CMS";
+  const baseUrl = `https://${site.domain || host}`;
 
   const topPosts = db
     .select()
     .from(posts)
-    .where(eq(posts.status, "published"))
+    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
     .orderBy(desc(posts.views), desc(posts.publishedAt))
     .limit(30)
     .all();
 
-  const allCategories = db.select().from(categories).all();
+  const allCategories = db
+    .select()
+    .from(categories)
+    .where(eq(categories.siteId, site.id))
+    .all();
 
   let text = `# ${siteName}\n\n`;
   text += `> ${siteDesc}\n\n`;
 
-  text += `## Core Content & High-Signal Articles\n\n`;
+  if (customInstructions && customInstructions.trim()) {
+    text += `## System & AI Guidance\n\n${customInstructions.trim()}\n\n`;
+  }
+
+  text += `## Core Content & Articles\n\n`;
   for (const post of topPosts) {
-    const url = `${baseUrl}/entry/${post.slug}`;
-    const descText = post.excerpt ? `: ${post.excerpt}` : "";
-    text += `- [${post.title}](${url})${descText}\n`;
+    const postUrl = `${baseUrl}/entry/${post.slug}`;
+    text += `- [${post.title}](${postUrl})`;
+    if (post.excerpt) {
+      text += `: ${post.excerpt.replace(/\n+/g, " ").trim()}`;
+    }
+    text += `\n`;
   }
 
   if (allCategories.length > 0) {
@@ -42,8 +76,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  text += `\n## Machine-Readable Full Markdown\n\n`;
-  text += `- [Full Article Index](${baseUrl}/llms-full.txt): Complete markdown text of published entries for direct model context.\n`;
+  text += `\n## Links\n\n`;
+  text += `- [Full Corpus Index](${baseUrl}/llms-full.txt): Complete unformatted article text index for RAG ingestion\n`;
+  text += `- [XML Sitemap](${baseUrl}/sitemap.xml)\n`;
 
   return new NextResponse(text, {
     headers: {

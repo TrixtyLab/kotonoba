@@ -3,10 +3,12 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { createSiteBackupZip } from "@/lib/backup/export";
 
 /**
- * Exports site backup as a compressed ZIP file stream.
- * Accessible only to authenticated administrators and super_admins.
+ * HTTP GET endpoint streaming a compressed ZIP archive containing all site database entities, media assets, and manifest metadata.
+ *
+ * @param req - The incoming NextRequest containing the target siteId query parameter.
+ * @returns Binary ZIP stream response or 401/400 error status.
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user || !user.exists || !["super_admin", "admin"].includes(user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
