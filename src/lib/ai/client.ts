@@ -51,6 +51,92 @@ export async function getAiConfig(siteId: string): Promise<AiConfig> {
 }
 
 /**
+ * Parses and extracts text content from an AI provider response, supporting both standard
+ * JSON chat completion responses and Server-Sent Events (SSE) streaming chunks.
+ *
+ * @param responseText - Raw response text string from the AI endpoint.
+ * @returns The extracted message content string.
+ */
+export function extractAiResponseText(responseText: string): string {
+  const trimmed = responseText.trim();
+  if (!trimmed) return "";
+
+  // 1. Check if the response contains Server-Sent Events (SSE) stream format
+  if (trimmed.startsWith("data:") || trimmed.includes("\ndata:") || trimmed.includes("\r\ndata:")) {
+    const lines = trimmed.split(/\r?\n/);
+    let accumulated = "";
+    let parsedAnyChunk = false;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+
+      const dataContent = line.slice(5).trim();
+      if (!dataContent || dataContent === "[DONE]") continue;
+
+      try {
+        const chunk = JSON.parse(dataContent);
+        parsedAnyChunk = true;
+
+        if (chunk.error?.message) {
+          throw new Error(chunk.error.message);
+        }
+
+        const delta = chunk.choices?.[0]?.delta;
+        const message = chunk.choices?.[0]?.message;
+        const text = chunk.choices?.[0]?.text;
+
+        if (typeof delta?.content === "string") {
+          accumulated += delta.content;
+        } else if (typeof message?.content === "string") {
+          accumulated += message.content;
+        } else if (typeof text === "string") {
+          accumulated += text;
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== dataContent && dataContent.includes('"error"')) {
+          throw e;
+        }
+      }
+    }
+
+    if (parsedAnyChunk) {
+      return accumulated;
+    }
+  }
+
+  // 2. Standard JSON response parsing
+  try {
+    const json = JSON.parse(trimmed);
+    if (json.error?.message) {
+      throw new Error(json.error.message);
+    }
+    const choice = json.choices?.[0];
+    if (typeof choice?.message?.content === "string") {
+      return choice.message.content;
+    }
+    if (typeof choice?.delta?.content === "string") {
+      return choice.delta.content;
+    }
+    if (typeof choice?.text === "string") {
+      return choice.text;
+    }
+    if (typeof json.response === "string") {
+      return json.response;
+    }
+    if (typeof json.content === "string") {
+      return json.content;
+    }
+    return "";
+  } catch (err) {
+    if (err instanceof Error && !err.message.includes("Unexpected token") && !err.message.includes("JSON")) {
+      throw err;
+    }
+    throw new Error(`Invalid JSON returned from AI provider: ${trimmed.slice(0, 150)}`);
+  }
+}
+
+/**
  * Executes an HTTP chat completion request against any OpenAI-compatible AI API endpoint.
  *
  * @param siteId - Unique identifier of the tenant site owning the AI configuration.
@@ -100,6 +186,7 @@ export async function callAiChat(
       model: config.model,
       messages,
       temperature: config.temperature,
+      stream: false,
     }),
   });
 
@@ -114,12 +201,5 @@ export async function callAiChat(
     throw new Error(`AI API call failed (HTTP ${res.status}): ${errorDetail}`);
   }
 
-  let json: any;
-  try {
-    json = JSON.parse(responseText);
-  } catch {
-    throw new Error(`Invalid JSON returned from AI provider: ${responseText.slice(0, 200)}`);
-  }
-
-  return json.choices?.[0]?.message?.content || "";
+  return extractAiResponseText(responseText);
 }

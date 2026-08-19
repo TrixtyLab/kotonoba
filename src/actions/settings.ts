@@ -5,6 +5,7 @@ import { settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import { encryptSecret, decryptSecret } from "@/lib/security/crypto";
+import { extractAiResponseText } from "@/lib/ai/client";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -169,6 +170,7 @@ export async function testAiConnection(
     const payload: Record<string, any> = {
       model,
       messages: [{ role: "user", content: "Ping. Reply with 'pong'." }],
+      stream: false,
     };
 
     if (!model.toLowerCase().startsWith("o1") && !model.toLowerCase().startsWith("o3")) {
@@ -203,17 +205,7 @@ export async function testAiConnection(
       return { success: false, error: errorMsg };
     }
 
-    let json: any;
-    try {
-      json = JSON.parse(responseText);
-    } catch {
-      return {
-        success: false,
-        error: `Endpoint returned invalid JSON: "${responseText.slice(0, 150)}"`,
-      };
-    }
-
-    const reply = json.choices?.[0]?.message?.content || "";
+    const reply = extractAiResponseText(responseText);
     return { success: true, reply };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to reach AI endpoint.";
