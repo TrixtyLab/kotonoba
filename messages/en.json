@@ -184,7 +184,17 @@
     "tagPlaceholder": "e.g. typescript, nextjs, docker",
     "allTags": "All Tags",
     "noTags": "No tags created yet.",
-    "deleteTag": "Delete Tag"
+    "deleteTag": "Delete Tag",
+    "pagesDesc": "Static and institutional pages (About Us, Contact, Terms, etc.)",
+    "pagesSubtitle": "Manage static and institutional pages for your site.",
+    "noPagesFound": "No pages found.",
+    "createPage": "Create Page",
+    "editPage": "Edit Page",
+    "newPage": "New Page",
+    "pageCreated": "Page created successfully",
+    "pageUpdated": "Page updated",
+    "pageDeleted": "Page deleted",
+    "pageDeleteError": "Error deleting page"
   },
   "analytics": {
     "title": "Statistics & Analytics",
@@ -261,10 +271,7 @@
     "filter": "Filter…",
     "uploading": "Uploading…",
     "upload": "Upload",
-    "folder": "Folder",
-    "pagesDesc": "Static and institutional pages (About Us, Contact, Terms, etc.)",
-    "noPagesFound": "No pages found.",
-    "createPage": "Create Page"
+    "folder": "Folder"
   },
   "editor": {
     "postTitlePlaceholder": "Article title…",
