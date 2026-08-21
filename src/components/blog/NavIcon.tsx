@@ -1,8 +1,9 @@
 import React from "react";
-import { Globe, Disc, ShoppingBag, Mail, Link as LinkIcon } from "lucide-react";
+import { Globe, Disc, ShoppingBag, Mail, Link as LinkIcon, Rss } from "lucide-react";
 import {
   FaXTwitter, FaYoutube, FaFacebook, FaInstagram, FaGithub,
-  FaDiscord, FaTiktok, FaTwitch, FaLinkedin, FaSpotify
+  FaDiscord, FaTiktok, FaTwitch, FaLinkedin, FaSpotify,
+  FaBluesky, FaSteam, FaTelegram, FaThreads, FaReddit, FaMastodon, FaPatreon
 } from "react-icons/fa6";
 
 /**
@@ -18,15 +19,23 @@ export interface NavIconProps {
 /** Predefined catalog of selectable icons for navigation links. */
 export const AVAILABLE_NAV_ICONS = [
   { id: "twitter", label: "X / Twitter", category: "Social" },
-  { id: "youtube", label: "YouTube", category: "Social" },
-  { id: "instagram", label: "Instagram", category: "Social" },
-  { id: "facebook", label: "Facebook", category: "Social" },
-  { id: "tiktok", label: "TikTok", category: "Social" },
+  { id: "bluesky", label: "Bluesky", category: "Social" },
   { id: "github", label: "GitHub", category: "Social" },
-  { id: "spotify", label: "Spotify", category: "Social" },
   { id: "discord", label: "Discord", category: "Social" },
+  { id: "youtube", label: "YouTube", category: "Social" },
   { id: "twitch", label: "Twitch", category: "Social" },
+  { id: "steam", label: "Steam", category: "Social" },
+  { id: "instagram", label: "Instagram", category: "Social" },
+  { id: "threads", label: "Threads", category: "Social" },
+  { id: "tiktok", label: "TikTok", category: "Social" },
+  { id: "telegram", label: "Telegram", category: "Social" },
+  { id: "reddit", label: "Reddit", category: "Social" },
+  { id: "mastodon", label: "Mastodon", category: "Social" },
+  { id: "patreon", label: "Patreon", category: "Social" },
   { id: "linkedin", label: "LinkedIn", category: "Social" },
+  { id: "spotify", label: "Spotify", category: "Social" },
+  { id: "facebook", label: "Facebook", category: "Social" },
+  { id: "rss", label: "RSS Feed", category: "General" },
   { id: "globe", label: "Web / Sitio", category: "General" },
   { id: "shopping-bag", label: "Tienda / Shop", category: "General" },
   { id: "disc", label: "Música / Disco", category: "General" },
@@ -47,24 +56,42 @@ export function NavIcon({ name, className = "w-3.5 h-3.5" }: NavIconProps) {
     case "twitter":
     case "x":
       return <FaXTwitter className={className} />;
-    case "youtube":
-      return <FaYoutube className={className} />;
-    case "instagram":
-      return <FaInstagram className={className} />;
-    case "facebook":
-      return <FaFacebook className={className} />;
+    case "bluesky":
+    case "bsky":
+      return <FaBluesky className={className} />;
     case "github":
       return <FaGithub className={className} />;
-    case "spotify":
-      return <FaSpotify className={className} />;
     case "discord":
       return <FaDiscord className={className} />;
-    case "tiktok":
-      return <FaTiktok className={className} />;
+    case "youtube":
+      return <FaYoutube className={className} />;
     case "twitch":
       return <FaTwitch className={className} />;
+    case "steam":
+      return <FaSteam className={className} />;
+    case "instagram":
+      return <FaInstagram className={className} />;
+    case "threads":
+      return <FaThreads className={className} />;
+    case "tiktok":
+      return <FaTiktok className={className} />;
+    case "telegram":
+      return <FaTelegram className={className} />;
+    case "reddit":
+      return <FaReddit className={className} />;
+    case "mastodon":
+      return <FaMastodon className={className} />;
+    case "patreon":
+      return <FaPatreon className={className} />;
     case "linkedin":
       return <FaLinkedin className={className} />;
+    case "spotify":
+      return <FaSpotify className={className} />;
+    case "facebook":
+      return <FaFacebook className={className} />;
+    case "rss":
+    case "feed":
+      return <Rss className={className} />;
     case "globe":
     case "web":
       return <Globe className={className} />;
@@ -84,3 +111,4 @@ export function NavIcon({ name, className = "w-3.5 h-3.5" }: NavIconProps) {
       return <LinkIcon className={className} />;
   }
 }
+

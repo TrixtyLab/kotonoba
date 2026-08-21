@@ -120,6 +120,38 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     } catch { }
   }
 
+  db.run(sql`CREATE TABLE IF NOT EXISTS pages (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    content_md TEXT DEFAULT '',
+    content_html TEXT DEFAULT '',
+    excerpt TEXT DEFAULT '',
+    cover_image TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    locale TEXT NOT NULL DEFAULT 'en',
+    published_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    views INTEGER NOT NULL DEFAULT 0
+  )`);
+
+  const pagesColumns = [
+    sql`ALTER TABLE pages ADD COLUMN content_md TEXT DEFAULT ''`,
+    sql`ALTER TABLE pages ADD COLUMN content_html TEXT DEFAULT ''`,
+    sql`ALTER TABLE pages ADD COLUMN excerpt TEXT DEFAULT ''`,
+    sql`ALTER TABLE pages ADD COLUMN cover_image TEXT`,
+    sql`ALTER TABLE pages ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'`,
+    sql`ALTER TABLE pages ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'`,
+    sql`ALTER TABLE pages ADD COLUMN views INTEGER NOT NULL DEFAULT 0`,
+  ];
+  for (const query of pagesColumns) {
+    try {
+      db.run(query);
+    } catch { }
+  }
 
   db.run(sql`CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
@@ -254,6 +286,8 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     sql`CREATE INDEX IF NOT EXISTS posts_site_slug_idx ON posts(site_id, slug)`,
     sql`CREATE INDEX IF NOT EXISTS posts_site_status_idx ON posts(site_id, status)`,
     sql`CREATE INDEX IF NOT EXISTS posts_published_at_idx ON posts(published_at)`,
+    sql`CREATE INDEX IF NOT EXISTS pages_site_slug_idx ON pages(site_id, slug)`,
+    sql`CREATE INDEX IF NOT EXISTS pages_site_status_idx ON pages(site_id, status)`,
     sql`CREATE INDEX IF NOT EXISTS categories_site_slug_idx ON categories(site_id, slug)`,
     sql`CREATE INDEX IF NOT EXISTS tags_site_slug_idx ON tags(site_id, slug)`,
     sql`CREATE INDEX IF NOT EXISTS pc_post_idx ON post_categories(post_id)`,

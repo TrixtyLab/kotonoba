@@ -66,6 +66,19 @@ export const postSchema = z.object({
 });
 export type PostInput = z.infer<typeof postSchema>;
 
+/** Schema validating static custom page creation and update operations. */
+export const pageSchema = z.object({
+  title: z.string().min(1).max(500),
+  slug: z.string().min(1).max(500).optional(),
+  contentMd: z.string().max(500000).default(""),
+  contentHtml: z.string().max(1000000).default(""),
+  excerpt: z.string().max(1000).default(""),
+  coverImage: z.string().max(2000).optional().nullable(),
+  status: z.enum(["draft", "published", "archived"]).default("draft"),
+  locale: z.string().min(2).max(10).default("en"),
+});
+export type PageInput = z.infer<typeof pageSchema>;
+
 /** Schema validating category creation and editing parameters. */
 export const categorySchema = z.object({
   name: z.string().min(1).max(200),

@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { MediaPickerModal } from "@/components/admin/MediaPickerModal";
 import { createPost, updatePost } from "@/actions/posts";
+import { createPage, updatePage } from "@/actions/pages";
 import { createTag } from "@/actions/tags";
 import { generateExcerptAction, rewriteAction, translateAction } from "@/actions/ai";
 import { generateDubLinkAction } from "@/actions/dub";
@@ -28,7 +29,7 @@ import {
   Folder, Tag, Link2, X, Eye, SlidersHorizontal, Upload, Loader2,
   PlaySquare, RefreshCw, Globe, Send, QrCode, Copy, Share2, ExternalLink
 } from "lucide-react";
-import { parseEmbedUrl, extractSteamId, extractItchId } from "@/lib/utils/embeds";
+import { parseEmbedUrl, extractSteamId, extractItchId, extractYouTubeId, extractVimeoId } from "@/lib/utils/embeds";
 
 /**
  * Configuration properties for the rich-text article editor.
@@ -36,6 +37,8 @@ import { parseEmbedUrl, extractSteamId, extractItchId } from "@/lib/utils/embeds
 export interface PostEditorProps {
   /** Unique database identifier of the target blog site. */
   siteId: string;
+  /** Operating mode: regular blog post or standalone custom static page. */
+  mode?: "post" | "page";
   /** List of supported BCP 47 locale codes enabled for authoring. */
   supportedLocales?: string[];
   /** Flag indicating whether the Dub.co link shortening integration is enabled. */
@@ -50,15 +53,15 @@ export interface PostEditorProps {
     coverImage: string | null;
     status: "draft" | "published" | "archived";
     locale: string;
-    pinned: boolean;
+    pinned?: boolean;
     shortUrl?: string | null;
     categories?: string[];
     tags?: string[];
   };
   /** List of available categories for taxonomy assignment. */
-  availableCategories: Array<{ id: string; name: string }>;
+  availableCategories?: Array<{ id: string; name: string }>;
   /** List of available tags for taxonomy assignment. */
-  availableTags: Array<{ id: string; name: string }>;
+  availableTags?: Array<{ id: string; name: string }>;
 }
 
 /** Predefined catalog of selectable authoring languages. */
@@ -109,10 +112,10 @@ const AutoExitBlockOnEnter = Extension.create({
 });
 
 /**
- * Generates an ASCII URL slug from arbitrary input text.
+ * Converts a text string into a clean, URL-safe alphanumeric slug.
  *
- * @param text - Raw source string.
- * @returns Clean lowercase hyphenated slug string.
+ * @param {string} text - Raw input string to convert.
+ * @returns {string} Clean URL-friendly slug.
  */
 function slugify(text: string): string {
   return text
@@ -126,10 +129,18 @@ function slugify(text: string): string {
 /**
  * Full-featured WYSIWYG rich-text article editor with TipTap engine, AI assistants, Dub.co link provisioning, and responsive live preview.
  *
- * @param props - PostEditorProps configuring initial post state, taxonomy lists, and active site ID.
- * @returns React JSX article editor interface.
+ * @param {PostEditorProps} props - Configuration properties including target site ID, authoring mode, taxonomy catalogs, and initial content state.
+ * @returns {React.JSX.Element} React JSX article editor interface.
  */
-export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost, availableCategories, availableTags }: PostEditorProps) {
+export function PostEditor({
+  siteId,
+  mode = "post",
+  supportedLocales,
+  isDubEnabled,
+  initialPost,
+  availableCategories = [],
+  availableTags = [],
+}: PostEditorProps) {
   const t = useTranslations("editor");
   const tc = useTranslations("common");
   const ta = useTranslations("admin");
@@ -230,6 +241,29 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
         placeholder: t("contentPlaceholder"),
       }),
     ],
+    editorProps: {
+      handlePaste: (_view, event) => {
+        const text = event.clipboardData?.getData("text/plain") || "";
+        const html = event.clipboardData?.getData("text/html") || "";
+        const raw = text.trim() || html.trim();
+
+        if (/<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["']/i.test(raw)) {
+          const itchId = extractItchId(raw);
+          const steamId = extractSteamId(raw);
+          if (itchId) {
+            editor?.commands.insertContent(`<p>@[itch](${itchId})</p>`);
+            toast.success(t("itchInserted"));
+            return true;
+          }
+          if (steamId) {
+            editor?.commands.insertContent(`<p>@[steam](${steamId})</p>`);
+            toast.success(t("steamInserted"));
+            return true;
+          }
+        }
+        return false;
+      },
+    },
     content: initialPost?.contentMd || "",
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
@@ -308,22 +342,23 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
     const raw = embedUrl.trim();
     if (!raw) return;
 
-    const embed = parseEmbedUrl(raw);
-    if (embed) {
-      editor?.chain().focus().insertContent(`<p>@[${embed.type}](${raw})</p>`).run();
-      toast.success("Embed multimedia insertado");
+    const itchId = extractItchId(raw);
+    const steamId = extractSteamId(raw);
+
+    if (itchId) {
+      editor?.chain().focus().insertContent(`<p>@[itch](${itchId})</p>`).run();
+      toast.success(t("itchInserted"));
+    } else if (steamId) {
+      editor?.chain().focus().insertContent(`<p>@[steam](${steamId})</p>`).run();
+      toast.success(t("steamInserted"));
     } else {
-      const steamId = extractSteamId(raw);
-      const itchId = extractItchId(raw);
-      if (steamId) {
-        editor?.chain().focus().insertContent(`<p>@[steam](${steamId})</p>`).run();
-        toast.success("Widget de Steam insertado");
-      } else if (itchId) {
-        editor?.chain().focus().insertContent(`<p>@[itch](${itchId})</p>`).run();
-        toast.success("Widget de itch.io insertado");
+      const embed = parseEmbedUrl(raw);
+      if (embed) {
+        editor?.chain().focus().insertContent(`<p>@[${embed.type}](${raw})</p>`).run();
+        toast.success(t("embedInserted"));
       } else {
         editor?.chain().focus().insertContent(`<p><a href="${raw}" target="_blank" rel="noopener noreferrer">${raw}</a></p>`).run();
-        toast.info("Enlace insertado");
+        toast.info(t("linkInserted"));
       }
     }
 
@@ -364,10 +399,10 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
   function handleMediaSelect(url: string) {
     if (mediaTarget === "cover") {
       setCoverImage(url);
-      toast.success("Imagen de portada asignada");
+      toast.success(t("coverAssigned"));
     } else {
       editor?.chain().focus().setImage({ src: url }).run();
-      toast.success("Imagen insertada");
+      toast.success(t("imageInserted"));
     }
   }
 
@@ -388,12 +423,12 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       const data = await res.json();
       if (data.success && data.url) {
         setCoverImage(data.url);
-        toast.success("Portada subida con éxito");
+        toast.success(t("coverUploaded"));
       } else {
-        toast.error(data.error || "Error al subir portada");
+        toast.error(data.error || t("coverUploadError"));
       }
     } catch {
-      toast.error("Error de red al subir portada");
+      toast.error(t("networkError"));
     } finally {
       setIsUploadingCover(false);
       e.target.value = "";
@@ -417,12 +452,12 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       const data = await res.json();
       if (data.success && data.url) {
         editor?.chain().focus().setImage({ src: data.url }).run();
-        toast.success("Imagen subida e insertada");
+        toast.success(t("inlineUploaded"));
       } else {
-        toast.error(data.error || "Error al subir imagen");
+        toast.error(data.error || t("inlineUploadError"));
       }
     } catch {
-      toast.error("Error de red al subir imagen");
+      toast.error(t("networkError"));
     } finally {
       setIsUploadingInline(false);
       e.target.value = "";
@@ -449,9 +484,9 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       setLocalTags((prev) => [...prev, newTagObj]);
       setSelectedTags((prev) => [...prev, res.id]);
       setNewTagInput("");
-      toast.success(`Etiqueta "${trimmed}" creada y añadida`);
+      toast.success(t("tagCreated", { tag: trimmed }));
     } else {
-      toast.error(res.error || "Error al crear etiqueta");
+      toast.error(res.error || t("tagCreateError"));
     }
   }
 
@@ -460,7 +495,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
     const rawContent = editor ? editor.getHTML() : contentHtml;
 
     if (!title.trim()) {
-      toast.error("El título del artículo es obligatorio");
+      toast.error(t("titleRequired"));
       return;
     }
 
@@ -480,29 +515,69 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
     };
 
     startTransition(async () => {
+      if (mode === "page") {
+        const pagePayload = {
+          title,
+          slug: slug || slugify(title),
+          contentMd: rawContent,
+          contentHtml: rawContent,
+          excerpt,
+          coverImage,
+          status: saveStatus,
+          locale,
+        };
+
+        if (initialPost?.id) {
+          const res = await updatePage(initialPost.id, pagePayload);
+          if (res.success) {
+            setStatus(saveStatus);
+            toast.success(
+              saveStatus === "published"
+                ? t("pagePublishedUpdated")
+                : saveStatus === "archived"
+                ? t("pageArchived")
+                : t("pageDraftSaved")
+            );
+            router.refresh();
+          } else {
+            toast.error(res.error || t("saveChangesError"));
+          }
+        } else {
+          const res = await createPage(siteId, pagePayload);
+          if (res.success) {
+            setStatus(saveStatus);
+            toast.success(saveStatus === "published" ? t("pagePublished") : t("pageDraftCreated"));
+            router.push(`/admin/pages/${res.pageId}`);
+          } else {
+            toast.error(res.error || t("pageCreateError"));
+          }
+        }
+        return;
+      }
+
       if (initialPost?.id) {
         const res = await updatePost(initialPost.id, payload);
         if (res.success) {
           setStatus(saveStatus);
           toast.success(
             saveStatus === "published"
-              ? "Artículo publicado y actualizado"
+              ? t("postPublishedUpdated")
               : saveStatus === "archived"
-              ? "Artículo archivado"
-              : "Borrador guardado"
+              ? t("postArchived")
+              : t("postDraftSaved")
           );
           router.refresh();
         } else {
-          toast.error(res.error || "Error al guardar cambios");
+          toast.error(res.error || t("saveChangesError"));
         }
       } else {
         const res = await createPost(siteId, payload);
         if (res.success) {
           setStatus(saveStatus);
-          toast.success(saveStatus === "published" ? "Artículo publicado" : "Borrador creado");
+          toast.success(saveStatus === "published" ? t("postPublished") : t("postDraftCreated"));
           router.push(`/admin/posts/${res.postId}`);
         } else {
-          toast.error(res.error || "Error al crear artículo");
+          toast.error(res.error || t("postCreateError"));
         }
       }
     });
@@ -510,7 +585,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
 
   async function handleGenerateDubLink() {
     if (!slug && !title) {
-      toast.error("El post debe tener título o slug antes de generar el enlace corto");
+      toast.error(t("dubTitleRequired"));
       return;
     }
     setIsGeneratingDub(true);
@@ -532,12 +607,12 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
         setShortUrl(res.shortUrl);
         if (res.qrCodeUrl) setQrCodeUrl(res.qrCodeUrl);
         setDubModalOpen(false);
-        toast.success("Enlace Dub.co generado exitosamente");
+        toast.success(t("dubSuccess"));
       } else {
-        toast.error(res.error || "Error al generar enlace en Dub.co");
+        toast.error(res.error || t("dubError"));
       }
     } catch {
-      toast.error("Error al conectar con Dub.co");
+      toast.error(t("dubNetworkError"));
     } finally {
       setIsGeneratingDub(false);
     }
@@ -546,7 +621,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
   async function handleAiGenerateExcerpt() {
     const text = editor ? editor.getText() : "";
     if (!text && !title) {
-      toast.error("Escribe contenido antes de generar el extracto con IA");
+      toast.error(t("aiExcerptEmpty"));
       return;
     }
 
@@ -555,12 +630,12 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       const res = await generateExcerptAction(siteId, text || title);
       if (res.success) {
         setExcerpt(res.excerpt);
-        toast.success("Extracto generado por IA");
+        toast.success(t("aiExcerptSuccess"));
       } else {
-        toast.error(res.error || "No se pudo generar el extracto");
+        toast.error(res.error || t("aiExcerptError"));
       }
     } catch {
-      toast.error("Error al conectar con la IA");
+      toast.error(t("aiConnectionError"));
     } finally {
       setAiLoading(false);
     }
@@ -570,7 +645,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
     if (!aiInstruction.trim()) return;
     const currentText = editor ? editor.getHTML() : "";
     if (!currentText) {
-      toast.error("No hay contenido para procesar");
+      toast.error(t("aiNoContent"));
       return;
     }
 
@@ -582,12 +657,12 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
         setContentHtml(res.result);
         setAiModalOpen(false);
         setAiInstruction("");
-        toast.success("Contenido mejorado por IA");
+        toast.success(t("aiRewriteSuccess"));
       } else {
-        toast.error(res.error || "No se pudo mejorar el contenido");
+        toast.error(res.error || t("aiRewriteError"));
       }
     } catch {
-      toast.error("Error al conectar con la IA");
+      toast.error(t("aiConnectionError"));
     } finally {
       setAiLoading(false);
     }
@@ -595,7 +670,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
 
   async function handleAiTranslatePost() {
     if (!title && (!editor || !editor.getHTML())) {
-      toast.error("Escribe título y contenido antes de traducir con IA");
+      toast.error(t("aiTranslateEmpty"));
       return;
     }
 
@@ -630,9 +705,84 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
       setLocale(targetTranslateLocale);
       setAiTranslateModalOpen(false);
       const targetLabel = ALL_LANGUAGE_OPTIONS.find((l) => l.value === targetTranslateLocale)?.label || targetTranslateLocale;
-      toast.success(`Artículo traducido exitosamente a ${targetLabel}`);
+      toast.success(
+        t("aiTranslateSuccess", {
+          type: mode === "page" ? t("pageType") : t("postType"),
+          language: targetLabel,
+        })
+      );
     } catch {
-      toast.error("Error al conectar con el servicio de traducción IA");
+      toast.error(t("aiTranslateError"));
+    } finally {
+      setIsTranslating(false);
+    }
+  }
+
+  async function handleManualTranslatePost(actionType: "duplicate" | "change") {
+    const targetLabel = ALL_LANGUAGE_OPTIONS.find((l) => l.value === targetTranslateLocale)?.label || targetTranslateLocale;
+
+    if (actionType === "change" || !initialPost?.id) {
+      setLocale(targetTranslateLocale);
+      setAiTranslateModalOpen(false);
+      toast.success(
+        t("manualLanguageChanged", {
+          type: mode === "page" ? t("pageType") : t("postType"),
+          language: targetLabel,
+        })
+      );
+      return;
+    }
+
+    const currentHtml = editor ? editor.getHTML() : contentHtml;
+    const rawContent = currentHtml && currentHtml !== "<p></p>" ? currentHtml : "";
+    const duplicatedTitle = `${title} (${targetTranslateLocale.toUpperCase()})`;
+    const duplicatedSlug = slug ? `${slug}-${targetTranslateLocale}` : slugify(duplicatedTitle);
+
+    setIsTranslating(true);
+    try {
+      if (mode === "page") {
+        const res = await createPage(siteId, {
+          title: duplicatedTitle,
+          slug: duplicatedSlug,
+          contentMd: rawContent,
+          contentHtml: rawContent,
+          excerpt,
+          coverImage,
+          status: "draft",
+          locale: targetTranslateLocale,
+        });
+
+        if (res.success) {
+          setAiTranslateModalOpen(false);
+          toast.success(t("manualDraftCreated", { language: targetLabel }));
+          router.push(`/admin/pages/${res.pageId}`);
+        } else {
+          toast.error(res.error || t("manualDraftError"));
+        }
+      } else {
+        const res = await createPost(siteId, {
+          title: duplicatedTitle,
+          slug: duplicatedSlug,
+          contentMd: rawContent,
+          contentHtml: rawContent,
+          excerpt,
+          coverImage,
+          status: "draft",
+          locale: targetTranslateLocale,
+          categoryIds: selectedCategories,
+          tagIds: selectedTags,
+        });
+
+        if (res.success) {
+          setAiTranslateModalOpen(false);
+          toast.success(t("manualDraftCreated", { language: targetLabel }));
+          router.push(`/admin/posts/${res.postId}`);
+        } else {
+          toast.error(res.error || t("manualDraftError"));
+        }
+      }
+    } catch {
+      toast.error(t("manualDraftError"));
     } finally {
       setIsTranslating(false);
     }
@@ -646,11 +796,11 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push("/admin/posts")}
+            onClick={() => router.push(mode === "page" ? "/admin/pages" : "/admin/posts")}
             className="text-text-muted hover:text-text"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />
-            {ta("recentPosts").split(" ")[0]}
+            {mode === "page" ? tc("pages") : ta("recentPosts").split(" ")[0]}
           </Button>
 
           <span className="w-px h-4 bg-border" />
@@ -963,10 +1113,10 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                     variant="ghost"
                     size="sm"
                     onClick={openAiTranslateModal}
-                    className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
+                    className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1 hover:underline"
                   >
-                    <Sparkles className="w-3 h-3" />
-                    {t("aiTranslatePost")}
+                    <Globe className="w-3 h-3" />
+                    {t("translatePost")}
                   </Button>
                 </div>
 
@@ -1012,16 +1162,18 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
                 />
               </div>
 
-              <div className="pt-1">
-                <Checkbox
-                  checked={pinned}
-                  onChange={(val) => setPinned(val)}
-                  label={t("pinPost")}
-                />
-              </div>
+              {mode === "post" && (
+                <div className="pt-1">
+                  <Checkbox
+                    checked={pinned}
+                    onChange={(val) => setPinned(val)}
+                    label={t("pinPost")}
+                  />
+                </div>
+              )}
 
               {/* Dub.co Short Link & UTM Builder */}
-              {isDubEnabled && (
+              {mode === "post" && isDubEnabled && (
                 <div className="pt-3 border-t border-border space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-text flex items-center gap-1.5">
@@ -1149,107 +1301,108 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
               />
             </div>
 
-            {/* Categories */}
-            <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-border">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                  {t("categories")}
-                </h3>
-                <Folder className="w-3.5 h-3.5 text-text-muted" />
-              </div>
+            {/* Categories & Tags (Only for blog posts) */}
+            {mode === "post" && (
+              <>
+                <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-border">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                      {t("categories")}
+                    </h3>
+                    <Folder className="w-3.5 h-3.5 text-text-muted" />
+                  </div>
 
-              <div className="space-y-2.5 max-h-40 overflow-y-auto">
-                {availableCategories.map((c) => (
-                  <Checkbox
-                    key={c.id}
-                    checked={selectedCategories.includes(c.id)}
-                    onChange={(checked) => {
-                      if (checked) {
-                        setSelectedCategories([...selectedCategories, c.id]);
-                      } else {
-                        setSelectedCategories(selectedCategories.filter((id) => id !== c.id));
-                      }
-                    }}
-                    label={c.name}
-                  />
-                ))}
-                {availableCategories.length === 0 && (
-                  <p className="text-xs text-text-muted">{t("noCategoriesYet")}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Tags */}
-            <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-border">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                  {t("tags")}
-                </h3>
-                <Tag className="w-3.5 h-3.5 text-text-muted" />
-              </div>
-
-              {selectedTags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pb-1">
-                  {selectedTags.map((tId) => {
-                    const tagObj = localTags.find((t) => t.id === tId);
-                    return (
-                      <span
-                        key={tId}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold bg-accent/10 text-accent px-2.5 py-1 rounded-lg border border-accent/20"
-                      >
-                        #{tagObj?.name || tId}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
-                          className="hover:text-rose-500 ml-0.5"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Tag Creation Input */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder={t("newTagPlaceholder")}
-                  value={newTagInput}
-                  onChange={(e) => setNewTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
-                  }}
-                />
-                <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
-                  {tc("add")}
-                </Button>
-              </div>
-
-              {/* Quick Select existing tags */}
-              {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
-                <div className="pt-2 border-t border-border/50">
-                  <p className="text-[11px] text-text-muted mb-1.5">{t("existingSuggestions")}</p>
-                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                    {localTags
-                      .filter((t) => !selectedTags.includes(t.id))
-                      .map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => setSelectedTags([...selectedTags, t.id])}
-                          className="text-[11px] bg-surface-hover hover:bg-accent/10 hover:text-accent px-2 py-0.5 rounded border border-border transition-colors text-text-muted"
-                        >
-                          + {t.name}
-                        </button>
-                      ))}
+                  <div className="space-y-2.5 max-h-40 overflow-y-auto">
+                    {availableCategories.map((c) => (
+                      <Checkbox
+                        key={c.id}
+                        checked={selectedCategories.includes(c.id)}
+                        onChange={(checked) => {
+                          if (checked) {
+                            setSelectedCategories([...selectedCategories, c.id]);
+                          } else {
+                            setSelectedCategories(selectedCategories.filter((id) => id !== c.id));
+                          }
+                        }}
+                        label={c.name}
+                      />
+                    ))}
+                    {availableCategories.length === 0 && (
+                      <p className="text-xs text-text-muted">{t("noCategoriesYet")}</p>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
+
+                <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-border">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                      {t("tags")}
+                    </h3>
+                    <Tag className="w-3.5 h-3.5 text-text-muted" />
+                  </div>
+
+                  {selectedTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pb-2">
+                      {selectedTags.map((tId) => {
+                        const tagObj = localTags.find((t) => t.id === tId);
+                        return (
+                          <span
+                            key={tId}
+                            className="inline-flex items-center gap-1 text-[11px] bg-accent/10 text-accent font-medium px-2 py-0.5 rounded-full border border-accent/20"
+                          >
+                            #{tagObj?.name || tId}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
+                              className="hover:text-rose-500 ml-0.5 cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder={t("newTagPlaceholder")}
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                      }}
+                    />
+                    <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
+                      {tc("add")}
+                    </Button>
+                  </div>
+
+                  {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
+                    <div className="pt-2 border-t border-border/50">
+                      <p className="text-[11px] text-text-muted mb-1.5">{t("existingSuggestions")}</p>
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                        {localTags
+                          .filter((t) => !selectedTags.includes(t.id))
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setSelectedTags([...selectedTags, t.id])}
+                              className="text-[11px] bg-surface-hover hover:bg-accent/10 hover:text-accent px-2 py-0.5 rounded border border-border transition-colors text-text-muted cursor-pointer"
+                            >
+                              + {t.name}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1292,7 +1445,7 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
         </div>
       </Modal>
 
-      {/* AI Translate Modal */}
+      {/* Translation & Localization Modal */}
       <Modal isOpen={aiTranslateModalOpen} onClose={() => setAiTranslateModalOpen(false)} title={t("translateModalTitle")}>
         <div className="space-y-4 text-xs">
           <p className="text-text-muted">
@@ -1306,27 +1459,72 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
             options={availableLanguageOptions}
           />
 
-          <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg text-text space-y-1">
-            <p className="font-semibold text-accent flex items-center gap-1.5">
-              <Globe className="w-4 h-4" /> {t("smartAutoTranslate")}
-            </p>
-            <p className="text-text-muted">
-              {t("smartAutoTranslateDesc")}
-            </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* AI Translation Card */}
+            <div className="p-3.5 bg-accent/5 border border-accent/20 rounded-xl flex flex-col justify-between space-y-3">
+              <div className="space-y-1">
+                <p className="font-semibold text-accent flex items-center gap-1.5 text-xs">
+                  <Sparkles className="w-4 h-4" /> {t("translateWithAi")}
+                </p>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  {t("translateWithAiDesc")}
+                </p>
+              </div>
+
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleAiTranslatePost}
+                loading={isTranslating}
+                icon={<Sparkles className="w-3.5 h-3.5" />}
+                className="w-full text-xs font-semibold"
+                disabled={isTranslating}
+              >
+                {isTranslating ? t("translating") : t("startTranslation")}
+              </Button>
+            </div>
+
+            {/* Manual Translation (Without AI) Card */}
+            <div className="p-3.5 bg-surface-hover/50 border border-border rounded-xl flex flex-col justify-between space-y-3">
+              <div className="space-y-1">
+                <p className="font-semibold text-text flex items-center gap-1.5 text-xs">
+                  <Globe className="w-4 h-4 text-emerald-400" /> {t("manualTranslate")}
+                </p>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  {t("manualTranslateDesc")}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                {initialPost?.id ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleManualTranslatePost("duplicate")}
+                    loading={isTranslating}
+                    icon={<FileText className="w-3.5 h-3.5" />}
+                    className="w-full text-xs font-medium"
+                    disabled={isTranslating}
+                  >
+                    {t("createDuplicateManual")}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleManualTranslatePost("change")}
+                  disabled={isTranslating}
+                  className="w-full text-xs text-text-muted hover:text-text"
+                >
+                  {t("changeLanguageOnly")}
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => setAiTranslateModalOpen(false)} className="text-xs">
+          <div className="flex justify-end pt-2 border-t border-border">
+            <Button variant="ghost" onClick={() => setAiTranslateModalOpen(false)} className="text-xs" disabled={isTranslating}>
               {tc("cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleAiTranslatePost}
-              loading={isTranslating}
-              icon={<Sparkles className="w-4 h-4" />}
-              className="text-xs"
-            >
-              {isTranslating ? t("translating") : t("startTranslation")}
             </Button>
           </div>
         </div>
@@ -1341,17 +1539,17 @@ export function PostEditor({ siteId, supportedLocales, isDubEnabled, initialPost
 
           <Input
             label={t("embedInputLabel")}
-            placeholder={t("embedInputPlaceholder")}
+            placeholder="steam:1299800, itch:2548291, https://... o <iframe>"
             value={embedUrl}
             onChange={(e) => setEmbedUrl(e.target.value)}
-            helperText={t("embedHelperText")}
+            helperText="Para juegos escribe steam:1299800 o itch:2548291. También puedes pegar URLs directas o código iframe."
           />
 
           <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1.5 text-text-muted">
             <p className="font-semibold text-text">{t("supportedFormats")}</p>
             <ul className="list-disc pl-4 space-y-1 font-mono text-[11px]">
-              <li><strong>Steam:</strong> 1299800</li>
-              <li><strong>itch.io:</strong> 2548291</li>
+              <li><strong>Steam:</strong> steam:1299800 o store.steampowered.com/app/1299800/</li>
+              <li><strong>itch.io:</strong> itch:2548291 o itch.io/embed/2548291</li>
               <li><strong>YouTube:</strong> https://www.youtube.com/watch?v=...</li>
               <li><strong>X / Twitter:</strong> https://x.com/...</li>
               <li><strong>Bluesky:</strong> https://bsky.app/...</li>

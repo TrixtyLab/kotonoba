@@ -1,4 +1,5 @@
 import { getActiveSite } from "@/lib/tenant";
+import { getPublishedPages } from "@/actions/pages";
 import { notFound } from "next/navigation";
 import { NavigationSettingsClient } from "@/components/admin/settings/NavigationSettingsClient";
 
@@ -11,5 +12,7 @@ export default async function NavigationSettingsPage() {
   const site = await getActiveSite();
   if (!site) notFound();
 
-  return <NavigationSettingsClient site={site} />;
+  const pages = await getPublishedPages(site.id);
+
+  return <NavigationSettingsClient site={site} availablePages={pages} />;
 }

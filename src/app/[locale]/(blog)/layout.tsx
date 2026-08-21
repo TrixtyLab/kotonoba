@@ -106,6 +106,8 @@ export default async function BlogLayout({
     name: "Kotonoba",
     subtitle: "",
     logoUrl: null,
+    navLinks: null,
+    navAlignment: "left" as const,
     supportedLocales: '["en"]',
   };
 
@@ -168,6 +170,7 @@ export default async function BlogLayout({
         subtitle={getLocalizedText(siteData.subtitle, locale)}
         categories={categories}
         enableLlmsTxt={enableLlmsTxt}
+        navLinks={siteData.navLinks}
       />
       <ScrollToTop />
     </div>

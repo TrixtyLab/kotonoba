@@ -18,6 +18,8 @@ export interface NavigationSettingsClientProps {
     navLinks?: string | null;
     navAlignment?: "left" | "center" | "right" | null;
   };
+  /** Catalog of published custom pages available for navigation selection. */
+  availablePages?: Array<{ id: string; title: string; slug: string; locale?: string }>;
 }
 
 /**
@@ -26,7 +28,7 @@ export interface NavigationSettingsClientProps {
  * @param props - NavigationSettingsClientProps configuring site navigation links.
  * @returns React JSX navigation settings view.
  */
-export function NavigationSettingsClient({ site }: NavigationSettingsClientProps) {
+export function NavigationSettingsClient({ site, availablePages = [] }: NavigationSettingsClientProps) {
   const t = useTranslations("settings");
   const toast = useToast();
   const router = useRouter();
@@ -60,6 +62,7 @@ export function NavigationSettingsClient({ site }: NavigationSettingsClientProps
       <NavigationManager
         initialLinks={site.navLinks}
         initialAlignment={site.navAlignment}
+        availablePages={availablePages}
         onSave={handleSave}
       />
     </div>

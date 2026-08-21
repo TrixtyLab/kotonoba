@@ -1,55 +1,62 @@
-import { parseEmbedUrl } from "./embeds";
+import { parseEmbedUrl, parseEmbedDirective, type EmbedOptions } from "./embeds";
+
+/**
+ * Configuration options for rendering content with custom tracking and UTM parameters.
+ */
+export interface RenderContentOptions extends EmbedOptions {}
 
 /**
  * Universal content parser that converts raw markdown or rich-text HTML into sanitized, embed-resolved HTML for blog posts.
  * Automatically delegates to appropriate HTML embed or Markdown rendering pipelines.
  *
- * @param rawContent - The post body content, either as HTML markup or raw Markdown.
- * @returns Fully rendered and sanitized HTML string with embedded media components.
+ * @param {string} rawContent - The post body content, either as HTML markup or raw Markdown.
+ * @param {RenderContentOptions} [options] - Optional configuration including UTM parameters for embeds.
+ * @returns {string} Fully rendered and sanitized HTML string with embedded media components.
  */
-export function renderPostContent(rawContent: string): string {
+export function renderPostContent(rawContent: string, options?: RenderContentOptions): string {
   if (!rawContent) return "";
 
   const trimmed = rawContent.trim();
 
   if (trimmed.startsWith("<") && (trimmed.startsWith("<p>") || trimmed.startsWith("<h") || trimmed.startsWith("<div") || trimmed.startsWith("<ul") || trimmed.startsWith("<ol") || trimmed.startsWith("<iframe"))) {
-    return processHtmlEmbeds(trimmed);
+    return processHtmlEmbeds(trimmed, options);
   }
 
-  return renderMarkdownToHtml(trimmed);
+  return renderMarkdownToHtml(trimmed, options);
 }
 
 /**
  * Processes pre-rendered HTML strings to resolve embed directives, raw iframes, and standalone media URLs into responsive widgets.
  *
- * @param html - Raw HTML markup containing embed directives, iframes, or standalone media URLs.
- * @returns HTML string with embed directives replaced by responsive iframe/widget markup.
+ * @param {string} html - Raw HTML markup containing embed directives, iframes, or standalone media URLs.
+ * @param {RenderContentOptions} [options] - Optional UTM tracking parameters for embeds.
+ * @returns {string} HTML string with embed directives replaced by responsive iframe/widget markup.
  */
-function processHtmlEmbeds(html: string): string {
-  let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, _type, url) => {
-    const embed = parseEmbedUrl(url.trim());
+function processHtmlEmbeds(html: string, options?: RenderContentOptions): string {
+  let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, type, url) => {
+    const embed = parseEmbedDirective(type, url.trim(), options);
     return embed ? embed.html : `<p><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a></p>`;
   });
 
-  result = result.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, _type, url) => {
-    const embed = parseEmbedUrl(url.trim());
+  result = result.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, type, url) => {
+    const embed = parseEmbedDirective(type, url.trim(), options);
     return embed ? embed.html : `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a>`;
   });
 
   result = result.replace(/<p>\s*(<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>)\s*<\/p>/gi, (_m, rawIframe) => {
-    const embed = parseEmbedUrl(rawIframe);
+    const embed = parseEmbedUrl(rawIframe, options);
     return embed ? embed.html : rawIframe;
   });
 
   result = result.replace(/<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>/gi, (rawIframe) => {
-    const embed = parseEmbedUrl(rawIframe);
+    const embed = parseEmbedUrl(rawIframe, options);
     return embed ? embed.html : rawIframe;
   });
 
   result = result.replace(/<p>\s*(?:<a[^>]*href=["']([^"']+)["'][^>]*>.*?<\/a>|(https?:\/\/[^\s<]+))\s*<\/p>/gi, (match, linkHref, plainUrl) => {
     const targetUrl = linkHref || plainUrl;
     if (targetUrl) {
-      const embed = parseEmbedUrl(targetUrl.trim());
+      const embed = parseEmbedUrl(targetUrl.trim(), options);
       if (embed) {
         return embed.html;
       }
@@ -64,10 +71,11 @@ function processHtmlEmbeds(html: string): string {
  * Lightweight, zero-dependency Markdown compiler that converts markdown syntax into semantic HTML.
  * Isolates code blocks, Mermaid diagrams, and media embeds while parsing block and inline structures.
  *
- * @param markdown - Raw markdown formatted document string.
- * @returns Semantic HTML string representing the compiled document.
+ * @param {string} markdown - Raw markdown formatted document string.
+ * @param {RenderContentOptions} [options] - Optional UTM tracking parameters for embeds.
+ * @returns {string} Semantic HTML string representing the compiled document.
  */
-export function renderMarkdownToHtml(markdown: string): string {
+export function renderMarkdownToHtml(markdown: string, options?: RenderContentOptions): string {
   if (!markdown) return "";
 
   let src = markdown.replace(/```mermaid\s*[\s\S]*?```/g, "").trim();
@@ -93,7 +101,7 @@ export function renderMarkdownToHtml(markdown: string): string {
 
   const embedBlocks: string[] = [];
   src = src.replace(/<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>/gi, (rawIframe) => {
-    const embed = parseEmbedUrl(rawIframe);
+    const embed = parseEmbedUrl(rawIframe, options);
     if (embed) {
       const placeholder = `__EMBED_BLOCK_${embedBlocks.length}__`;
       embedBlocks.push(embed.html);
@@ -102,8 +110,8 @@ export function renderMarkdownToHtml(markdown: string): string {
     return rawIframe;
   });
 
-  src = src.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, _type, url) => {
-    const embed = parseEmbedUrl(url.trim());
+  src = src.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, type, url) => {
+    const embed = parseEmbedDirective(type, url.trim(), options);
     if (embed) {
       const placeholder = `__EMBED_BLOCK_${embedBlocks.length}__`;
       embedBlocks.push(embed.html);

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
 import { Check } from "lucide-react";
 
 /**
@@ -26,7 +26,7 @@ export interface CheckboxProps {
 }
 
 /**
- * Modern custom styled checkbox with accessible focus rings and label alignment.
+ * Modern custom styled checkbox with accessible focus rings and reliable full-label click toggling.
  *
  * @param props - CheckboxProps configuring checked status, label, and event handlers.
  * @returns React JSX checkbox container element.
@@ -41,53 +41,53 @@ export function Checkbox({
   className = "",
   id,
 }: CheckboxProps) {
-  const checkboxId = id || (typeof label === "string" ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
+  const autoId = useId();
+  const inputId = id || autoId;
 
   return (
-    <div className={`flex items-start gap-2.5 select-none ${disabled ? "opacity-50 pointer-events-none" : "cursor-pointer"} ${className}`}>
-      <div className="relative flex items-center justify-center mt-0.5">
+    <label
+      htmlFor={inputId}
+      className={`inline-flex items-start gap-2.5 select-none cursor-pointer group ${
+        disabled ? "opacity-50 pointer-events-none cursor-not-allowed" : ""
+      } ${className}`}
+    >
+      <div className="relative flex items-center justify-center mt-0.5 shrink-0">
         <input
           type="checkbox"
-          id={checkboxId}
+          id={inputId}
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
           disabled={disabled}
-          className="sr-only"
+          className="sr-only peer"
         />
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={checked}
-          disabled={disabled}
-          onClick={() => onChange(!checked)}
-          className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-accent ${
+        <div
+          aria-hidden="true"
+          className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-accent ${
             checked
               ? "bg-accent border-accent text-white shadow-2xs"
-              : "bg-input border-border hover:border-border-hover"
+              : "bg-input border-border group-hover:border-border-hover"
           } ${error ? "border-danger ring-1 ring-danger" : ""}`}
         >
           {checked && <Check className="w-3 h-3 text-white stroke-[3]" />}
-        </button>
+        </div>
       </div>
 
       {(label || description) && (
-        <div
-          className="min-w-0 flex-1 text-left cursor-pointer"
-          onClick={() => !disabled && onChange(!checked)}
-        >
+        <div className="min-w-0 flex-1 text-left">
           {label && (
-            <label htmlFor={checkboxId} className="block text-xs font-semibold text-text cursor-pointer leading-tight">
+            <span className="block text-xs font-semibold text-text leading-tight group-hover:text-text cursor-pointer">
               {label}
-            </label>
+            </span>
           )}
           {description && (
-            <p className="text-[11px] text-text-muted mt-0.5 leading-normal">
+            <p className="text-[11px] text-text-muted mt-0.5 leading-normal cursor-pointer">
               {description}
             </p>
           )}
           {error && <p className="text-[11px] text-danger font-medium mt-0.5">{error}</p>}
         </div>
       )}
-    </div>
+    </label>
   );
 }
+
