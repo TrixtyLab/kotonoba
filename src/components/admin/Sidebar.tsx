@@ -1,12 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { usePathname, Link } from "@/i18n/routing";
 import {
   LayoutDashboard, FileText, Files, Image as ImageIcon, FolderTree, Tag, BarChart3,
-  Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users
+  Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users, ArrowUpCircle
 } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
+import { checkForUpdates, type UpdateInfo } from "@/actions/updates";
 import { useRouter } from "@/i18n/routing";
 import { SiteSwitcher, type SiteOption } from "@/components/admin/SiteSwitcher";
 import { useTranslations } from "next-intl";
@@ -46,6 +47,21 @@ export function Sidebar({
   const t = useTranslations("common");
   const pathname = usePathname();
   const router = useRouter();
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    checkForUpdates()
+      .then((info) => {
+        if (mounted) {
+          setUpdateInfo(info);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const navSections = [
     {
@@ -159,6 +175,43 @@ export function Sidebar({
           </div>
         ))}
       </div>
+
+      {updateInfo?.updateAvailable && (
+        <div className="p-2 border-t border-border">
+          {isOpen ? (
+            <div className="p-2.5 rounded-xl bg-accent/10 border border-accent/20 text-xs space-y-2">
+              <div className="flex items-center gap-1.5 font-bold text-accent">
+                <ArrowUpCircle className="w-4 h-4 shrink-0 text-accent animate-pulse" />
+                <span className="truncate">{t("updateAvailable")}</span>
+              </div>
+              <p className="text-[11px] text-text-muted leading-tight">
+                {t("newVersionAvailable", { version: updateInfo.latestVersion })}
+              </p>
+              <a
+                href={updateInfo.containerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 w-full py-1.5 px-2 bg-accent hover:bg-accent-hover text-white text-[11px] font-semibold text-center rounded-lg transition-colors shadow-2xs"
+              >
+                <span>{t("updateNow")}</span>
+                <ExternalLink className="w-3 h-3 shrink-0" />
+              </a>
+            </div>
+          ) : (
+            <a
+              href={updateInfo.containerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center p-2 rounded-lg bg-accent/15 text-accent hover:bg-accent hover:text-white transition-colors relative"
+              title={`${t("updateAvailable")}: v${updateInfo.latestVersion}`}
+            >
+              <ArrowUpCircle className="w-4 h-4 shrink-0" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent animate-ping" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent" />
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="p-2 border-t border-border space-y-1">
         <a
