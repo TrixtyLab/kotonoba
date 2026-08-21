@@ -6,6 +6,7 @@ import { eq, desc, and } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import { generateId, generateSlug } from "@/lib/utils/slug";
 import { pageSchema, validate, type PageInput } from "@/lib/security/validate";
+import { normalizeMediaUrl, normalizeHtmlMediaUrls } from "@/lib/storage";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -69,10 +70,10 @@ export async function createPage(siteId: string, inputData: Partial<PageInput>):
     authorId: user.userId,
     title,
     slug: pageSlug,
-    contentMd: contentMd || "",
-    contentHtml: contentHtml || "",
+    contentMd: normalizeHtmlMediaUrls(contentMd || ""),
+    contentHtml: normalizeHtmlMediaUrls(contentHtml || ""),
     excerpt: excerpt || "",
-    coverImage: coverImage || null,
+    coverImage: normalizeMediaUrl(coverImage) || null,
     status,
     locale: locale || "en",
     publishedAt: status === "published" ? now : null,
@@ -128,10 +129,10 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
   db.update(pages).set({
     title,
     slug: pageSlug,
-    contentMd: contentMd || "",
-    contentHtml: contentHtml || "",
+    contentMd: normalizeHtmlMediaUrls(contentMd || ""),
+    contentHtml: normalizeHtmlMediaUrls(contentHtml || ""),
     excerpt: excerpt || "",
-    coverImage: coverImage !== undefined ? coverImage : existing.coverImage,
+    coverImage: coverImage !== undefined ? normalizeMediaUrl(coverImage) || null : existing.coverImage,
     status,
     locale: locale || existing.locale,
     publishedAt: shouldSetPublishedAt ? now : (status === "draft" ? null : existing.publishedAt),

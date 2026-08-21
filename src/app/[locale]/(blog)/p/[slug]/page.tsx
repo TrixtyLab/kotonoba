@@ -1,9 +1,10 @@
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { pages, users } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { pages, posts, categories, users } from "@/lib/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/blog/ShareButtons";
+import { LineSidebar } from "@/components/blog/LineSidebar";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { getTranslations } from "next-intl/server";
@@ -108,13 +109,22 @@ export default async function CustomPageEntry({
     db.update(pages).set({ views: currentViews + 1 }).where(eq(pages.id, page.id)).run();
   } catch {}
 
+  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
+  const latestPosts = db
+    .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })
+    .from(posts)
+    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+    .orderBy(desc(posts.publishedAt))
+    .limit(5)
+    .all();
+
   const postContent = page.contentMd || page.contentHtml || "";
   const renderedHtml = renderPostContent(postContent, {
     utmSource:
       site?.domain && !site.domain.includes("localhost")
         ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
         : typeof site?.name === "string" && site.name.trim()
-        ? site.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")
+        ? site.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-")
         : "myblog",
     utmCampaign: page.slug,
     utmMedium: "page_embed",
@@ -123,44 +133,41 @@ export default async function CustomPageEntry({
   const pageUrl = `https://${site.domain}/p/${page.slug}`;
 
   return (
-    <article className="max-w-3xl mx-auto px-4 py-8 sm:py-12 animate-fade-in">
-      {/* Header */}
-      <header className="mb-8 space-y-4 text-center sm:text-left">
-        <h1 className="text-2xl sm:text-4xl font-extrabold text-text tracking-tight leading-tight">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+      {/* Left Column: Page Content */}
+      <article className="lg:col-span-8 min-w-0 w-full space-y-6">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-text tracking-tight leading-snug">
           {page.title}
         </h1>
 
         {page.excerpt && (
-          <p className="text-sm sm:text-base text-text-muted leading-relaxed font-medium">
+          <p className="text-sm text-text-muted leading-relaxed font-medium">
             {page.excerpt}
           </p>
         )}
-      </header>
 
-      {/* Cover Image */}
-      {page.coverImage && (
-        <div className="mb-8 rounded-2xl overflow-hidden border border-border shadow-sm aspect-video max-h-[420px] bg-surface-hover/30">
-          <img
-            src={page.coverImage}
-            alt={page.title}
-            className="w-full h-full object-cover"
-          />
+        {/* Content */}
+        <div
+          className="prose-blog pt-2"
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+
+        {/* Bottom Share Bar */}
+        <div className="pt-4 flex items-center justify-between border-t border-border/50 text-xs text-text-muted">
+          <span>{t("sharePage")}:</span>
+          <ShareButtons title={page.title} url={pageUrl} />
         </div>
-      )}
+      </article>
 
-      {/* Content */}
-      <div
-        className="prose prose-sm sm:prose-base dark:prose-invert max-w-none text-text leading-relaxed font-sans"
-        dangerouslySetInnerHTML={{ __html: renderedHtml }}
-      />
-
-      {/* Bottom Share Bar */}
-      <footer className="mt-12 pt-6 border-t border-border flex items-center justify-between flex-wrap gap-4">
-        <span className="text-xs text-text-muted font-medium">
-          {t("sharePage")}
-        </span>
-        <ShareButtons title={page.title} url={pageUrl} />
-      </footer>
-    </article>
+      {/* Right Column: Profile Sidebar */}
+      <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
+        <LineSidebar
+          site={site}
+          latestPosts={latestPosts}
+          categories={allCategories}
+          locale={locale}
+        />
+      </div>
+    </div>
   );
 }

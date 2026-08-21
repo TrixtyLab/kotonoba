@@ -252,16 +252,58 @@ export function getS3Client(config: StorageConfig): S3Client {
 }
 
 /**
+ * Normalizes any legacy or external storage URL (e.g. expired Cloudflare R2 / AWS S3 presigned URLs)
+ * into a permanent internal proxy URL (/api/uploads/...).
+ *
+ * @param url - Raw URL or path string.
+ * @returns Clean normalized URL string.
+ */
+export function normalizeMediaUrl(url?: string | null): string {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+
+  // If already a relative /api/uploads/ or local URL, return clean path without query parameters
+  if (trimmed.startsWith("/api/uploads/")) {
+    return trimmed.split("?")[0];
+  }
+
+  // Match Cloudflare R2 presigned URLs: https://<bucket>.<account>.r2.cloudflarestorage.com/<path>?<signed-query>
+  // or AWS S3: https://<bucket>.s3.<region>.amazonaws.com/<path>?<signed-query>
+  const r2OrS3Match = trimmed.match(/^https?:\/\/[^/]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?#]+)/i);
+  if (r2OrS3Match && r2OrS3Match[1]) {
+    const rawPath = decodeURIComponent(r2OrS3Match[1]).replace(/^\/+/, "");
+    return `/api/uploads/${rawPath}`;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Normalizes all legacy S3/R2 presigned image URLs inside HTML or Markdown strings to /api/uploads/...
+ *
+ * @param content - Raw HTML or Markdown string.
+ * @returns Sanitized content with permanent proxy URLs.
+ */
+export function normalizeHtmlMediaUrls(content: string): string {
+  if (!content) return "";
+  return content.replace(
+    /https?:\/\/[^/"]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?"'#\s)]+)(?:\?[^"'#\s)]*)?/gi,
+    (_match, fileKey) => `/api/uploads/${fileKey}`
+  );
+}
+
+/**
  * Generates a presigned GET access grant URL for an object residing in a private S3/R2 bucket.
  *
  * @param filePath - Relative path to the stored media object.
- * @param expiresInSeconds - Access grant duration in seconds. Defaults to 86400 (24 hours).
+ * @param expiresInSeconds - Access grant duration in seconds. Defaults to 3600 (1 hour).
  * @param siteId - Optional site identifier.
  * @returns Promise resolving to the signed access URL string.
  */
 export async function getPresignedMediaUrl(
   filePath: string,
-  expiresInSeconds = 86400,
+  expiresInSeconds = 3600,
   siteId?: string
 ): Promise<string> {
   const config = getStorageConfig(siteId);
@@ -357,7 +399,7 @@ export async function uploadToStorage(
     if (config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")) {
       fileUrl = `${config.publicUrl}/${relativePath}`;
     } else {
-      fileUrl = await getPresignedMediaUrl(relativePath, 86400, siteId);
+      fileUrl = `/api/uploads/${relativePath}`;
     }
 
     return {
@@ -630,7 +672,7 @@ export async function listMediaFiles(
             if (publicUrlBase && !publicUrlBase.includes("r2.cloudflarestorage.com")) {
               url = `${publicUrlBase}/${filePath}`;
             } else {
-              url = await getPresignedMediaUrl(filePath, 86400, siteId);
+              url = `/api/uploads/${filePath}`;
             }
 
             return {

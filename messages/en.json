@@ -53,7 +53,10 @@
     "copied": "Copied to clipboard",
     "deleted": "Deleted successfully",
     "confirm": "Confirm",
-    "copy": "Copy"
+    "copy": "Copy",
+    "updateAvailable": "Update available",
+    "newVersionAvailable": "Version {version} available",
+    "updateNow": "Update now"
   },
   "blog": {
     "top": "Home",

@@ -304,4 +304,73 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
       db.run(idxQuery);
     } catch {}
   }
+
+  // Backfill and clean legacy expiring Cloudflare R2 / AWS S3 presigned URLs in DB
+  try {
+    const cleanMedia = (url?: string | null): string => {
+      if (!url || typeof url !== "string") return "";
+      const trimmed = url.trim();
+      if (trimmed.startsWith("/api/uploads/")) return trimmed.split("?")[0];
+      const match = trimmed.match(/^https?:\/\/[^/]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?#]+)/i);
+      if (match && match[1]) {
+        return `/api/uploads/${decodeURIComponent(match[1]).replace(/^\/+/, "")}`;
+      }
+      return trimmed;
+    };
+
+    const cleanHtml = (content?: string | null): string => {
+      if (!content) return "";
+      return content.replace(
+        /https?:\/\/[^/"]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?"'#\s)]+)(?:\?[^"'#\s)]*)?/gi,
+        (_match, fileKey) => `/api/uploads/${fileKey}`
+      );
+    };
+
+    const allSites = db.select({ id: schema.sites.id, logoUrl: schema.sites.logoUrl, faviconUrl: schema.sites.faviconUrl }).from(schema.sites).all();
+    for (const site of allSites) {
+      const newLogo = cleanMedia(site.logoUrl);
+      const newFavicon = cleanMedia(site.faviconUrl);
+      if (newLogo !== site.logoUrl || newFavicon !== site.faviconUrl) {
+        db.update(schema.sites).set({ logoUrl: newLogo || null, faviconUrl: newFavicon || null }).where(sql`id = ${site.id}`).run();
+      }
+    }
+
+    const allPosts = db.select({ id: schema.posts.id, coverImage: schema.posts.coverImage, contentMd: schema.posts.contentMd, contentHtml: schema.posts.contentHtml }).from(schema.posts).all();
+    for (const post of allPosts) {
+      const newCover = cleanMedia(post.coverImage);
+      const newMd = cleanHtml(post.contentMd);
+      const newHtml = cleanHtml(post.contentHtml);
+      if (newCover !== post.coverImage || newMd !== post.contentMd || newHtml !== post.contentHtml) {
+        db.update(schema.posts).set({ coverImage: newCover || null, contentMd: newMd, contentHtml: newHtml }).where(sql`id = ${post.id}`).run();
+      }
+    }
+
+    const allPages = db.select({ id: schema.pages.id, coverImage: schema.pages.coverImage, contentMd: schema.pages.contentMd, contentHtml: schema.pages.contentHtml }).from(schema.pages).all();
+    for (const page of allPages) {
+      const newCover = cleanMedia(page.coverImage);
+      const newMd = cleanHtml(page.contentMd);
+      const newHtml = cleanHtml(page.contentHtml);
+      if (newCover !== page.coverImage || newMd !== page.contentMd || newHtml !== page.contentHtml) {
+        db.update(schema.pages).set({ coverImage: newCover || null, contentMd: newMd, contentHtml: newHtml }).where(sql`id = ${page.id}`).run();
+      }
+    }
+
+    const allUsers = db.select({ id: schema.users.id, avatarUrl: schema.users.avatarUrl }).from(schema.users).all();
+    for (const user of allUsers) {
+      const newAvatar = cleanMedia(user.avatarUrl);
+      if (newAvatar !== user.avatarUrl) {
+        db.update(schema.users).set({ avatarUrl: newAvatar || null }).where(sql`id = ${user.id}`).run();
+      }
+    }
+
+    const allSettings = db.select({ id: schema.settings.id, key: schema.settings.key, value: schema.settings.value }).from(schema.settings).all();
+    for (const s of allSettings) {
+      if (s.value && (s.value.includes("r2.cloudflarestorage.com") || s.value.includes("amazonaws.com"))) {
+        const newVal = cleanMedia(s.value);
+        if (newVal !== s.value) {
+          db.update(schema.settings).set({ value: newVal }).where(sql`id = ${s.id}`).run();
+        }
+      }
+    }
+  } catch {}
 }

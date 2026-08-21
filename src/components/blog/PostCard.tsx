@@ -41,30 +41,50 @@ export function PostCard({ post, locale = "en" }: PostCardProps) {
   const postUrl = `/entry/${post.slug}`;
 
   return (
-    <article className="space-y-4 pb-14 border-b border-border/70 last:border-b-0">
-      <h2 className="text-2xl sm:text-3xl font-bold text-text tracking-tight leading-snug">
-        <Link href={postUrl} className="hover:text-primary transition-colors">
-          {post.title}
-        </Link>
-      </h2>
-
-      {post.publishedAt && (
-        <p className="text-xs text-text-muted">
-          {formatDate(post.publishedAt, locale)}
-        </p>
-      )}
-
+    <article className="group space-y-4 pb-14 border-b border-border/70 last:border-b-0">
       {post.coverImage && (
-        <div className="py-2">
-          <Link href={postUrl} className="block">
+        <div className="pb-1">
+          <Link href={postUrl} className="block overflow-hidden rounded-xl">
             <img
               src={post.coverImage}
               alt={post.title}
-              className="max-w-full h-auto object-cover"
+              className="max-w-full h-auto object-cover rounded-xl transition-transform duration-300 group-hover:scale-[1.01]"
             />
           </Link>
         </div>
       )}
+
+      <h2 className="text-2xl sm:text-3xl font-bold text-text tracking-tight leading-snug">
+        <Link href={postUrl} className="group-hover:text-primary hover:text-primary transition-colors">
+          {post.title}
+        </Link>
+      </h2>
+
+      {/* Date & Categories */}
+      <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
+        {post.publishedAt && (
+          <time dateTime={typeof post.publishedAt === "string" ? post.publishedAt : post.publishedAt.toISOString()}>
+            {formatDate(post.publishedAt, locale)}
+          </time>
+        )}
+
+        {post.categories && post.categories.length > 0 && (
+          <>
+            <span>•</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {post.categories.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/category/${c.slug}`}
+                  className="font-medium text-accent hover:underline transition-colors"
+                >
+                  {c.name}
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {post.excerpt && (
         <div className="text-[15.5px] text-text leading-[2.1] space-y-4 pt-1">
@@ -84,10 +104,10 @@ export function PostCard({ post, locale = "en" }: PostCardProps) {
           )}
         </div>
 
-        {((post.tags && post.tags.length > 0) || (post.categories && post.categories.length > 0)) && (
+        {post.tags && post.tags.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             <Tag className="w-3.5 h-3.5 text-text-muted shrink-0" />
-            {(post.tags || []).map((t) => (
+            {post.tags.map((t) => (
               <Link
                 key={t.id}
                 href={`/tag/${t.slug}`}

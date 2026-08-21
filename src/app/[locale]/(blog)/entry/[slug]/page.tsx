@@ -184,27 +184,39 @@ export default async function PostEntryPage({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
       {/* Left Column: Article Content */}
-      <article className="lg:col-span-8 space-y-6">
-        {/* Article Title (as in Screenshot 1) */}
+      <article className="lg:col-span-8 min-w-0 w-full space-y-6">
+        {/* Article Title */}
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-text tracking-tight leading-snug">
           {post.title}
         </h1>
 
-        {/* Date & Time */}
-        {post.publishedAt && (
-          <p className="text-xs text-text-muted">
-            {formatDate(post.publishedAt, locale)}
-          </p>
-        )}
+        {/* Date & Categories */}
+        <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
+          {post.publishedAt && (
+            <time dateTime={post.publishedAt.toISOString()}>
+              {formatDate(post.publishedAt, locale)}
+            </time>
+          )}
 
-        {/* Cover Image */}
-        {post.coverImage && (
-          <div className="py-2">
-            <img src={post.coverImage} alt={post.title} className="max-w-full h-auto object-cover rounded-xl" />
-          </div>
-        )}
+          {assignedCategories.length > 0 && (
+            <>
+              <span>•</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {assignedCategories.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/category/${c.slug}`}
+                    className="font-medium text-accent hover:underline transition-colors"
+                  >
+                    {c.name}
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Body Content */}
         <div
@@ -215,7 +227,7 @@ export default async function PostEntryPage({
                 site?.domain && !site.domain.includes("localhost")
                   ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
                   : typeof site?.name === "string" && site.name.trim()
-                  ? site.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")
+                  ? site.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-")
                   : "myblog",
               utmCampaign: post.slug,
               utmMedium: "article_embed",
@@ -236,7 +248,7 @@ export default async function PostEntryPage({
           </div>
         )}
 
-        {/* Bottom Reactions & Tags Bar (as in Screenshot 2) */}
+        {/* Bottom Reactions & Tags Bar */}
         <div className="pt-8 border-t border-border/70 flex flex-wrap items-center justify-between gap-4 text-xs text-text-muted">
           <div className="flex items-center gap-4">
             <LikeButton postId={post.id} initialLikes={Math.floor((post.views || 0) / 8)} size="md" />
@@ -250,7 +262,7 @@ export default async function PostEntryPage({
           </div>
 
           {/* Tags list (🏷️ tag1 tag2) */}
-          {(assignedTags.length > 0 || assignedCategories.length > 0) && (
+          {assignedTags.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               <TagIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
               {assignedTags.map((t) => (
@@ -260,15 +272,6 @@ export default async function PostEntryPage({
                   className="hover:text-primary transition-colors"
                 >
                   {t.name}
-                </Link>
-              ))}
-              {assignedCategories.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/category/${c.slug}`}
-                  className="hover:text-primary transition-colors font-medium"
-                >
-                  {c.name}
                 </Link>
               ))}
             </div>
@@ -307,7 +310,7 @@ export default async function PostEntryPage({
         </div>
       </article>
 
-      <div className="lg:col-span-4 lg:sticky lg:top-8">
+      <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site}
           latestPosts={latestPosts}
