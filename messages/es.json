@@ -184,7 +184,17 @@
     "tagPlaceholder": "ej. typescript, nextjs, docker",
     "allTags": "Todas las Etiquetas",
     "noTags": "Aún no hay etiquetas creadas.",
-    "deleteTag": "Eliminar Etiqueta"
+    "deleteTag": "Eliminar Etiqueta",
+    "pagesDesc": "Páginas estáticas e institucionales (Sobre Nosotros, Contacto, Términos, etc.)",
+    "pagesSubtitle": "Gestiona las páginas estáticas e institucionales de tu sitio.",
+    "noPagesFound": "No se encontraron páginas.",
+    "createPage": "Crear Página",
+    "editPage": "Editar Página",
+    "newPage": "Nueva Página",
+    "pageCreated": "Página creada exitosamente",
+    "pageUpdated": "Página actualizada",
+    "pageDeleted": "Página eliminada",
+    "pageDeleteError": "Error al eliminar la página"
   },
   "analytics": {
     "title": "Estadísticas y Analíticas",
@@ -261,10 +271,7 @@
     "filter": "Filtrar…",
     "uploading": "Subiendo…",
     "upload": "Subir",
-    "folder": "Carpeta",
-    "pagesDesc": "Páginas estáticas e institucionales (Sobre Nosotros, Contacto, Términos, etc.)",
-    "noPagesFound": "No se encontraron páginas.",
-    "createPage": "Crear Página"
+    "folder": "Carpeta"
   },
   "editor": {
     "postTitlePlaceholder": "Título del artículo…",
