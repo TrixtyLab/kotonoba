@@ -77,7 +77,16 @@ export const ALL_LANGUAGE_OPTIONS = [
 ];
 
 /**
- * Custom TipTap extension resetting active marks and heading blocks upon pressing Enter.
+ * Custom TipTap extension governing Enter key semantics for block-level transitions.
+ *
+ * Handles three specific cases:
+ * - **Headings**: Pressing Enter at the end of a heading exits to a clean paragraph.
+ * - **Empty blockquotes**: Pressing Enter inside an empty blockquote lifts it to a paragraph.
+ * - **All other nodes**: Defers to TipTap's built-in Enter behavior (list continuation, paragraph splitting, etc.).
+ *
+ * @remarks
+ * Uses ProseMirror node ancestry traversal (`$from.node(depth)`) instead of `$from.parent`
+ * to correctly detect list context, since text inside list items is nested within paragraph nodes.
  */
 const AutoExitBlockOnEnter = Extension.create({
   name: "autoExitBlockOnEnter",
@@ -88,24 +97,41 @@ const AutoExitBlockOnEnter = Extension.create({
         const { $from, empty } = selection;
         if (!empty) return false;
 
-        const parentType = $from.parent.type.name;
+        const depth = $from.depth;
 
-        if (parentType === "listItem" || parentType === "taskItem") {
-          return false;
+        for (let d = depth; d >= 0; d--) {
+          const ancestorType = $from.node(d).type.name;
+          if (ancestorType === "listItem" || ancestorType === "taskItem") {
+            return false;
+          }
         }
+
+        const parentType = $from.parent.type.name;
 
         if (parentType === "heading") {
           const isAtEnd = $from.parentOffset === $from.parent.content.size;
           if (isAtEnd) {
             return editor.chain().splitBlock({ keepMarks: false }).setParagraph().unsetAllMarks().run();
           }
+          return false;
         }
 
         if (parentType === "blockquote" && $from.parent.content.size === 0) {
           return editor.chain().lift("blockquote").setParagraph().unsetAllMarks().run();
         }
 
-        return editor.chain().splitBlock({ keepMarks: false }).unsetAllMarks().run();
+        for (let d = depth - 1; d >= 0; d--) {
+          const ancestorType = $from.node(d).type.name;
+          if (ancestorType === "blockquote") {
+            const paragraph = $from.parent;
+            if (paragraph.content.size === 0) {
+              return editor.chain().lift("blockquote").run();
+            }
+            break;
+          }
+        }
+
+        return false;
       },
     };
   },
