@@ -1,4 +1,5 @@
 import { parseEmbedUrl, parseEmbedDirective, type EmbedOptions } from "./embeds";
+import { normalizeHtmlMediaUrls } from "@/lib/storage";
 
 /**
  * Configuration options for rendering content with custom tracking and UTM parameters.
@@ -16,13 +17,13 @@ export interface RenderContentOptions extends EmbedOptions {}
 export function renderPostContent(rawContent: string, options?: RenderContentOptions): string {
   if (!rawContent) return "";
 
-  const trimmed = rawContent.trim();
+  const normalized = normalizeHtmlMediaUrls(rawContent.trim());
 
-  if (trimmed.startsWith("<") && (trimmed.startsWith("<p>") || trimmed.startsWith("<h") || trimmed.startsWith("<div") || trimmed.startsWith("<ul") || trimmed.startsWith("<ol") || trimmed.startsWith("<iframe"))) {
-    return processHtmlEmbeds(trimmed, options);
+  if (normalized.startsWith("<") && (normalized.startsWith("<p>") || normalized.startsWith("<h") || normalized.startsWith("<div") || normalized.startsWith("<ul") || normalized.startsWith("<ol") || normalized.startsWith("<iframe"))) {
+    return processHtmlEmbeds(normalized, options);
   }
 
-  return renderMarkdownToHtml(trimmed, options);
+  return renderMarkdownToHtml(normalized, options);
 }
 
 /**

@@ -106,9 +106,9 @@ export default async function BlogHomePage({
   const totalPages = Math.max(1, Math.ceil(allPosts.length / 5));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
       {/* Left Column: Post Timeline Stream */}
-      <div className="lg:col-span-8 space-y-12">
+      <div className="lg:col-span-8 min-w-0 w-full space-y-12">
         {allPosts.length === 0 ? (
           <div className="py-20 text-center space-y-3">
             <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
@@ -125,7 +125,7 @@ export default async function BlogHomePage({
         <LinePagination currentPage={1} totalPages={totalPages} baseUrl="/" />
       </div>
 
-      <div className="lg:col-span-4 lg:sticky lg:top-8">
+      <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site}
           latestPosts={allPosts.slice(0, 5)}

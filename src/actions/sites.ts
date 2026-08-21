@@ -6,6 +6,7 @@ import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import { generateId } from "@/lib/utils/slug";
 import { siteSchema, validate, type SiteInput } from "@/lib/security/validate";
+import { normalizeMediaUrl } from "@/lib/storage";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
@@ -131,8 +132,8 @@ export async function updateSite(siteId: string, inputData: Partial<SiteInput>):
       domain: cleanDomain,
       subtitle: subtitle || "",
       description: description || "",
-      logoUrl: logoUrl !== undefined ? logoUrl : null,
-      faviconUrl: faviconUrl !== undefined ? faviconUrl : null,
+      logoUrl: logoUrl !== undefined ? normalizeMediaUrl(logoUrl) || null : null,
+      faviconUrl: faviconUrl !== undefined ? normalizeMediaUrl(faviconUrl) || null : null,
       locale: locale || "en",
       theme: theme || "dark",
       primaryColor: primaryColor || "#6366f1",

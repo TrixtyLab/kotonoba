@@ -55,7 +55,7 @@ export function LineSidebar({
   const bio = getLocalizedText(site.description, currentLocale) || getLocalizedText(site.subtitle, currentLocale);
 
   return (
-    <aside className="space-y-10 text-center sm:text-left">
+    <aside className="w-full space-y-10 text-center sm:text-left">
       <div className="space-y-4">
         <div className="flex justify-center">
           {avatar ? (

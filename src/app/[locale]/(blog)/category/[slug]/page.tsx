@@ -102,9 +102,9 @@ export default async function CategoryPage({
   const totalPages = Math.max(1, Math.ceil(matchingPosts.length / 5));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
       {/* Left Column: Post Stream */}
-      <div className="lg:col-span-8 space-y-10">
+      <div className="lg:col-span-8 min-w-0 w-full space-y-10">
         <div className="pb-4 border-b border-border/70">
           <p className="text-xs text-text-muted">{t("category")}</p>
           <h1 className="text-2xl font-bold text-text mt-1">{cat.name}</h1>
@@ -128,7 +128,7 @@ export default async function CategoryPage({
       </div>
 
       {/* Right Column: Profile Sidebar */}
-      <div className="lg:col-span-4 lg:sticky lg:top-8">
+      <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site}
           latestPosts={matchingPosts.slice(0, 5)}

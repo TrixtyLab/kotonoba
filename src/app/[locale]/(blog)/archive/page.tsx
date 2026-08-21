@@ -77,9 +77,9 @@ export default async function ArchivePage({
   const years = Object.keys(groupedByYear).sort((a, b) => Number(b) - Number(a));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
       {/* Left Column: Chronological Post List */}
-      <div className="lg:col-span-8 space-y-10">
+      <div className="lg:col-span-8 min-w-0 w-full space-y-10">
         <div className="pb-4 border-b border-border/70">
           <h1 className="text-2xl font-bold text-text">{t("archive")}</h1>
           <p className="text-xs text-text-muted mt-1">{t("totalArticles", { count: allPosts.length })}</p>
@@ -122,7 +122,7 @@ export default async function ArchivePage({
       </div>
 
       {/* Right Column: Profile Sidebar */}
-      <div className="lg:col-span-4 lg:sticky lg:top-8">
+      <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site || { name: "Blog" }}
           latestPosts={allPosts.slice(0, 5)}

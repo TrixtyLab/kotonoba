@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/auth/session";
 import { generateId, generateSlug } from "@/lib/utils/slug";
 import { postSchema, validate, type PostInput } from "@/lib/security/validate";
 import { isDubConfigured, createDubLink } from "@/lib/dub";
+import { normalizeMediaUrl, normalizeHtmlMediaUrls } from "@/lib/storage";
 import { sendDiscordPostNotification } from "@/lib/discord";
 import { sendBlueskyPostNotification } from "@/lib/bluesky";
 import { revalidatePath } from "next/cache";
@@ -107,10 +108,10 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
       authorId: user.userId,
       title,
       slug: postSlug,
-      contentMd: contentMd || "",
-      contentHtml: contentHtml || "",
+      contentMd: normalizeHtmlMediaUrls(contentMd || ""),
+      contentHtml: normalizeHtmlMediaUrls(contentHtml || ""),
       excerpt: excerpt || "",
-      coverImage: coverImage || null,
+      coverImage: normalizeMediaUrl(coverImage) || null,
       status,
       locale,
       publishedAt: status === "published" ? now : null,
@@ -144,28 +145,33 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
       id: postId,
       title,
       slug: postSlug,
-      excerpt,
-      coverImage,
-      publishedAt: now,
+      excerpt: excerpt || "",
+      coverImage: normalizeMediaUrl(coverImage) || null,
+      authorName: user.name || "Author",
       locale,
-      shortUrl: finalShortUrl,
-      tagIds,
     };
+
     sendDiscordPostNotification(siteId, notifPayload).catch(() => {});
     sendBlueskyPostNotification(siteId, notifPayload).catch(() => {});
   }
+
+  revalidatePath("/[locale]/admin/posts", "page");
+  revalidatePath(`/[locale]/entry/${postSlug}`, "page");
+  revalidatePath("/sitemap.xml", "page");
+  revalidatePath("/rss.xml", "page");
+  revalidatePath("/feed.json", "page");
+  revalidatePath("/atom.xml", "page");
 
   return { success: true, postId };
 }
 
 /**
- * Updates an existing blog article and syncs its category and tag associations.
- * Enforces ownership restrictions ensuring authors can only modify their own posts.
+ * Updates an existing blog post record and synchronizes category and tag associations.
  *
- * @param postId - Unique database identifier of the article to update.
+ * @param postId - Unique identifier of the post to update.
  * @param inputData - Updated post attributes.
- * @returns A Promise resolving to a PostMutationResponse indicating success status or validation errors.
- * @throws {Error} When the caller lacks an authorized administrative or editorial role.
+ * @returns A Promise resolving to a PostMutationResponse indicating success or validation errors.
+ * @throws {Error} When the caller lacks an authorized editor or author session.
  */
 export async function updatePost(postId: string, inputData: Partial<PostInput>): Promise<PostMutationResponse> {
   const user = await requireAuth(["super_admin", "admin", "editor", "author"]);
@@ -176,7 +182,21 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
   }
 
   const db = getDb();
-  const existing = db.select().from(posts).where(eq(posts.id, postId)).get();
+  const existing = db
+    .select({
+      id: posts.id,
+      authorId: posts.authorId,
+      siteId: posts.siteId,
+      slug: posts.slug,
+      publishedAt: posts.publishedAt,
+      shortUrl: posts.shortUrl,
+      dubLinkId: posts.dubLinkId,
+      locale: posts.locale,
+      status: posts.status,
+    })
+    .from(posts)
+    .where(eq(posts.id, postId))
+    .get();
 
   if (!existing) {
     return { success: false, error: "Article not found" };
@@ -238,10 +258,10 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
     .set({
       title,
       slug: postSlug,
-      contentMd: contentMd || "",
-      contentHtml: contentHtml || "",
+      contentMd: normalizeHtmlMediaUrls(contentMd || ""),
+      contentHtml: normalizeHtmlMediaUrls(contentHtml || ""),
       excerpt: excerpt || "",
-      coverImage: coverImage || null,
+      coverImage: normalizeMediaUrl(coverImage) || null,
       status,
       locale,
       publishedAt,

@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { getStorageConfig, getS3Client } from "@/lib/storage";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const MIME_MAP: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -15,11 +16,12 @@ const MIME_MAP: Record<string, string> = {
 };
 
 /**
- * Public file server endpoint streaming media asset binaries from local disk or private R2/S3 storage.
+ * Public file server endpoint resolving media asset paths dynamically.
+ * Generates fresh presigned URLs on demand for S3/R2 private buckets or streams local disk files.
  *
  * @param _req - Incoming NextRequest object.
  * @param context - Request context containing path segment parameters.
- * @returns Binary file response with MIME content-type headers.
+ * @returns Fresh presigned URL redirection or binary file response.
  */
 export async function GET(
   _req: NextRequest,
@@ -34,28 +36,28 @@ export async function GET(
   const relativePath = sanitizedSegments.join("/");
   const config = getStorageConfig();
 
-  // If Cloudflare R2 or AWS S3 is active, stream from the private bucket
+  // If Cloudflare R2 or AWS S3 is active
   if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
     try {
+      // If custom public CDN domain is configured, redirect directly
+      if (config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")) {
+        return NextResponse.redirect(`${config.publicUrl}/${relativePath}`, {
+          status: 307,
+        });
+      }
+
+      // Generate a fresh presigned URL valid for 1 hour on each request
       const s3 = getS3Client(config);
       const command = new GetObjectCommand({
         Bucket: config.bucket,
         Key: relativePath,
       });
 
-      const s3Response = await s3.send(command);
-      if (!s3Response.Body) {
-        return new NextResponse("File Not Found", { status: 404 });
-      }
-
-      const byteArray = await s3Response.Body.transformToByteArray();
-      const ext = path.extname(relativePath).toLowerCase();
-      const contentType = s3Response.ContentType || MIME_MAP[ext] || "application/octet-stream";
-
-      return new NextResponse(Buffer.from(byteArray), {
+      const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+      return NextResponse.redirect(signedUrl, {
+        status: 307,
         headers: {
-          "Content-Type": contentType,
-          "Cache-Control": "public, max-age=31536000, immutable",
+          "Cache-Control": "private, no-cache, no-store, max-age=0, must-revalidate",
         },
       });
     } catch {
