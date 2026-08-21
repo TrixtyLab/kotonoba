@@ -1138,8 +1138,113 @@ export function PostEditor({
                 />
               </div>
 
+              {/* Categories & Taxonomy (Vertical List) */}
+              {mode === "post" && (
+                <div className="space-y-2 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text flex items-center gap-1.5">
+                      <Folder className="w-3.5 h-3.5 text-accent" />
+                      <span>{t("categories")}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                    {availableCategories.map((c) => (
+                      <Checkbox
+                        key={c.id}
+                        checked={selectedCategories.includes(c.id)}
+                        onChange={(checked) => {
+                          if (checked) {
+                            setSelectedCategories([...selectedCategories, c.id]);
+                          } else {
+                            setSelectedCategories(selectedCategories.filter((id) => id !== c.id));
+                          }
+                        }}
+                        label={c.name}
+                        className="w-full"
+                      />
+                    ))}
+                    {availableCategories.length === 0 && (
+                      <p className="text-xs text-text-muted">{t("noCategoriesYet")}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tags */}
+              {mode === "post" && (
+                <div className="space-y-2 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-accent" />
+                      <span>{t("tags")}</span>
+                    </span>
+                  </div>
+
+                  {selectedTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pb-1">
+                      {selectedTags.map((tId) => {
+                        const tagObj = localTags.find((t) => t.id === tId);
+                        return (
+                          <span
+                            key={tId}
+                            className="inline-flex items-center gap-1 text-[11px] bg-accent/10 text-accent font-medium px-2 py-0.5 rounded-full border border-accent/20"
+                          >
+                            #{tagObj?.name || tId}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
+                              className="hover:text-rose-500 ml-0.5 cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder={t("newTagPlaceholder")}
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                      }}
+                    />
+                    <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
+                      {tc("add")}
+                    </Button>
+                  </div>
+
+                  {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
+                    <div className="pt-1.5 border-t border-border/50">
+                      <p className="text-[11px] text-text-muted mb-1.5">{t("existingSuggestions")}</p>
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                        {localTags
+                          .filter((t) => !selectedTags.includes(t.id))
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setSelectedTags([...selectedTags, t.id])}
+                              className="text-[11px] bg-surface-hover hover:bg-accent/10 hover:text-accent px-2 py-0.5 rounded border border-border transition-colors text-text-muted cursor-pointer"
+                            >
+                              + {t.name}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Resumen / Extracto SEO */}
-              <div className="space-y-1.5 pt-1">
+              <div className="space-y-1.5 pt-3 border-t border-border">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-text">{t("seoExcerpt")}</span>
                   <Button
@@ -1300,109 +1405,6 @@ export function PostEditor({
                 onChange={(e) => setCoverImage(e.target.value)}
               />
             </div>
-
-            {/* Categories & Tags (Only for blog posts) */}
-            {mode === "post" && (
-              <>
-                <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-border">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                      {t("categories")}
-                    </h3>
-                    <Folder className="w-3.5 h-3.5 text-text-muted" />
-                  </div>
-
-                  <div className="space-y-2.5 max-h-40 overflow-y-auto">
-                    {availableCategories.map((c) => (
-                      <Checkbox
-                        key={c.id}
-                        checked={selectedCategories.includes(c.id)}
-                        onChange={(checked) => {
-                          if (checked) {
-                            setSelectedCategories([...selectedCategories, c.id]);
-                          } else {
-                            setSelectedCategories(selectedCategories.filter((id) => id !== c.id));
-                          }
-                        }}
-                        label={c.name}
-                      />
-                    ))}
-                    {availableCategories.length === 0 && (
-                      <p className="text-xs text-text-muted">{t("noCategoriesYet")}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-border">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                      {t("tags")}
-                    </h3>
-                    <Tag className="w-3.5 h-3.5 text-text-muted" />
-                  </div>
-
-                  {selectedTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pb-2">
-                      {selectedTags.map((tId) => {
-                        const tagObj = localTags.find((t) => t.id === tId);
-                        return (
-                          <span
-                            key={tId}
-                            className="inline-flex items-center gap-1 text-[11px] bg-accent/10 text-accent font-medium px-2 py-0.5 rounded-full border border-accent/20"
-                          >
-                            #{tagObj?.name || tId}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
-                              className="hover:text-rose-500 ml-0.5 cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder={t("newTagPlaceholder")}
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddTag();
-                        }
-                      }}
-                    />
-                    <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
-                      {tc("add")}
-                    </Button>
-                  </div>
-
-                  {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
-                    <div className="pt-2 border-t border-border/50">
-                      <p className="text-[11px] text-text-muted mb-1.5">{t("existingSuggestions")}</p>
-                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                        {localTags
-                          .filter((t) => !selectedTags.includes(t.id))
-                          .map((t) => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => setSelectedTags([...selectedTags, t.id])}
-                              className="text-[11px] bg-surface-hover hover:bg-accent/10 hover:text-accent px-2 py-0.5 rounded border border-border transition-colors text-text-muted cursor-pointer"
-                            >
-                              + {t.name}
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
           </div>
         )}
       </div>
