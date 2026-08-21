@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.SITE_URL || "http://localhost:3000"),
   title: "Kotonoba",
   description: "Self-hosted multi-tenant blog CMS",
 };
