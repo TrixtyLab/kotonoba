@@ -329,47 +329,6 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                 );
               })}
             </div>
-
-            {/* Mobile Social Links Section */}
-            {socialNavItems.length > 0 && (
-              <div className="pt-2.5 border-t border-border/70 flex items-center justify-center gap-2 flex-wrap">
-                {socialNavItems.map((item) => {
-                  const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
-                  const label = getNavItemLabel(item);
-
-                  if (isExternal) {
-                    return (
-                      <a
-                        key={item.id}
-                        href={item.url}
-                        target={item.target || "_blank"}
-                        rel="noopener noreferrer"
-                        onClick={() => setMobileMenuOpen(false)}
-                        title={label}
-                        aria-label={label}
-                        className="p-2.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors border border-border/50 flex items-center justify-center"
-                      >
-                        <NavIcon name={item.icon || "link"} className="w-4 h-4" />
-                      </a>
-                    );
-                  }
-
-                  return (
-                    <Link
-                      key={item.id}
-                      href={item.url}
-                      target={item.target}
-                      onClick={() => setMobileMenuOpen(false)}
-                      title={label}
-                      aria-label={label}
-                      className="p-2.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors border border-border/50 flex items-center justify-center"
-                    >
-                      <NavIcon name={item.icon || "link"} className="w-4 h-4" />
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
           </div>
         )}
       </header>
