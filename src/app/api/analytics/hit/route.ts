@@ -10,10 +10,10 @@ import crypto from "crypto";
 const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegram|discordbot|headless|lighthouse|pingdom|uptimerobot|preview|google-read-aloud/i;
 
 /**
- * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots, author views, and duplicate visits.
+ * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots, platform administrators, post authors, and duplicate visits within a 15-minute deduplication window.
  *
- * @param req - The incoming NextRequest beacon payload.
- * @returns NextResponse with recording status.
+ * @param {NextRequest} req - Incoming beacon payload containing siteId, optional postId, path, and UTM campaign parameters.
+ * @returns {Promise<NextResponse>} JSON response indicating whether the pageview was recorded, ignored, or rejected.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (req.headers.get("x-purpose") === "preview" || req.headers.get("sec-purpose") === "prefetch") {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const userAgent = req.headers.get("user-agent") || "";
-    
+
     if (!userAgent || BOT_USER_AGENTS.test(userAgent)) {
       return NextResponse.json({ success: true, ignored: "bot" });
     }
@@ -56,8 +56,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       const currentUser = await getCurrentUser();
       if (currentUser) {
-        if (currentUser.role === "super_admin" || currentUser.siteId === siteId) {
-          return NextResponse.json({ success: true, ignored: "author_or_admin" });
+        if (currentUser.role === "super_admin") {
+          return NextResponse.json({ success: true, ignored: "super_admin" });
         }
 
         if (postId) {
@@ -67,7 +67,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           }
         }
       }
-    } catch {}
+    } catch {
+      // Session retrieval failed — treat as anonymous visitor and continue recording
+    }
 
     const ipHash = crypto.createHash("sha256").update(`${ip}-${userAgent}`).digest("hex").slice(0, 16);
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
