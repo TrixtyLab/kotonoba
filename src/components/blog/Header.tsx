@@ -132,6 +132,14 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
     return [defaultHome];
   }, [site.navLinks, t]);
 
+  const textNavItems = useMemo<CustomNavItem[]>(() => {
+    return navItems.filter((item) => !item.isSocial);
+  }, [navItems]);
+
+  const socialNavItems = useMemo<CustomNavItem[]>(() => {
+    return navItems.filter((item) => Boolean(item.isSocial));
+  }, [navItems]);
+
   const alignmentClass = useMemo(() => {
     switch (site.navAlignment) {
       case "left":
@@ -161,8 +169,9 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
       <header className="sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-md border-b border-border/80 transition-colors">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14 gap-4">
-            <nav className={`hidden md:flex items-stretch gap-8 h-full flex-1 ${alignmentClass}`}>
-              {navItems.map((item) => {
+            {/* Main Navigation: Standard Content Links */}
+            <nav className={`hidden md:flex items-stretch gap-6 lg:gap-8 h-full flex-1 ${alignmentClass}`}>
+              {textNavItems.map((item) => {
                 const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
                 const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
                 const label = getNavItemLabel(item);
@@ -176,10 +185,10 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                       rel="noopener noreferrer"
                       title={label}
                       aria-label={label}
-                      className={`relative h-full flex items-center ${item.isSocial ? "px-2" : "px-1"} text-xs sm:text-[13px] font-bold tracking-wider text-text-muted hover:text-accent transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] after:bg-transparent hover:after:bg-accent/40`}
+                      className="relative h-full flex items-center px-1 text-xs sm:text-[13px] font-bold tracking-wider text-text-muted hover:text-accent transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] after:bg-transparent hover:after:bg-accent/40"
                     >
                       {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
-                      {!item.isSocial && <span>{label}</span>}
+                      <span>{label}</span>
                     </a>
                   );
                 }
@@ -191,7 +200,7 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                     target={item.target}
                     title={label}
                     aria-label={label}
-                    className={`relative h-full flex items-center ${item.isSocial ? "px-2" : "px-1"} text-xs sm:text-[13px] font-bold tracking-wider transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] ${
+                    className={`relative h-full flex items-center px-1 text-xs sm:text-[13px] font-bold tracking-wider transition-colors flex items-center gap-1.5 select-none uppercase after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] ${
                       isActive
                         ? "text-accent font-extrabold after:bg-accent"
                         : "text-text-muted hover:text-text after:bg-transparent hover:after:bg-text-muted/40"
@@ -203,14 +212,56 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                         className={`w-4 h-4 ${isActive ? "text-accent" : "text-text-muted"}`}
                       />
                     )}
-                    {!item.isSocial && <span>{label}</span>}
+                    <span>{label}</span>
                   </Link>
                 );
               })}
             </nav>
 
-            {/* Right toolbar: Search, Locale Switcher, Theme Toggle, Mobile Trigger */}
-            <div className="flex items-center gap-2.5 ml-auto shrink-0">
+            {/* Right toolbar: Social Links + Search + Locale Switcher + Theme Toggle + Mobile Trigger */}
+            <div className="flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0">
+              {/* Desktop Social Links Group */}
+              {socialNavItems.length > 0 && (
+                <>
+                  <div className="hidden sm:flex items-center gap-1">
+                    {socialNavItems.map((item) => {
+                      const label = getNavItemLabel(item);
+                      const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+
+                      if (isExternal) {
+                        return (
+                          <a
+                            key={item.id}
+                            href={item.url}
+                            target={item.target || "_blank"}
+                            rel="noopener noreferrer"
+                            title={label}
+                            aria-label={label}
+                            className="p-2 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors flex items-center justify-center"
+                          >
+                            <NavIcon name={item.icon || "link"} className="w-4 h-4" />
+                          </a>
+                        );
+                      }
+
+                      return (
+                        <Link
+                          key={item.id}
+                          href={item.url}
+                          target={item.target}
+                          title={label}
+                          aria-label={label}
+                          className="p-2 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors flex items-center justify-center"
+                        >
+                          <NavIcon name={item.icon || "link"} className="w-4 h-4" />
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  <div className="hidden sm:block h-4 w-px bg-border/80 mx-0.5" />
+                </>
+              )}
+
               <button
                 onClick={() => setSearchOpen(true)}
                 aria-label={t("searchPlaceholder")}
@@ -236,45 +287,89 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
 
         {/* Mobile Navigation Dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-1 animate-slide-down">
-            {navItems.map((item) => {
-              const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
-              const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
-              const label = getNavItemLabel(item);
+          <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-3 animate-slide-down shadow-lg">
+            {/* Standard Text Navigation Items */}
+            <div className="space-y-1">
+              {textNavItems.map((item) => {
+                const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+                const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
+                const label = getNavItemLabel(item);
 
-              if (isExternal) {
+                if (isExternal) {
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.url}
+                      target={item.target || "_blank"}
+                      rel="noopener noreferrer"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-text-muted hover:text-text hover:bg-surface-hover uppercase tracking-wider"
+                    >
+                      {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
+                      <span>{label}</span>
+                    </a>
+                  );
+                }
+
                 return (
-                  <a
+                  <Link
                     key={item.id}
                     href={item.url}
-                    target={item.target || "_blank"}
-                    rel="noopener noreferrer"
+                    target={item.target}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-text-muted hover:text-text hover:bg-surface-hover uppercase tracking-wider"
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider ${
+                      isActive
+                        ? "text-accent font-bold bg-accent/10"
+                        : "text-text-muted hover:text-text hover:bg-surface-hover"
+                    }`}
                   >
                     {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
                     <span>{label}</span>
-                  </a>
+                  </Link>
                 );
-              }
+              })}
+            </div>
 
-              return (
-                <Link
-                  key={item.id}
-                  href={item.url}
-                  target={item.target}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider ${
-                    isActive
-                      ? "text-accent font-bold bg-accent/10"
-                      : "text-text-muted hover:text-text hover:bg-surface-hover"
-                  }`}
-                >
-                  {item.icon && <NavIcon name={item.icon} className="w-4 h-4 text-accent" />}
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
+            {/* Mobile Social Links Section */}
+            {socialNavItems.length > 0 && (
+              <div className="pt-2.5 border-t border-border/70 flex items-center justify-center gap-2 flex-wrap">
+                {socialNavItems.map((item) => {
+                  const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+                  const label = getNavItemLabel(item);
+
+                  if (isExternal) {
+                    return (
+                      <a
+                        key={item.id}
+                        href={item.url}
+                        target={item.target || "_blank"}
+                        rel="noopener noreferrer"
+                        onClick={() => setMobileMenuOpen(false)}
+                        title={label}
+                        aria-label={label}
+                        className="p-2.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors border border-border/50 flex items-center justify-center"
+                      >
+                        <NavIcon name={item.icon || "link"} className="w-4 h-4" />
+                      </a>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.url}
+                      target={item.target}
+                      onClick={() => setMobileMenuOpen(false)}
+                      title={label}
+                      aria-label={label}
+                      className="p-2.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors border border-border/50 flex items-center justify-center"
+                    >
+                      <NavIcon name={item.icon || "link"} className="w-4 h-4" />
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </header>

@@ -210,7 +210,16 @@ export default async function PostEntryPage({
         <div
           className="prose-blog pt-2"
           dangerouslySetInnerHTML={{
-            __html: renderPostContent(post.contentHtml || post.contentMd || ""),
+            __html: renderPostContent(post.contentHtml || post.contentMd || "", {
+              utmSource:
+                site?.domain && !site.domain.includes("localhost")
+                  ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
+                  : typeof site?.name === "string" && site.name.trim()
+                  ? site.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")
+                  : "myblog",
+              utmCampaign: post.slug,
+              utmMedium: "article_embed",
+            }),
           }}
         />
 

@@ -70,6 +70,30 @@ export const posts = sqliteTable("posts", {
 ]);
 
 /**
+ * Custom static pages table storing standalone content (About, Terms, Contact, etc.) with Markdown and HTML.
+ */
+export const pages = sqliteTable("pages", {
+  id: text("id").primaryKey(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  authorId: text("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  slug: text("slug").notNull(),
+  contentMd: text("content_md").default(""),
+  contentHtml: text("content_html").default(""),
+  excerpt: text("excerpt").default(""),
+  coverImage: text("cover_image"),
+  status: text("status", { enum: ["draft", "published", "archived"] }).notNull().default("draft"),
+  locale: text("locale").default("en").notNull(),
+  publishedAt: integer("published_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  views: integer("views").default(0).notNull(),
+}, (table) => [
+  index("pages_site_slug_idx").on(table.siteId, table.slug),
+  index("pages_site_status_idx").on(table.siteId, table.status),
+]);
+
+/**
  * Hierarchical category taxonomy table for grouping related articles.
  */
 export const categories = sqliteTable("categories", {

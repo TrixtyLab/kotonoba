@@ -19,6 +19,10 @@ import {
   AlignRight,
   ExternalLink,
   Languages,
+  Files,
+  Link2,
+  Globe,
+  Home,
 } from "lucide-react";
 
 /**
@@ -39,11 +43,11 @@ export interface NavItemConfig {
   url: string;
   /** Lucide icon identifier string. */
   icon?: string;
-  /** Link target attribute. */
+  /** Window target attribute (_self or _blank). */
   target?: "_self" | "_blank";
-  /** Flag denoting whether the item is fixed in position. */
+  /** Flag preventing deletion/modification of the core Home link. */
   isFixed?: boolean;
-  /** Flag indicating whether the item is a social link that displays icon-only in the header without text. */
+  /** Flag distinguishing social media icon links from standard text links. */
   isSocial?: boolean;
 }
 
@@ -55,6 +59,8 @@ export interface NavigationManagerProps {
   initialLinks?: string | null;
   /** Initial horizontal alignment preference. */
   initialAlignment?: "left" | "center" | "right" | null;
+  /** Catalog of published custom pages available for direct navigation linking. */
+  availablePages?: Array<{ id: string; title: string; slug: string; locale?: string }>;
   /** Persistence callback fired when changes are saved. */
   onSave: (navLinks: string, navAlignment: "left" | "center" | "right") => Promise<boolean>;
 }
@@ -62,12 +68,13 @@ export interface NavigationManagerProps {
 /**
  * Interactive navigation builder allowing administrators to construct, reorder, localize, and configure menu items.
  *
- * @param props - NavigationManagerProps configuring initial link collections and save handler.
- * @returns React JSX navigation builder editor.
+ * @param {NavigationManagerProps} props - Configuration options including initial links and persistence handler.
+ * @returns {React.JSX.Element} React JSX navigation builder editor.
  */
 export function NavigationManager({
   initialLinks,
   initialAlignment = "left",
+  availablePages = [],
   onSave,
 }: NavigationManagerProps) {
   const t = useTranslations("settings");
@@ -81,7 +88,15 @@ export function NavigationManager({
         const parsed = JSON.parse(initialLinks);
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Guarantee Home is fixed
-          const nonHome = parsed.filter((i) => i.id !== "home" && i.url !== "/" && !i.isFixed);
+          const nonHome = parsed
+            .filter((i) => i.id !== "home" && i.url !== "/" && !i.isFixed)
+            .map((i) => {
+              if (i.isSocial) {
+                const { label_es, label_en, labels, ...rest } = i;
+                return rest;
+              }
+              return i;
+            });
           return [
             { id: "home", label: tc("home").toUpperCase(), url: "/", isFixed: true },
             ...nonHome,
@@ -98,6 +113,8 @@ export function NavigationManager({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [linkMode, setLinkMode] = useState<"custom" | "page" | "social">("custom");
+  const [selectedPageId, setSelectedPageId] = useState<string>("");
   const [itemLabelEs, setItemLabelEs] = useState("");
   const [itemLabelEn, setItemLabelEn] = useState("");
   const [itemUrl, setItemUrl] = useState("");
@@ -110,6 +127,8 @@ export function NavigationManager({
 
   function openAddModal() {
     setEditingId(null);
+    setLinkMode("custom");
+    setSelectedPageId("");
     setItemLabelEs("");
     setItemLabelEn("");
     setItemUrl("");
@@ -121,70 +140,194 @@ export function NavigationManager({
 
   function openEditModal(item: NavItemConfig) {
     setEditingId(item.id);
-    const es = item.labels?.es || item.label_es || (item.isFixed ? tc("home") : item.label);
-    const en = item.labels?.en || item.label_en || (item.isFixed ? "Home" : item.label);
-    setItemLabelEs(es);
-    setItemLabelEn(en);
+    const isSocial = Boolean(item.isSocial);
+    setItemIsSocial(isSocial);
+
+    if (isSocial) {
+      setLinkMode("social");
+      setSelectedPageId("");
+      setItemLabelEs("");
+      setItemLabelEn("");
+    } else {
+      const foundPage = availablePages.find((p) => item.url === `/p/${p.slug}`);
+      if (foundPage) {
+        setLinkMode("page");
+        setSelectedPageId(foundPage.id);
+      } else {
+        setLinkMode("custom");
+        setSelectedPageId("");
+      }
+
+      const es = item.labels?.es || item.label_es || (item.isFixed ? tc("home") : item.label);
+      const en = item.labels?.en || item.label_en || (item.isFixed ? "Home" : item.label);
+      setItemLabelEs(es);
+      setItemLabelEn(en);
+    }
+
     setItemUrl(item.url);
     setItemIcon(item.icon || "none");
-    setItemTarget(item.target || "_self");
-    setItemIsSocial(Boolean(item.isSocial));
+    setItemTarget(item.target || (isSocial ? "_blank" : "_self"));
     setIsEditing(true);
   }
 
-  function handleSaveItem() {
-    const mainLabel = itemLabelEs.trim() || itemLabelEn.trim();
-    if (!mainLabel) {
-      toast.error(t("navLabel"));
-      return;
+  async function persistChanges(newItems: NavItemConfig[], newAlignment: "left" | "center" | "right" = alignment): Promise<boolean> {
+    setIsSaving(true);
+    try {
+      const jsonString = JSON.stringify(newItems);
+      const success = await onSave(jsonString, newAlignment);
+      if (success) {
+        setItems(newItems);
+        return true;
+      }
+      return false;
+    } catch {
+      toast.error(t("saveError"));
+      return false;
+    } finally {
+      setIsSaving(false);
     }
-    if (!editingId && !itemUrl.trim()) {
+  }
+
+  async function handleAlignmentChange(newAlign: "left" | "center" | "right") {
+    setAlignment(newAlign);
+    await persistChanges(items, newAlign);
+  }
+
+  async function handleSaveItem() {
+    const isEditingFixed = Boolean(editingId && items.find((i) => i.id === editingId)?.isFixed);
+
+    if (!isEditingFixed && !itemUrl.trim()) {
       toast.error(t("navUrl"));
       return;
     }
 
-    const labelsObj = {
-      es: itemLabelEs.trim() || itemLabelEn.trim(),
-      en: itemLabelEn.trim() || itemLabelEs.trim(),
-    };
+    let newItems: NavItemConfig[];
 
-    if (editingId) {
-      setItems((prev) =>
-        prev.map((item) =>
+    if (linkMode === "page") {
+      const selectedPage = availablePages.find(
+        (pg) => pg.id === selectedPageId || itemUrl === `/p/${pg.slug}`
+      );
+      if (!selectedPage) {
+        toast.error(t("choosePage"));
+        return;
+      }
+
+      const pageTitle = selectedPage.title;
+      const pageUrl = `/p/${selectedPage.slug}`;
+      const labelsObj = {
+        es: pageTitle,
+        en: pageTitle,
+      };
+
+      if (editingId) {
+        newItems = items.map((item) =>
           item.id === editingId
             ? {
-                ...item,
+                id: item.id,
+                label: pageTitle,
+                label_es: pageTitle,
+                label_en: pageTitle,
+                labels: labelsObj,
+                url: pageUrl,
+                icon: undefined,
+                target: "_self",
+                isSocial: false,
+              }
+            : item
+        );
+      } else {
+        const newItem: NavItemConfig = {
+          id: `custom_${Date.now()}`,
+          label: pageTitle,
+          label_es: pageTitle,
+          label_en: pageTitle,
+          labels: labelsObj,
+          url: pageUrl,
+          icon: undefined,
+          target: "_self",
+          isSocial: false,
+        };
+        newItems = [...items, newItem];
+      }
+    } else if (itemIsSocial) {
+      const selectedIconObj = AVAILABLE_NAV_ICONS.find((ico) => ico.id === itemIcon);
+      const socialLabel = selectedIconObj?.label || (itemIcon !== "none" ? itemIcon : "Social");
+
+      if (editingId) {
+        newItems = items.map((item) =>
+          item.id === editingId
+            ? {
+                id: item.id,
+                label: socialLabel,
+                url: item.isFixed ? item.url : itemUrl.trim(),
+                icon: itemIcon === "none" ? "link" : itemIcon,
+                target: item.isFixed ? "_self" : itemTarget,
+                isSocial: true,
+              }
+            : item
+        );
+      } else {
+        const newItem: NavItemConfig = {
+          id: `custom_${Date.now()}`,
+          label: socialLabel,
+          url: itemUrl.trim(),
+          icon: itemIcon === "none" ? "link" : itemIcon,
+          target: itemTarget,
+          isSocial: true,
+        };
+        newItems = [...items, newItem];
+      }
+    } else {
+      const mainLabel = itemLabelEs.trim() || itemLabelEn.trim();
+      if (!mainLabel) {
+        toast.error(t("navLabel"));
+        return;
+      }
+
+      const labelsObj = {
+        es: itemLabelEs.trim() || mainLabel,
+        en: itemLabelEn.trim() || mainLabel,
+      };
+
+      if (editingId) {
+        newItems = items.map((item) =>
+          item.id === editingId
+            ? {
+                id: item.id,
                 label: mainLabel,
                 label_es: labelsObj.es,
                 label_en: labelsObj.en,
                 labels: labelsObj,
                 url: item.isFixed ? item.url : itemUrl.trim(),
-                icon: itemIcon === "none" ? undefined : itemIcon,
+                icon: undefined,
                 target: item.isFixed ? "_self" : itemTarget,
-                isSocial: item.isFixed ? false : itemIsSocial,
+                isSocial: false,
               }
             : item
-        )
-      );
-    } else {
-      const newItem: NavItemConfig = {
-        id: `custom_${Date.now()}`,
-        label: mainLabel,
-        label_es: labelsObj.es,
-        label_en: labelsObj.en,
-        labels: labelsObj,
-        url: itemUrl.trim(),
-        icon: itemIcon === "none" ? undefined : itemIcon,
-        target: itemTarget,
-        isSocial: itemIsSocial,
-      };
-      setItems((prev) => [...prev, newItem]);
+        );
+      } else {
+        const newItem: NavItemConfig = {
+          id: `custom_${Date.now()}`,
+          label: mainLabel,
+          label_es: labelsObj.es,
+          label_en: labelsObj.en,
+          labels: labelsObj,
+          url: itemUrl.trim(),
+          icon: undefined,
+          target: itemTarget,
+          isSocial: false,
+        };
+        newItems = [...items, newItem];
+      }
     }
 
-    setIsEditing(false);
+    const ok = await persistChanges(newItems);
+    if (ok) {
+      setIsEditing(false);
+    }
   }
 
-  function moveItem(index: number, direction: "up" | "down") {
+  async function moveItem(index: number, direction: "up" | "down") {
     if (index === 0 && direction === "up") return; // Home is fixed
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex <= 0 || targetIndex >= items.length) return; // Keep Home at index 0
@@ -193,34 +336,18 @@ export function NavigationManager({
     const temp = newItems[index];
     newItems[index] = newItems[targetIndex];
     newItems[targetIndex] = temp;
-    setItems(newItems);
+    await persistChanges(newItems);
   }
 
   function handleDelete(id: string) {
     setDeleteTargetId(id);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTargetId) return;
-    setItems((prev) => prev.filter((item) => item.id !== deleteTargetId));
+    const newItems = items.filter((item) => item.id !== deleteTargetId);
     setDeleteTargetId(null);
-  }
-
-  async function handleSaveAll() {
-    setIsSaving(true);
-    try {
-      const jsonString = JSON.stringify(items);
-      const success = await onSave(jsonString, alignment);
-      if (success) {
-        toast.success(t("saveSuccess"));
-      } else {
-        toast.error(t("saveError"));
-      }
-    } catch {
-      toast.error(t("saveError"));
-    } finally {
-      setIsSaving(false);
-    }
+    await persistChanges(newItems);
   }
 
   return (
@@ -238,8 +365,8 @@ export function NavigationManager({
         <div className="grid grid-cols-3 gap-3 max-w-sm pt-1">
           <button
             type="button"
-            onClick={() => setAlignment("left")}
-            className={`p-3 rounded-lg border flex flex-col items-center gap-1.5 text-xs font-semibold transition-all ${
+            onClick={() => handleAlignmentChange("left")}
+            className={`p-3 rounded-lg border flex flex-col items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer ${
               alignment === "left"
                 ? "border-accent bg-accent/10 text-accent shadow-xs"
                 : "border-border bg-surface hover:bg-surface-hover text-text-muted"
@@ -251,8 +378,8 @@ export function NavigationManager({
 
           <button
             type="button"
-            onClick={() => setAlignment("center")}
-            className={`p-3 rounded-lg border flex flex-col items-center gap-1.5 text-xs font-semibold transition-all ${
+            onClick={() => handleAlignmentChange("center")}
+            className={`p-3 rounded-lg border flex flex-col items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer ${
               alignment === "center"
                 ? "border-accent bg-accent/10 text-accent shadow-xs"
                 : "border-border bg-surface hover:bg-surface-hover text-text-muted"
@@ -264,8 +391,8 @@ export function NavigationManager({
 
           <button
             type="button"
-            onClick={() => setAlignment("right")}
-            className={`p-3 rounded-lg border flex flex-col items-center gap-1.5 text-xs font-semibold transition-all ${
+            onClick={() => handleAlignmentChange("right")}
+            className={`p-3 rounded-lg border flex flex-col items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer ${
               alignment === "right"
                 ? "border-accent bg-accent/10 text-accent shadow-xs"
                 : "border-border bg-surface hover:bg-surface-hover text-text-muted"
@@ -330,10 +457,14 @@ export function NavigationManager({
                 </div>
 
                 <div className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center text-accent shrink-0">
-                  {item.icon ? (
-                    <NavIcon name={item.icon} className="w-3.5 h-3.5" />
+                  {item.isSocial ? (
+                    <NavIcon name={item.icon || "link"} className="w-3.5 h-3.5" />
+                  ) : item.isFixed ? (
+                    <Home className="w-3.5 h-3.5 text-accent" />
+                  ) : item.url.startsWith("/p/") ? (
+                    <Files className="w-3.5 h-3.5 text-emerald-400" />
                   ) : (
-                    <span className="text-[9px] text-text-muted font-bold">Aa</span>
+                    <Link2 className="w-3.5 h-3.5 text-blue-400" />
                   )}
                 </div>
 
@@ -346,17 +477,23 @@ export function NavigationManager({
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/10 text-accent uppercase">
                         {tc("home")} ({t("general")})
                       </span>
-                    ) : (
-                      item.labels && (
-                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface-hover text-text-muted flex items-center gap-1">
-                          <Languages className="w-2.5 h-2.5" />
-                          <span>ES: {item.labels.es || item.label} / EN: {item.labels.en || item.label}</span>
-                        </span>
-                      )
-                    )}
-                    {item.isSocial && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase">
-                        Social / Icon
+                    ) : !item.isSocial && item.labels ? (
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface-hover text-text-muted flex items-center gap-1">
+                        <Languages className="w-2.5 h-2.5" />
+                        <span>ES: {item.labels.es || item.label} / EN: {item.labels.en || item.label}</span>
+                      </span>
+                    ) : null}
+                    {item.isSocial ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase">
+                        {t("navSocialBadge")}
+                      </span>
+                    ) : !item.isFixed && item.url.startsWith("/p/") ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
+                        {t("navPageBadge")}
+                      </span>
+                    ) : !item.isFixed && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase">
+                        {t("navLinkBadge")}
                       </span>
                     )}
                     {item.target === "_blank" && (
@@ -396,17 +533,6 @@ export function NavigationManager({
               </div>
             </div>
           ))}
-
-          <div className="flex justify-end pt-3 border-t border-border">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleSaveAll}
-              loading={isSaving}
-            >
-              {isSaving ? tc("saving") : t("saveNav")}
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -418,80 +544,186 @@ export function NavigationManager({
               {editingId ? tc("edit") : tc("add")}
             </h4>
 
-            <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label={t("navLabelEs")}
-                  value={itemLabelEs}
-                  onChange={(e) => setItemLabelEs(e.target.value)}
-                  placeholder="ej. Tienda, Contacto"
-                  autoFocus
-                />
-                <Input
-                  label={t("navLabelEn")}
-                  value={itemLabelEn}
-                  onChange={(e) => setItemLabelEn(e.target.value)}
-                  placeholder="e.g. Shop, Contact"
-                />
-              </div>
-
+            <div className="space-y-3.5 text-xs">
+              {/* Type Switcher Segmented Control */}
               {(!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
+                <div className="grid grid-cols-3 gap-1 p-1 bg-surface-hover/60 border border-border rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkMode("custom");
+                      setItemIsSocial(false);
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      linkMode === "custom"
+                        ? "bg-surface text-blue-400 shadow-xs border border-border/80 font-bold"
+                        : "text-text-muted hover:text-text"
+                    }`}
+                  >
+                    <Link2 className="w-3.5 h-3.5" />
+                    <span className="truncate">{t("linkTypeCustom")}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkMode("page");
+                      setItemIsSocial(false);
+                      if (availablePages.length > 0 && !selectedPageId) {
+                        const firstPage = availablePages[0];
+                        setSelectedPageId(firstPage.id);
+                        setItemUrl(`/p/${firstPage.slug}`);
+                        if (!itemLabelEs) setItemLabelEs(firstPage.title);
+                        if (!itemLabelEn) setItemLabelEn(firstPage.title);
+                      }
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      linkMode === "page"
+                        ? "bg-surface text-emerald-400 shadow-xs border border-border/80 font-bold"
+                        : "text-text-muted hover:text-text"
+                    }`}
+                  >
+                    <Files className="w-3.5 h-3.5" />
+                    <span className="truncate">{t("linkTypePage")}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkMode("social");
+                      setItemIsSocial(true);
+                      setItemLabelEs("");
+                      setItemLabelEn("");
+                      if (itemTarget === "_self") setItemTarget("_blank");
+                      if (itemIcon === "none") setItemIcon("twitter");
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      linkMode === "social"
+                        ? "bg-surface text-purple-400 shadow-xs border border-border/80 font-bold"
+                        : "text-text-muted hover:text-text"
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span className="truncate">{t("linkTypeSocial")}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Page Selector (When Page mode is active) */}
+              {linkMode === "page" && !itemIsSocial && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-text">{t("selectPage")}</label>
+                  {availablePages.length > 0 ? (
+                    <select
+                      value={selectedPageId}
+                      onChange={(e) => {
+                        const pageId = e.target.value;
+                        setSelectedPageId(pageId);
+                        const p = availablePages.find((pg) => pg.id === pageId);
+                        if (p) {
+                          setItemUrl(`/p/${p.slug}`);
+                          setItemLabelEs(p.title);
+                          setItemLabelEn(p.title);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-input border border-border rounded-lg text-xs text-text focus:outline-hidden focus:border-accent"
+                    >
+                      <option value="">{t("choosePage")}</option>
+                      {availablePages.map((pg) => (
+                        <option key={pg.id} value={pg.id}>
+                          {pg.title} (/p/{pg.slug})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-[11px] text-text-muted bg-surface-hover/40 p-2.5 rounded-lg border border-border">
+                      {t("noPagesAvailable")}
+                    </p>
+                  )}
+
+                  {selectedPageId && itemUrl && (
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono text-text-muted bg-surface-hover/50 px-2.5 py-1.5 rounded-lg border border-border/60">
+                      <span className="text-emerald-400 font-semibold">URL:</span>
+                      <span>{itemUrl}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Text Label Inputs (Only for manual custom links) */}
+              {linkMode === "custom" && !itemIsSocial && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label={t("navLabelEs")}
+                    value={itemLabelEs}
+                    onChange={(e) => setItemLabelEs(e.target.value)}
+                    placeholder={t("navLabelEsPlaceholder")}
+                    autoFocus
+                  />
+                  <Input
+                    label={t("navLabelEn")}
+                    value={itemLabelEn}
+                    onChange={(e) => setItemLabelEn(e.target.value)}
+                    placeholder={t("navLabelEnPlaceholder")}
+                  />
+                </div>
+              )}
+
+              {itemIsSocial && (
+                <div className="p-2.5 rounded-lg bg-surface-hover/40 border border-border/70 flex items-center justify-between text-xs">
+                  <span className="text-text-muted">
+                    {t("navSocialBadge")}:
+                  </span>
+                  <span className="font-semibold text-accent flex items-center gap-1.5">
+                    {itemIcon !== "none" && <NavIcon name={itemIcon} className="w-3.5 h-3.5" />}
+                    <span>{AVAILABLE_NAV_ICONS.find((i) => i.id === itemIcon)?.label || (itemIcon !== "none" ? itemIcon : t("navNoIcon"))}</span>
+                  </span>
+                </div>
+              )}
+
+              {/* Destination URL Input (Only for manual links and social links, never for custom pages) */}
+              {linkMode !== "page" && (!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
                 <Input
                   label={t("navUrl")}
                   value={itemUrl}
                   onChange={(e) => setItemUrl(e.target.value)}
-                  placeholder="https://... o /archive"
+                  placeholder={
+                    itemIsSocial
+                      ? t("navSocialUrlPlaceholder")
+                      : t("navUrlPlaceholder")
+                  }
+                  autoFocus={itemIsSocial}
                 />
               )}
 
-              <div>
-                <label className="block text-xs font-semibold text-text mb-1">
-                  {t("navIcon")}
-                </label>
-                <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-1.5 border border-border rounded-lg bg-surface-hover/30">
-                  <button
-                    type="button"
-                    onClick={() => setItemIcon("none")}
-                    className={`p-1.5 rounded-md border text-center flex flex-col items-center gap-1 transition-all ${
-                      itemIcon === "none"
-                        ? "border-accent bg-accent/10 text-accent font-semibold"
-                        : "border-border/50 text-text-muted hover:text-text hover:bg-surface"
-                    }`}
-                  >
-                    <span className="text-[10px]">{t("navNoIcon")}</span>
-                  </button>
-                  {AVAILABLE_NAV_ICONS.map((ico) => (
-                    <button
-                      key={ico.id}
-                      type="button"
-                      onClick={() => setItemIcon(ico.id)}
-                      className={`p-1.5 rounded-md border text-center flex flex-col items-center gap-1 transition-all ${
-                        itemIcon === ico.id
-                          ? "border-accent bg-accent/10 text-accent font-semibold shadow-2xs"
-                          : "border-border/50 text-text-muted hover:text-text hover:bg-surface"
-                      }`}
-                      title={ico.label}
-                    >
-                      <NavIcon name={ico.id} className="w-3.5 h-3.5" />
-                      <span className="text-[9px] truncate max-w-full">{ico.label.split(" ")[0]}</span>
-                    </button>
-                  ))}
+              {itemIsSocial && (
+                <div>
+                  <label className="block text-xs font-semibold text-text mb-1">
+                    {t("navIcon")} *
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-1.5 border border-border rounded-lg bg-surface-hover/30">
+                    {AVAILABLE_NAV_ICONS.map((ico) => (
+                      <button
+                        key={ico.id}
+                        type="button"
+                        onClick={() => setItemIcon(ico.id)}
+                        className={`p-1.5 rounded-md border text-center flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                          itemIcon === ico.id
+                            ? "border-accent bg-accent/10 text-accent font-semibold shadow-2xs"
+                            : "border-border/50 text-text-muted hover:text-text hover:bg-surface"
+                        }`}
+                        title={ico.label}
+                      >
+                        <NavIcon name={ico.id} className="w-3.5 h-3.5" />
+                        <span className="text-[9px] truncate max-w-full">{ico.label.split(" ")[0]}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {(!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
-                <div className="pt-1 space-y-2.5">
-                  <Checkbox
-                    checked={itemIsSocial}
-                    onChange={(checked) => {
-                      setItemIsSocial(checked);
-                      if (checked && itemTarget === "_self") {
-                        setItemTarget("_blank");
-                      }
-                    }}
-                    label={t("navSocial")}
-                  />
-
+              {linkMode !== "page" && (!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
+                <div className="pt-1">
                   <Checkbox
                     checked={itemTarget === "_blank"}
                     onChange={(checked) => setItemTarget(checked ? "_blank" : "_self")}
@@ -502,10 +734,10 @@ export function NavigationManager({
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>
                 {tc("cancel")}
               </Button>
-              <Button variant="primary" size="sm" onClick={handleSaveItem}>
+              <Button variant="primary" size="sm" onClick={handleSaveItem} loading={isSaving} disabled={isSaving}>
                 {tc("save")}
               </Button>
             </div>
@@ -520,6 +752,7 @@ export function NavigationManager({
         message={tc("confirmDelete")}
         confirmText={tc("delete")}
         variant="danger"
+        isLoading={isSaving}
         onConfirm={confirmDelete}
         onClose={() => setDeleteTargetId(null)}
       />

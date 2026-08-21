@@ -3,7 +3,7 @@
 import React from "react";
 import { usePathname, Link } from "@/i18n/routing";
 import {
-  LayoutDashboard, FileText, Image as ImageIcon, FolderTree, Tag, BarChart3,
+  LayoutDashboard, FileText, Files, Image as ImageIcon, FolderTree, Tag, BarChart3,
   Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users
 } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
@@ -53,6 +53,7 @@ export function Sidebar({
       items: [
         { label: t("dashboard"), href: "/admin", icon: LayoutDashboard, exact: true },
         { label: t("posts"), href: "/admin/posts", icon: FileText },
+        { label: t("pages"), href: "/admin/pages", icon: Files },
         { label: t("media"), href: "/admin/media", icon: ImageIcon },
       ],
     },

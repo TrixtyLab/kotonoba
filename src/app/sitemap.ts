@@ -1,6 +1,6 @@
 import { MetadataRoute } from "next";
 import { getDb } from "@/lib/db";
-import { posts, categories, sites } from "@/lib/db/schema";
+import { posts, pages, categories, sites } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { LOCALES } from "@/i18n/routing";
 
@@ -26,6 +26,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .limit(5000)
     .all();
 
+  const publishedPages = db
+    .select({
+      slug: pages.slug,
+      updatedAt: pages.updatedAt,
+    })
+    .from(pages)
+    .where(eq(pages.status, "published"))
+    .orderBy(desc(pages.updatedAt))
+    .limit(1000)
+    .all();
+
   const allCategories = db.select({ slug: categories.slug }).from(categories).all();
 
   const entries: MetadataRoute.Sitemap = [
@@ -43,6 +54,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: "weekly" as const,
       priority: 0.7,
+    })),
+    ...publishedPages.map((p) => ({
+      url: `${baseUrl}/p/${p.slug}`,
+      lastModified: p.updatedAt,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
     })),
     ...publishedPosts.map((p) => ({
       url: `${baseUrl}/entry/${p.slug}`,
