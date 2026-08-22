@@ -4,6 +4,7 @@ import { posts, sites, settings } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { getSiteForHost, getActiveSite } from "@/lib/tenant";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { normalizeMediaUrl } from "@/lib/storage";
 
 /**
  * Escapes XML special characters within string literals.
@@ -23,24 +24,26 @@ function escapeXml(str: string): string {
 /**
  * Resolves an absolute HTTP URL from a potentially relative asset path.
  *
- * @param urlOrPath - Relative asset path or full URL.
- * @param baseUrl - Canonical site base URL.
- * @returns Absolute HTTP(S) URL.
+ * @param {string | null | undefined} urlOrPath - Relative asset path or full URL.
+ * @param {string} baseUrl - Canonical site base URL.
+ * @returns {string | undefined} Absolute HTTP(S) URL or undefined if input is falsy.
  */
 function resolveAbsoluteUrl(urlOrPath: string | null | undefined, baseUrl: string): string | undefined {
   if (!urlOrPath) return undefined;
-  if (urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")) {
-    return urlOrPath;
+  const cleanPath = normalizeMediaUrl(urlOrPath);
+  if (!cleanPath) return undefined;
+  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+    return cleanPath;
   }
   const cleanBase = baseUrl.replace(/\/$/, "");
-  const cleanPath = urlOrPath.startsWith("/") ? urlOrPath : `/${urlOrPath}`;
-  return `${cleanBase}${cleanPath}`;
+  const formattedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  return `${cleanBase}${formattedPath}`;
 }
 
 /**
  * Generates an RSS 2.0 XML document containing recent published articles for the active blog tenant.
  *
- * @returns An XML formatted NextResponse stream.
+ * @returns {Promise<NextResponse>} Promise resolving to an XML formatted NextResponse stream.
  */
 export async function GET(): Promise<NextResponse> {
   const site = (await getSiteForHost()) || (await getActiveSite());

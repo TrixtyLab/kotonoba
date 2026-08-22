@@ -252,24 +252,36 @@ export function getS3Client(config: StorageConfig): S3Client {
 }
 
 /**
- * Normalizes any legacy or external storage URL (e.g. expired Cloudflare R2 / AWS S3 presigned URLs)
- * into a permanent internal proxy URL (/api/uploads/...).
+ * Normalizes legacy, external, or absolute storage URLs into canonical relative proxy URLs (/api/uploads/...).
+ * Strips localhost origins, query parameters from local paths, and maps presigned cloud URLs to internal paths.
  *
- * @param url - Raw URL or path string.
- * @returns Clean normalized URL string.
+ * @param {string | null} [url] - Raw URL or path string to normalize.
+ * @returns {string} Clean normalized relative asset URL string.
  */
 export function normalizeMediaUrl(url?: string | null): string {
   if (!url || typeof url !== "string") return "";
   const trimmed = url.trim();
   if (!trimmed) return "";
 
-  // If already a relative /api/uploads/ or local URL, return clean path without query parameters
   if (trimmed.startsWith("/api/uploads/")) {
     return trimmed.split("?")[0];
   }
 
-  // Match Cloudflare R2 presigned URLs: https://<bucket>.<account>.r2.cloudflarestorage.com/<path>?<signed-query>
-  // or AWS S3: https://<bucket>.s3.<region>.amazonaws.com/<path>?<signed-query>
+  const apiUploadsMatch = trimmed.match(/^https?:\/\/[^/]+(\/api\/uploads\/[^?#]+)/i);
+  if (apiUploadsMatch && apiUploadsMatch[1]) {
+    return apiUploadsMatch[1];
+  }
+
+  const uploadsMatch = trimmed.match(/^https?:\/\/[^/]+(\/uploads\/[^?#]+)/i);
+  if (uploadsMatch && uploadsMatch[1]) {
+    return `/api${uploadsMatch[1]}`;
+  }
+
+  const staticSvgMatch = trimmed.match(/^https?:\/\/[^/]+(\/(?:icon|logo)\.svg)/i);
+  if (staticSvgMatch && staticSvgMatch[1]) {
+    return staticSvgMatch[1];
+  }
+
   const r2OrS3Match = trimmed.match(/^https?:\/\/[^/]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?#]+)/i);
   if (r2OrS3Match && r2OrS3Match[1]) {
     const rawPath = decodeURIComponent(r2OrS3Match[1]).replace(/^\/+/, "");

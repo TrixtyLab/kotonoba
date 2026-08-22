@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { sites, settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { normalizeMediaUrl } from "@/lib/storage";
 
 /**
  * Payload structure for a Discord webhook message containing rich embeds.
@@ -66,27 +67,37 @@ export function hexToDecimalColor(hex?: string): number {
 /**
  * Resolves an absolute HTTP URL from a potentially relative asset path.
  *
- * @param urlOrPath - Relative asset path or full URL.
- * @param baseUrl - Canonical site base URL.
- * @returns Absolute HTTP(S) URL.
+ * @param {string | null | undefined} urlOrPath - Relative asset path or full URL.
+ * @param {string} baseUrl - Canonical site base URL.
+ * @returns {string | undefined} Absolute HTTP(S) URL or undefined if input is falsy.
  */
 function resolveAbsoluteUrl(urlOrPath: string | null | undefined, baseUrl: string): string | undefined {
   if (!urlOrPath) return undefined;
-  if (urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")) {
-    return urlOrPath;
+  const cleanPath = normalizeMediaUrl(urlOrPath);
+  if (!cleanPath) return undefined;
+  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+    return cleanPath;
   }
   const cleanBase = baseUrl.replace(/\/$/, "");
-  const cleanPath = urlOrPath.startsWith("/") ? urlOrPath : `/${urlOrPath}`;
-  return `${cleanBase}${cleanPath}`;
+  const formattedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  return `${cleanBase}${formattedPath}`;
 }
 
 /**
  * Dispatches an automated rich embed notification to Discord when an article is published.
  * Executes safely in a non-blocking background context.
  *
- * @param siteId - Unique database identifier of the blog site.
- * @param post - Published post data including title, slug, excerpt, and cover image.
- * @returns Promise resolving to true if sent successfully, false otherwise.
+ * @param {string} siteId - Unique database identifier of the blog site.
+ * @param {Object} post - Published post data including title, slug, excerpt, and cover image.
+ * @param {string} post.id - Unique database identifier of the post.
+ * @param {string} post.title - Post headline.
+ * @param {string} post.slug - URL slug for public routing.
+ * @param {string | null} [post.excerpt] - Short summary excerpt.
+ * @param {string | null} [post.coverImage] - Cover image asset path.
+ * @param {Date | null} [post.publishedAt] - Publication timestamp.
+ * @param {string} [post.locale] - Language locale identifier.
+ * @param {string | null} [post.shortUrl] - Optional shortened redirect link.
+ * @returns {Promise<boolean>} Promise resolving to true if sent successfully, false otherwise.
  */
 export async function sendDiscordPostNotification(
   siteId: string,

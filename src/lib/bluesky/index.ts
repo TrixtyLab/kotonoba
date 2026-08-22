@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { settings, sites, postTags, tags } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { normalizeMediaUrl } from "@/lib/storage";
 
 /**
  * Configuration credentials and endpoint options for connecting to Bluesky.
@@ -43,8 +44,8 @@ export interface BlueskyPostPayload {
 /**
  * Verifies Bluesky credentials by establishing an authenticated session with the target PDS.
  *
- * @param creds - Bluesky credentials including handle/email and App Password.
- * @returns Result object with profile metadata on success or descriptive error message.
+ * @param {BlueskyCredentials} creds - Bluesky credentials including handle/email and App Password.
+ * @returns {Promise<{ success: boolean; profile?: { handle: string; displayName?: string; avatar?: string }; error?: string }>} Result object with profile metadata on success or descriptive error message.
  */
 export async function testBlueskyConnection(creds: BlueskyCredentials): Promise<{
   success: boolean;
@@ -102,9 +103,9 @@ export async function testBlueskyConnection(creds: BlueskyCredentials): Promise<
  * Dispatches an automated post with rich link embed card and hashtags to Bluesky when an article is published.
  * Executes safely in a non-blocking background context.
  *
- * @param siteId - Unique database identifier of the blog site.
- * @param post - Published post data.
- * @returns Promise resolving to true if published successfully, false otherwise.
+ * @param {string} siteId - Unique database identifier of the blog site.
+ * @param {BlueskyPostPayload} post - Published post data payload.
+ * @returns {Promise<boolean>} Promise resolving to true if published successfully, false otherwise.
  */
 export async function sendBlueskyPostNotification(
   siteId: string,
@@ -205,9 +206,10 @@ export async function sendBlueskyPostNotification(
 
     if (post.coverImage) {
       try {
-        const coverImageUrl = post.coverImage.startsWith("http")
-          ? post.coverImage
-          : `${baseUrl}${post.coverImage.startsWith("/") ? "" : "/"}${post.coverImage}`;
+        const cleanCover = normalizeMediaUrl(post.coverImage);
+        const coverImageUrl = cleanCover.startsWith("http")
+          ? cleanCover
+          : `${baseUrl}${cleanCover.startsWith("/") ? "" : "/"}${cleanCover}`;
 
         const imgRes = await fetch(coverImageUrl);
         if (imgRes.ok) {

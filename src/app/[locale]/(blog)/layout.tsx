@@ -12,16 +12,20 @@ import { redirect } from "@/i18n/routing";
 import { headers } from "next/headers";
 import { getLocalizedText } from "@/lib/utils/localization";
 
+import { normalizeMediaUrl } from "@/lib/storage";
+
 /**
  * Dynamically computes metadata, robots directives, and favicon links for the public blog.
  *
- * @returns Metadata configuration object.
+ * @returns {Promise<Metadata>} Metadata configuration object with resolved assets and social tags.
  */
 export async function generateMetadata(): Promise<Metadata> {
   const site = (await getSiteForHost()) || (await getActiveSite());
   const defaultFavicon = "/icon.svg";
-  const favicon = site?.faviconUrl || defaultFavicon;
-  const appleIcon = site?.faviconUrl || site?.logoUrl || defaultFavicon;
+  const rawFavicon = site?.faviconUrl || defaultFavicon;
+  const favicon = normalizeMediaUrl(rawFavicon) || defaultFavicon;
+  const rawAppleIcon = site?.faviconUrl || site?.logoUrl || defaultFavicon;
+  const appleIcon = normalizeMediaUrl(rawAppleIcon) || defaultFavicon;
 
   const db = getDb();
   const antiAiSetting = site

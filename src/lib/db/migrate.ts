@@ -314,7 +314,14 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     const cleanMedia = (url?: string | null): string => {
       if (!url || typeof url !== "string") return "";
       const trimmed = url.trim();
+      if (!trimmed) return "";
       if (trimmed.startsWith("/api/uploads/")) return trimmed.split("?")[0];
+      const apiMatch = trimmed.match(/^https?:\/\/[^/]+(\/api\/uploads\/[^?#]+)/i);
+      if (apiMatch && apiMatch[1]) return apiMatch[1];
+      const uploadMatch = trimmed.match(/^https?:\/\/[^/]+(\/uploads\/[^?#]+)/i);
+      if (uploadMatch && uploadMatch[1]) return `/api${uploadMatch[1]}`;
+      const staticMatch = trimmed.match(/^https?:\/\/[^/]+(\/(?:icon|logo)\.svg)/i);
+      if (staticMatch && staticMatch[1]) return staticMatch[1];
       const match = trimmed.match(/^https?:\/\/[^/]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?#]+)/i);
       if (match && match[1]) {
         return `/api/uploads/${decodeURIComponent(match[1]).replace(/^\/+/, "")}`;
@@ -324,10 +331,15 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
 
     const cleanHtml = (content?: string | null): string => {
       if (!content) return "";
-      return content.replace(
-        /https?:\/\/[^/"]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?"'#\s)]+)(?:\?[^"'#\s)]*)?/gi,
-        (_match, fileKey) => `/api/uploads/${fileKey}`
-      );
+      return content
+        .replace(
+          /https?:\/\/[^/"]+\.(?:r2\.cloudflarestorage\.com|amazonaws\.com)\/([^?"'#\s)]+)(?:\?[^"'#\s)]*)?/gi,
+          (_match, fileKey) => `/api/uploads/${fileKey}`
+        )
+        .replace(
+          /https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/api\/uploads\/([^?"'#\s)]+)/gi,
+          (_match, fileKey) => `/api/uploads/${fileKey}`
+        );
     };
 
     const allSites = db.select({ id: schema.sites.id, logoUrl: schema.sites.logoUrl, faviconUrl: schema.sites.faviconUrl }).from(schema.sites).all();
