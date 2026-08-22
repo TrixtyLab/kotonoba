@@ -33,7 +33,10 @@ export async function getSiteForHost(): Promise<Site | null> {
   try {
     const db = getDb();
     const headersList = await headers();
-    const rawHost = headersList.get("host") || "localhost:3000";
+    const rawHost =
+      headersList.get("x-forwarded-host")?.split(",")[0].trim() ||
+      headersList.get("host")?.split(",")[0].trim() ||
+      "localhost:3000";
     const cleanHost = normalizeDomain(rawHost);
 
     const allSites = db.select().from(sites).all();
