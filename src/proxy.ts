@@ -29,7 +29,12 @@ export function proxy(request: NextRequest): NextResponse {
   ) {
     const response = NextResponse.next();
     applySecurityHeaders(response.headers);
-    if (pathname.startsWith("/api") && !pathname.startsWith("/api/health")) {
+    if (
+      pathname.startsWith("/api") &&
+      !pathname.startsWith("/api/health") &&
+      !pathname.startsWith("/api/favicon") &&
+      !pathname.startsWith("/api/uploads")
+    ) {
       response.headers.set("Cache-Control", "no-store");
     }
     return response;
@@ -39,7 +44,10 @@ export function proxy(request: NextRequest): NextResponse {
   const rawAdminDomain = process.env.ADMIN_DOMAIN;
   if (rawAdminDomain) {
     const adminDomain = rawAdminDomain.toLowerCase().replace(/^https?:\/\//, "").split(":")[0].replace(/\/$/, "").trim();
-    const rawHost = request.headers.get("host") || "";
+    const rawHost =
+      request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
+      request.headers.get("host")?.split(",")[0].trim() ||
+      "";
     const cleanHost = rawHost.toLowerCase().replace(/^https?:\/\//, "").split(":")[0].replace(/\/$/, "").trim();
     const isLocal =
       cleanHost === "localhost" ||
@@ -53,7 +61,8 @@ export function proxy(request: NextRequest): NextResponse {
       pathname.includes("/setup");
 
     if (isAdminOrAuthRoute && cleanHost !== adminDomain && !isLocal) {
-      const protocol = request.nextUrl.protocol || "https:";
+      const forwardedProto = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol || "https:";
+      const protocol = forwardedProto.split(",")[0].trim().includes("http") ? (forwardedProto.includes("https") ? "https:" : "http:") : "https:";
       const targetUrl = new URL(`${protocol}//${adminDomain}${pathname}${request.nextUrl.search}`);
       return NextResponse.redirect(targetUrl);
     }

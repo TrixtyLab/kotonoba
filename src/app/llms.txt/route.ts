@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { posts, sites, categories, settings } from "@/lib/db/schema";
+import { posts, categories, settings } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { getSiteForHost, getActiveSite } from "@/lib/tenant";
 
 /**
  * Route handler generating standard `llms.txt` document for AI web crawlers and LLM search systems.
@@ -12,8 +13,7 @@ import { getLocalizedText } from "@/lib/utils/localization";
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const db = getDb();
-  const host = req.headers.get("host")?.split(":")[0] || "localhost";
-  const site = db.select().from(sites).where(eq(sites.domain, host)).get() || db.select().from(sites).limit(1).get();
+  const site = (await getSiteForHost()) || (await getActiveSite());
 
   if (!site) {
     return new NextResponse("Not Found", { status: 404 });
@@ -48,7 +48,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const siteLocale = site.locale || "en";
   const siteName = getLocalizedText(site.name, siteLocale) || "Kotonoba";
   const siteDesc = getLocalizedText(site.description, siteLocale) || "High-performance multi-tenant blog CMS";
-  const baseUrl = `https://${site.domain || host}`;
+  const rawHost =
+    req.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
+    req.headers.get("host")?.split(",")[0].trim() ||
+    "localhost";
+  const siteDomain = site.domain || rawHost;
+  const baseUrl = siteDomain.includes("localhost") ? `http://${siteDomain}` : `https://${siteDomain}`;
 
   const topPosts = db
     .select()
