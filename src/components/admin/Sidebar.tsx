@@ -111,14 +111,21 @@ export function Sidebar({
       } max-lg:${isOpen ? "translate-x-0" : "-translate-x-full"} max-lg:w-60 select-none shadow-xs`}
     >
       <div className="flex items-center justify-between h-14 px-3.5 border-b border-border shrink-0">
-        <Link href="/admin" className="flex items-center gap-2.5 min-w-0 overflow-hidden">
-          <div className="w-7 h-7 rounded-lg bg-text text-bg flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-            K
-          </div>
+        <Link href="/admin" className="flex items-center gap-2.5 min-w-0 overflow-hidden group">
+          <img
+            src="/icon.svg"
+            alt="Kotonoba"
+            className="w-7 h-7 object-contain shrink-0 transition-transform duration-200 group-hover:scale-110 drop-shadow-2xs"
+          />
           {isOpen && (
-            <span className="font-bold text-xs text-text tracking-tight block truncate">
-              Kotonoba
-            </span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-bold text-xs text-text tracking-tight block truncate">
+                Kotonoba
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent shrink-0">
+                言の場
+              </span>
+            </div>
           )}
         </Link>
 

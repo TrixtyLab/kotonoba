@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { Shield, ArrowRight } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 
 /**
  * Configuration properties for the LoginClient component.
@@ -19,14 +20,19 @@ export interface LoginClientProps {
 
 /**
  * Authentication login interface enabling administrators to authenticate with credentials and access the dashboard.
+ * Clean, flat, modern aesthetic without bloated bubbles or heavy shadows.
  *
  * @param props - LoginClientProps configuring setup wizard link display.
  * @returns React JSX login page element.
  */
 export function LoginClient({ showSetupLink }: LoginClientProps) {
+  const t = useTranslations("auth");
+  const tc = useTranslations("common");
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -41,63 +47,95 @@ export function LoginClient({ showSetupLink }: LoginClientProps) {
       } else {
         const errorMsg =
           res.error ||
-          (res.errors ? Object.values(res.errors).flat().join(", ") : "Credenciales inválidas");
+          (res.errors ? Object.values(res.errors).flat().join(", ") : t("invalidCredentials"));
         setError(errorMsg);
       }
     });
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4 bg-bg relative">
-      <div className="absolute top-4 right-4 flex items-center gap-2">
+    <main className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-bg relative select-none">
+      {/* Top Floating Controls */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center gap-2">
         <LocaleSwitcher />
         <ThemeToggle />
       </div>
 
-      <div className="w-full max-w-md bg-surface rounded-2xl p-6 sm:p-8 shadow-xl border border-border space-y-6 animate-slide-up">
+      <div className="w-full max-w-md bg-surface rounded-lg p-6 sm:p-8 border border-border space-y-6">
+        {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-11 h-11 rounded-xl bg-text text-bg font-bold text-base flex items-center justify-center mx-auto shadow-xs">
-            <Shield className="w-5 h-5" />
+          <div className="flex justify-center items-center">
+            <img
+              src="/icon.svg"
+              alt={t("title")}
+              className="w-10 h-10 object-contain transition-transform duration-200 hover:scale-105"
+            />
           </div>
-          <h1 className="text-xl font-bold text-text tracking-tight">Kotonoba Admin</h1>
-          <p className="text-xs text-text-muted">Inicia sesión para gestionar tus blogs y artículos</p>
+          <div className="space-y-1">
+            <div className="flex items-center justify-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-text">{t("title")}</h1>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-accent">
+                {t("badge")}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted">
+              {t("subtitle")}
+            </p>
+          </div>
         </div>
 
         {error && (
-          <div className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-lg text-xs font-medium animate-slide-down">
-            {error}
+          <div className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-md text-xs font-medium flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Correo Electrónico"
-            type="email"
-            placeholder="admin@ejemplo.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div>
+            <label className="block text-xs font-semibold text-text mb-1">{t("email")}</label>
+            <Input
+              type="email"
+              placeholder={t("emailPlaceholder")}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              autoFocus
+            />
+          </div>
 
-          <Input
-            label="Contraseña"
-            type="password"
-            placeholder="••••••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-          />
+          <div>
+            <label className="block text-xs font-semibold text-text mb-1">{t("password")}</label>
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder={t("passwordPlaceholder")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text p-1 transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
 
           <Button
             type="submit"
             variant="primary"
-            className="w-full"
+            size="md"
+            className="w-full font-bold mt-2"
             loading={isPending}
             icon={<ArrowRight className="w-4 h-4" />}
           >
-            Iniciar Sesión
+            {t("signIn")}
           </Button>
         </form>
 
@@ -105,9 +143,10 @@ export function LoginClient({ showSetupLink }: LoginClientProps) {
           <div className="pt-4 border-t border-border text-center">
             <Link
               href="/setup"
-              className="text-xs text-accent hover:underline font-semibold transition-colors inline-flex items-center gap-1"
+              className="text-xs text-accent hover:text-accent/80 font-bold transition-colors inline-flex items-center gap-1.5"
             >
-              ¿Primera vez? Asistente de Configuración →
+              <span>{t("setupPrompt")}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         )}

@@ -12,7 +12,7 @@ echo "=== Starting SQLite Online Database Backup ==="
 echo "Target: ${BACKUP_FILE}"
 
 if docker ps --format '{{.Names}}' | grep -q "${CONTAINER_NAME}"; then
-    docker exec "${CONTAINER_NAME}" sqlite3 /app/data/blog.db ".backup /app/data/backup_temp.db"
+    docker exec "${CONTAINER_NAME}" sqlite3 /app/data/kotonoba.db ".backup /app/data/backup_temp.db"
     docker cp "${CONTAINER_NAME}:/app/data/backup_temp.db" "${BACKUP_FILE}"
     docker exec "${CONTAINER_NAME}" rm -f /app/data/backup_temp.db
     echo " Docker database snapshot completed."

@@ -32,6 +32,10 @@ export interface SiteOption {
   theme?: "dark" | "light";
   /** Primary accent color. */
   primaryColor?: string | null;
+  /** Favicon asset URL. */
+  faviconUrl?: string | null;
+  /** Logo asset URL. */
+  logoUrl?: string | null;
 }
 
 /**
@@ -218,6 +222,7 @@ export function SiteSwitcher({
   }
 
   const currentDisplayName = getLocalizedText(currentSite.name, locale);
+  const currentIconUrl = currentSite.faviconUrl || currentSite.logoUrl || "/icon.svg";
 
   return (
     <>
@@ -233,7 +238,7 @@ export function SiteSwitcher({
             {isPending ? (
               <Loader2 className="w-4 h-4 text-accent animate-spin" />
             ) : (
-              <Globe className="w-4 h-4 text-accent" />
+              <img src={currentIconUrl} alt="" className="w-5 h-5 object-contain" />
             )}
           </button>
         ) : (
@@ -244,11 +249,11 @@ export function SiteSwitcher({
             className="w-full flex items-center justify-between p-2 rounded-lg border border-border bg-surface-hover/40 hover:bg-surface-hover transition-colors text-left group shadow-2xs"
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-6 h-6 rounded-md bg-accent/10 text-accent flex items-center justify-center shrink-0">
+              <div className="w-6 h-6 rounded-md bg-surface-hover/80 border border-border/80 flex items-center justify-center shrink-0 overflow-hidden">
                 {isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
                 ) : (
-                  <Globe className="w-3.5 h-3.5" />
+                  <img src={currentIconUrl} alt="" className="w-4 h-4 object-contain" />
                 )}
               </div>
               <div className="min-w-0 truncate flex-1">
@@ -275,6 +280,7 @@ export function SiteSwitcher({
               <div className="space-y-0.5 my-1 max-h-48 overflow-y-auto">
                 {sites.map((s) => {
                   const sName = getLocalizedText(s.name, locale);
+                  const sIcon = s.faviconUrl || s.logoUrl || "/icon.svg";
                   return (
                   <button
                     key={s.id}
@@ -286,9 +292,14 @@ export function SiteSwitcher({
                         : "text-text-muted hover:text-text hover:bg-surface-hover/60"
                     }`}
                   >
-                    <div className="min-w-0 truncate">
-                      <p className="font-medium text-text truncate leading-tight">{sName}</p>
-                      <p className="text-[10px] text-text-muted truncate leading-tight mt-0.5 font-mono">{s.domain}</p>
+                    <div className="flex items-center gap-2 min-w-0 truncate">
+                      <div className="w-5 h-5 rounded-sm bg-surface-hover border border-border/60 flex items-center justify-center shrink-0 overflow-hidden">
+                        <img src={sIcon} alt="" className="w-3.5 h-3.5 object-contain" />
+                      </div>
+                      <div className="min-w-0 truncate">
+                        <p className="font-medium text-text truncate leading-tight">{sName}</p>
+                        <p className="text-[10px] text-text-muted truncate leading-tight mt-0.5 font-mono">{s.domain}</p>
+                      </div>
                     </div>
                     {currentSite.id === s.id && <Check className="w-3.5 h-3.5 text-accent shrink-0 ml-1" />}
                   </button>
