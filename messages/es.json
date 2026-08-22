@@ -57,7 +57,8 @@
     "updateAvailable": "Actualización disponible",
     "newVersionAvailable": "Versión {version} disponible",
     "updateNow": "Actualizar",
-    "upToDate": "Actualizado"
+    "upToDate": "Actualizado",
+    "viewAll": "Ver todos"
   },
   "blog": {
     "top": "Inicio",
