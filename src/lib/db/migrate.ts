@@ -184,6 +184,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+    page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,
     path TEXT NOT NULL,
     referrer TEXT DEFAULT '',
     user_agent TEXT DEFAULT '',
@@ -204,6 +205,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
   const analyticsColumns = [
     sql`ALTER TABLE analytics ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''`,
     sql`ALTER TABLE analytics ADD COLUMN post_id TEXT REFERENCES posts(id) ON DELETE CASCADE`,
+    sql`ALTER TABLE analytics ADD COLUMN page_id TEXT REFERENCES pages(id) ON DELETE CASCADE`,
     sql`ALTER TABLE analytics ADD COLUMN referrer TEXT DEFAULT ''`,
     sql`ALTER TABLE analytics ADD COLUMN user_agent TEXT DEFAULT ''`,
     sql`ALTER TABLE analytics ADD COLUMN country TEXT DEFAULT ''`,
@@ -295,6 +297,8 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     sql`CREATE INDEX IF NOT EXISTS pt_post_idx ON post_tags(post_id)`,
     sql`CREATE INDEX IF NOT EXISTS pt_tag_idx ON post_tags(tag_id)`,
     sql`CREATE INDEX IF NOT EXISTS analytics_site_idx ON analytics(site_id)`,
+    sql`CREATE INDEX IF NOT EXISTS analytics_post_idx ON analytics(post_id)`,
+    sql`CREATE INDEX IF NOT EXISTS analytics_page_idx ON analytics(page_id)`,
     sql`CREATE INDEX IF NOT EXISTS analytics_created_idx ON analytics(created_at)`,
     sql`CREATE INDEX IF NOT EXISTS settings_site_key_idx ON settings(site_id, key)`,
   ];

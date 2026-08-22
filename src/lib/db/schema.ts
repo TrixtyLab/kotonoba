@@ -149,6 +149,7 @@ export const analytics = sqliteTable("analytics", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
   postId: text("post_id").references(() => posts.id, { onDelete: "cascade" }),
+  pageId: text("page_id").references(() => pages.id, { onDelete: "cascade" }),
   path: text("path").notNull(),
   referrer: text("referrer").default(""),
   userAgent: text("user_agent").default(""),
@@ -166,6 +167,8 @@ export const analytics = sqliteTable("analytics", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("analytics_site_idx").on(table.siteId),
+  index("analytics_post_idx").on(table.postId),
+  index("analytics_page_idx").on(table.pageId),
   index("analytics_created_idx").on(table.createdAt),
 ]);
 

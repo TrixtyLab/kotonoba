@@ -56,7 +56,8 @@
     "copy": "Copy",
     "updateAvailable": "Update available",
     "newVersionAvailable": "Version {version} available",
-    "updateNow": "Update now"
+    "updateNow": "Update now",
+    "upToDate": "Up to date"
   },
   "blog": {
     "top": "Home",
@@ -206,7 +207,17 @@
     "trafficEvolution": "Traffic Evolution (Last 14 Days)",
     "periodVisits": "{count} visits in the period",
     "mostViewedArticles": "Most Viewed Articles",
+    "mostViewedPages": "Most Viewed Pages",
+    "topPaths": "Top Visited URLs & Paths",
     "noTrafficYet": "No traffic records yet.",
+    "noPagesTrafficYet": "No static page traffic recorded yet.",
+    "noPathsYet": "No path records yet.",
+    "allContent": "All Content",
+    "articles": "Articles",
+    "pages": "Pages",
+    "paths": "Paths",
+    "pageViews": "Page Views",
+    "articleViews": "Article Views",
     "utmSources": "UTM Sources (utm_source)",
     "noUtmSources": "No utm_source parameters recorded.",
     "utmCampaignsHeader": "UTM Campaigns (utm_campaign)",

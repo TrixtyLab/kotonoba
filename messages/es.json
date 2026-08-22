@@ -56,7 +56,8 @@
     "copy": "Copiar",
     "updateAvailable": "Actualización disponible",
     "newVersionAvailable": "Versión {version} disponible",
-    "updateNow": "Actualizar"
+    "updateNow": "Actualizar",
+    "upToDate": "Actualizado"
   },
   "blog": {
     "top": "Inicio",
@@ -206,7 +207,17 @@
     "trafficEvolution": "Evolución de Tráfico (Últimos 14 Días)",
     "periodVisits": "{count} visitas en el período",
     "mostViewedArticles": "Artículos Más Vistos",
+    "mostViewedPages": "Páginas Más Vistas",
+    "topPaths": "Rutas y Páginas Más Visitadas",
     "noTrafficYet": "No hay registros de tráfico aún.",
+    "noPagesTrafficYet": "No hay registros de visitas a páginas estáticas aún.",
+    "noPathsYet": "Sin registros de rutas aún.",
+    "allContent": "Todo el Contenido",
+    "articles": "Artículos",
+    "pages": "Páginas",
+    "paths": "Rutas",
+    "pageViews": "Vistas de Páginas",
+    "articleViews": "Vistas de Artículos",
     "utmSources": "Fuentes UTM (utm_source)",
     "noUtmSources": "Sin parámetros utm_source registrados.",
     "utmCampaignsHeader": "Campañas UTM (utm_campaign)",
