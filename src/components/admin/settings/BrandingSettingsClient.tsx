@@ -231,12 +231,12 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
           </div>
 
           {logoUrl ? (
-            <div className="p-3 bg-surface rounded-lg border border-border flex items-center justify-center max-w-xs h-20">
-              <img src={logoUrl} alt="Logo" className="max-h-14 max-w-full object-contain" />
+            <div className="w-20 h-20 rounded-full border border-border bg-surface overflow-hidden flex items-center justify-center p-1">
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-cover rounded-full" />
             </div>
           ) : (
-            <div className="h-16 rounded-lg border border-dashed border-border bg-surface-hover/30 flex items-center justify-center text-xs text-text-muted">
-              {t("noLogoAssigned")}
+            <div className="w-20 h-20 rounded-full border border-dashed border-border bg-surface-hover/30 flex items-center justify-center text-[11px] text-text-muted text-center">
+              160×160
             </div>
           )}
 
@@ -287,15 +287,13 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
             )}
           </div>
 
-          {faviconUrl ? (
-            <div className="p-2 bg-surface rounded-lg border border-border inline-block">
-              <img src={faviconUrl} alt="Favicon" className="w-8 h-8 object-contain" />
-            </div>
-          ) : (
-            <div className="w-10 h-10 rounded-lg border border-dashed border-border bg-surface-hover/30 flex items-center justify-center text-xs text-text-muted">
-              ICO
-            </div>
-          )}
+          <div className="p-2 bg-surface rounded-lg border border-border inline-block">
+            <img
+              src={faviconUrl || "/icon.svg"}
+              alt="Favicon"
+              className="w-8 h-8 object-contain"
+            />
+          </div>
 
           <div className="flex gap-2">
             <input

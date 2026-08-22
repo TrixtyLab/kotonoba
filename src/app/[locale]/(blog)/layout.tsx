@@ -19,8 +19,9 @@ import { getLocalizedText } from "@/lib/utils/localization";
  */
 export async function generateMetadata(): Promise<Metadata> {
   const site = (await getSiteForHost()) || (await getActiveSite());
-  const favicon = site?.faviconUrl || "/favicon.ico";
-  const appleIcon = site?.faviconUrl || site?.logoUrl || "/favicon.ico";
+  const defaultFavicon = "/icon.svg";
+  const favicon = site?.faviconUrl || defaultFavicon;
+  const appleIcon = site?.faviconUrl || site?.logoUrl || defaultFavicon;
 
   const db = getDb();
   const antiAiSetting = site
@@ -44,7 +45,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     icons: {
-      icon: favicon,
+      icon: favicon.endsWith(".svg")
+        ? [{ url: favicon, type: "image/svg+xml" }]
+        : [{ url: favicon }],
       shortcut: favicon,
       apple: appleIcon,
     },

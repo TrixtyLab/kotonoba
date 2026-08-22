@@ -7,6 +7,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || "http://localhost:3000"),
   title: "Kotonoba",
   description: "Self-hosted multi-tenant blog CMS",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 /**

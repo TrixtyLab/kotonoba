@@ -7,18 +7,21 @@ import { AdminClientLayout } from "@/components/admin/AdminClientLayout";
 import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
- * Dynamically computes metadata and custom favicon configuration for the admin panel.
+ * Dynamically computes metadata and platform favicon configuration for the admin panel.
  *
- * @returns Metadata object with custom favicon icons.
+ * @returns Metadata object with dedicated dashboard favicon icons.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const site = await getActiveSite();
-  const favicon = site?.faviconUrl || "/favicon.ico";
   return {
+    title: "Kotonoba Admin — Dashboard",
+    description: "Multi-tenant content management system control panel",
     icons: {
-      icon: favicon,
-      shortcut: favicon,
-      apple: favicon,
+      icon: [
+        { url: "/icon.svg", type: "image/svg+xml" },
+        { url: "/favicon.ico", sizes: "any" },
+      ],
+      shortcut: "/icon.svg",
+      apple: "/icon.svg",
     },
   };
 }
@@ -62,13 +65,21 @@ export default async function AdminLayout({
       : accessibleSites[0] || site;
 
   const currentSiteOption = effectiveSite
-    ? { id: effectiveSite.id, name: getLocalizedText(effectiveSite.name, locale), domain: effectiveSite.domain }
-    : { id: "default", name: "Default Blog", domain: "localhost" };
+    ? {
+        id: effectiveSite.id,
+        name: getLocalizedText(effectiveSite.name, locale),
+        domain: effectiveSite.domain,
+        faviconUrl: effectiveSite.faviconUrl || null,
+        logoUrl: effectiveSite.logoUrl || null,
+      }
+    : { id: "default", name: "Default Blog", domain: "localhost", faviconUrl: null, logoUrl: null };
 
   const allSiteOptions = accessibleSites.map((s) => ({
     id: s.id,
     name: getLocalizedText(s.name, locale),
     domain: s.domain,
+    faviconUrl: s.faviconUrl || null,
+    logoUrl: s.logoUrl || null,
   }));
 
   const canManageSites = user.role === "super_admin";
