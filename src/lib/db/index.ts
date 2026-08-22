@@ -15,7 +15,7 @@ function resolveDbPath(): string {
     return process.env.DB_PATH;
   }
   if (process.env.NODE_ENV === "production") {
-    return "/app/data/blog.db";
+    return "/app/data/kotonoba.db";
   }
   return path.join(process.cwd(), "data", "blog.db");
 }
