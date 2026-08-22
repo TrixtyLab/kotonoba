@@ -102,13 +102,6 @@ export default async function CustomPageEntry({
 
   if (!page) notFound();
 
-  // Increment view count asynchronously
-  try {
-    const rawViews = db.select({ views: pages.views }).from(pages).where(eq(pages.id, page.id)).get();
-    const currentViews = rawViews ? rawViews.views : 0;
-    db.update(pages).set({ views: currentViews + 1 }).where(eq(pages.id, page.id)).run();
-  } catch {}
-
   const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
   const latestPosts = db
     .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })

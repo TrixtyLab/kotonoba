@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { analytics, posts } from "@/lib/db/schema";
+import { analytics, posts, pages } from "@/lib/db/schema";
 import { eq, and, gt, sql } from "drizzle-orm";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -10,9 +10,9 @@ import crypto from "crypto";
 const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegram|discordbot|headless|lighthouse|pingdom|uptimerobot|preview|google-read-aloud/i;
 
 /**
- * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots, platform administrators, post authors, and duplicate visits within a 15-minute deduplication window.
+ * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots, platform administrators, content authors, and duplicate visits within a 15-minute deduplication window.
  *
- * @param {NextRequest} req - Incoming beacon payload containing siteId, optional postId, path, and UTM campaign parameters.
+ * @param {NextRequest} req - Incoming beacon payload containing siteId, optional postId or pageId, path, and UTM campaign parameters.
  * @returns {Promise<NextResponse>} JSON response indicating whether the pageview was recorded, ignored, or rejected.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const {
       siteId,
       postId,
+      pageId,
       path,
       utm_source,
       utm_medium,
@@ -52,6 +53,45 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const db = getDb();
+    let resolvedPostId: string | null = postId || null;
+    let resolvedPageId: string | null = pageId || null;
+    let authorIdToCheck: string | null = null;
+
+    if (!resolvedPostId && !resolvedPageId) {
+      const entryMatch = String(path).match(/(?:^|\/)entry\/([^/?#]+)/);
+      if (entryMatch) {
+        const postSlug = decodeURIComponent(entryMatch[1]);
+        const post = db
+          .select({ id: posts.id, authorId: posts.authorId })
+          .from(posts)
+          .where(and(eq(posts.siteId, siteId), eq(posts.slug, postSlug)))
+          .get();
+        if (post) {
+          resolvedPostId = post.id;
+          authorIdToCheck = post.authorId;
+        }
+      }
+
+      const pageMatch = String(path).match(/(?:^|\/)p\/([^/?#]+)/);
+      if (pageMatch) {
+        const pageSlug = decodeURIComponent(pageMatch[1]);
+        const page = db
+          .select({ id: pages.id, authorId: pages.authorId })
+          .from(pages)
+          .where(and(eq(pages.siteId, siteId), eq(pages.slug, pageSlug)))
+          .get();
+        if (page) {
+          resolvedPageId = page.id;
+          authorIdToCheck = page.authorId;
+        }
+      }
+    } else if (resolvedPostId && !authorIdToCheck) {
+      const post = db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, resolvedPostId)).get();
+      if (post) authorIdToCheck = post.authorId;
+    } else if (resolvedPageId && !authorIdToCheck) {
+      const page = db.select({ authorId: pages.authorId }).from(pages).where(eq(pages.id, resolvedPageId)).get();
+      if (page) authorIdToCheck = page.authorId;
+    }
 
     try {
       const currentUser = await getCurrentUser();
@@ -60,11 +100,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           return NextResponse.json({ success: true, ignored: "super_admin" });
         }
 
-        if (postId) {
-          const post = db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, postId)).get();
-          if (post && post.authorId === currentUser.userId) {
-            return NextResponse.json({ success: true, ignored: "post_author" });
-          }
+        if (authorIdToCheck && authorIdToCheck === currentUser.userId) {
+          return NextResponse.json({ success: true, ignored: "author" });
         }
       }
     } catch {
@@ -98,7 +135,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     db.insert(analytics)
       .values({
         siteId,
-        postId: postId || null,
+        postId: resolvedPostId,
+        pageId: resolvedPageId,
         path,
         referrer: referrer ? referrer.slice(0, 500) : undefined,
         userAgent: userAgent.slice(0, 500),
@@ -115,10 +153,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       })
       .run();
 
-    if (postId) {
+    if (resolvedPostId) {
       db.update(posts)
         .set({ views: sql`${posts.views} + 1` })
-        .where(eq(posts.id, postId))
+        .where(eq(posts.id, resolvedPostId))
+        .run();
+    }
+
+    if (resolvedPageId) {
+      db.update(pages)
+        .set({ views: sql`${pages.views} + 1` })
+        .where(eq(pages.id, resolvedPageId))
         .run();
     }
 
@@ -127,3 +172,4 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: false }, { status: 500 });
   }
 }
+

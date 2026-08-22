@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { analytics, posts } from "@/lib/db/schema";
+import { analytics, posts, pages } from "@/lib/db/schema";
 import { eq, desc, sql, and, isNotNull, gte } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import {
@@ -18,16 +18,20 @@ import {
   Calendar,
   Layers,
   ArrowUpRight,
+  Files,
+  FileText,
+  ExternalLink,
+  Plus,
 } from "lucide-react";
 import { Link } from "@/i18n/routing";
 import { ResetAnalyticsButton } from "@/components/admin/analytics/ResetAnalyticsButton";
 import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
- * Normalizes referrer strings into clean root domains.
+ * Normalizes raw HTTP Referrer strings into clean root domain names.
  *
- * @param rawReferrer - Raw HTTP Referrer string from analytics payload.
- * @returns Clean root domain name or fallback description.
+ * @param {string | null} rawReferrer - Raw HTTP Referrer string from analytics payload.
+ * @returns {string} Clean root domain name or fallback description.
  */
 function cleanReferrerDomain(rawReferrer: string | null): string {
   if (!rawReferrer || !rawReferrer.trim()) return "Direct / Search";
@@ -40,9 +44,11 @@ function cleanReferrerDomain(rawReferrer: string | null): string {
 }
 
 /**
- * Administrative analytics dashboard querying and visualizing metrics including total views, unique visitors, UTM campaigns, device distributions, and timeline charts.
+ * Administrative analytics dashboard querying and visualizing metrics including total views, unique visitors, UTM campaigns, top articles, top custom pages, top visited paths, device distributions, and timeline charts.
  *
- * @returns React JSX analytics dashboard view.
+ * @param {Object} props - Component properties.
+ * @param {Promise<{ locale: string }>} props.params - Promise resolving to route parameters with active locale.
+ * @returns {Promise<React.JSX.Element>} React JSX analytics dashboard view.
  */
 export default async function AdminAnalyticsPage({
   params,
@@ -80,6 +86,31 @@ export default async function AdminAnalyticsPage({
     .from(posts)
     .where(eq(posts.siteId, site.id))
     .orderBy(desc(posts.views))
+    .limit(8)
+    .all();
+
+  const topPages = db
+    .select({
+      id: pages.id,
+      title: pages.title,
+      slug: pages.slug,
+      views: pages.views,
+    })
+    .from(pages)
+    .where(eq(pages.siteId, site.id))
+    .orderBy(desc(pages.views))
+    .limit(8)
+    .all();
+
+  const topPaths = db
+    .select({
+      path: analytics.path,
+      count: sql<number>`count(*)`,
+    })
+    .from(analytics)
+    .where(eq(analytics.siteId, site.id))
+    .groupBy(analytics.path)
+    .orderBy(desc(sql`count(*)`))
     .limit(8)
     .all();
 
@@ -191,6 +222,8 @@ export default async function AdminAnalyticsPage({
 
   const maxDailyViews = Math.max(1, ...dailyTimeline.map((d) => d.count));
   const maxPostViews = Math.max(1, ...topPosts.map((p) => p.views));
+  const maxPageViews = Math.max(1, ...topPages.map((p) => p.views));
+  const maxPathViews = Math.max(1, ...topPaths.map((p) => p.count));
 
   return (
     <div className="space-y-6">
@@ -289,11 +322,17 @@ export default async function AdminAnalyticsPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-8 space-y-6">
+          {/* Most Viewed Articles */}
           <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
-            <h2 className="text-sm font-bold text-text flex items-center gap-2 pb-3 border-b border-border">
-              <BarChart3 className="w-4 h-4 text-accent" />
-              <span>{t("mostViewedArticles")}</span>
-            </h2>
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h2 className="text-sm font-bold text-text flex items-center gap-2">
+                <FileText className="w-4 h-4 text-accent" />
+                <span>{t("mostViewedArticles")}</span>
+              </h2>
+              <Link href="/admin/posts" className="text-xs font-semibold text-accent hover:underline flex items-center gap-1">
+                {tc("viewAll")} <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
 
             <div className="space-y-3.5 pt-1">
               {topPosts.map((p) => {
@@ -327,6 +366,110 @@ export default async function AdminAnalyticsPage({
 
               {topPosts.length === 0 && (
                 <p className="text-xs text-text-muted py-6 text-center">{t("noTrafficYet")}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Most Viewed Static Pages */}
+          <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h2 className="text-sm font-bold text-text flex items-center gap-2">
+                <Files className="w-4 h-4 text-emerald-500" />
+                <span>{t("mostViewedPages")}</span>
+              </h2>
+              <Link href="/admin/pages" className="text-xs font-semibold text-accent hover:underline flex items-center gap-1">
+                {tc("viewAll")} <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <div className="space-y-3.5 pt-1">
+              {topPages.map((p) => {
+                const pct = Math.round((p.views / maxPageViews) * 100);
+
+                return (
+                  <div key={p.id} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0 max-w-sm">
+                        <Link
+                          href={`/admin/pages/${p.id}`}
+                          className="font-medium text-text hover:text-accent transition-colors truncate"
+                        >
+                          <span>{p.title}</span>
+                        </Link>
+                        <a
+                          href={`/p/${p.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-text-muted hover:text-text shrink-0"
+                          title={tc("preview")}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                      <span className="font-mono text-text-muted shrink-0 ml-2">{p.views.toLocaleString()}</span>
+                    </div>
+                    <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.max(5, pct)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {topPages.length === 0 && (
+                <div className="py-6 text-center space-y-2">
+                  <p className="text-xs text-text-muted">{t("noPagesTrafficYet")}</p>
+                  <Link href="/admin/pages/new">
+                    <button className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{tc("create")}</span>
+                    </button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Top Visited URLs & Paths */}
+          <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h2 className="text-sm font-bold text-text flex items-center gap-2">
+                <Compass className="w-4 h-4 text-violet-500" />
+                <span>{t("topPaths")}</span>
+              </h2>
+              <span className="text-xs font-mono text-text-muted">
+                {topPaths.length} {t("paths").toLowerCase()}
+              </span>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              {topPaths.map((tp, idx) => {
+                const pct = Math.round((tp.count / maxPathViews) * 100);
+
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono text-text text-[11px] truncate max-w-sm">
+                        {tp.path}
+                      </span>
+                      <span className="font-mono text-text-muted shrink-0 ml-2 bg-surface-hover px-2 py-0.5 rounded text-[11px]">
+                        {tp.count.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="h-1 bg-surface-hover rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-violet-500/80 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.max(5, pct)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {topPaths.length === 0 && (
+                <p className="text-xs text-text-muted py-6 text-center">{t("noPathsYet")}</p>
               )}
             </div>
           </div>
@@ -469,3 +612,4 @@ export default async function AdminAnalyticsPage({
     </div>
   );
 }
+

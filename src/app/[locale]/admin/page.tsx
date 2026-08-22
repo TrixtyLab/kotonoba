@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { getActiveSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { posts, categories, tags, analytics, users } from "@/lib/db/schema";
+import { posts, pages, categories, tags, analytics, users } from "@/lib/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
@@ -12,14 +12,15 @@ import { getLocalizedText } from "@/lib/utils/localization";
 import {
   FileText, CheckCircle2, Clock, Eye, Plus,
   FolderTree, Settings, Sparkles, TrendingUp, ArrowRight,
-  Image as ImageIcon, HardDrive, Cloud, Compass, Globe
+  Image as ImageIcon, HardDrive, Cloud, Compass, Globe, Files
 } from "lucide-react";
 
 /**
  * Main administrative dashboard overview displaying publication metrics, recent post logs, storage status, and quick action shortcuts.
  *
- * @param props - Object containing route params Promise with active locale.
- * @returns React JSX dashboard overview element.
+ * @param {Object} props - Component properties.
+ * @param {Promise<{ locale: string }>} props.params - Promise resolving to route parameters with active locale code.
+ * @returns {Promise<React.JSX.Element>} React JSX dashboard overview element.
  */
 export default async function AdminDashboardPage({
   params,
@@ -44,6 +45,17 @@ export default async function AdminDashboardPage({
     })
     .from(posts)
     .where(eq(posts.siteId, siteId))
+    .get();
+
+  const pageStats = db
+    .select({
+      total: sql<number>`count(*)`,
+      published: sql<number>`sum(case when status = 'published' then 1 else 0 end)`,
+      drafts: sql<number>`sum(case when status = 'draft' then 1 else 0 end)`,
+      totalViews: sql<number>`sum(views)`,
+    })
+    .from(pages)
+    .where(eq(pages.siteId, siteId))
     .get();
 
   const categoryCount = db
@@ -80,28 +92,28 @@ export default async function AdminDashboardPage({
   const metrics = [
     {
       label: t("totalPosts"),
-      value: postStats?.total || 0,
+      value: (postStats?.total || 0) + (pageStats?.total || 0),
       icon: FileText,
       color: "text-accent",
       bg: "bg-accent/10",
     },
     {
       label: t("publishedPosts"),
-      value: postStats?.published || 0,
+      value: (postStats?.published || 0) + (pageStats?.published || 0),
       icon: CheckCircle2,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10",
     },
     {
       label: t("draftPosts"),
-      value: postStats?.drafts || 0,
+      value: (postStats?.drafts || 0) + (pageStats?.drafts || 0),
       icon: Clock,
       color: "text-amber-500",
       bg: "bg-amber-500/10",
     },
     {
       label: t("totalViews"),
-      value: (postStats?.totalViews || 0) + (totalHits?.count || 0),
+      value: (postStats?.totalViews || 0) + (pageStats?.totalViews || 0) + (totalHits?.count || 0),
       icon: Eye,
       color: "text-indigo-500",
       bg: "bg-indigo-500/10",

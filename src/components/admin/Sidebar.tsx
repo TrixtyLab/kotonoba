@@ -51,13 +51,22 @@ export function Sidebar({
 
   useEffect(() => {
     let mounted = true;
-    checkForUpdates()
+    fetch("/api/updates", { cache: "no-store" })
+      .then((res) => res.json())
       .then((info) => {
-        if (mounted) {
+        if (mounted && info && typeof info.updateAvailable === "boolean") {
           setUpdateInfo(info);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        checkForUpdates()
+          .then((info) => {
+            if (mounted) {
+              setUpdateInfo(info);
+            }
+          })
+          .catch(() => {});
+      });
     return () => {
       mounted = false;
     };
@@ -176,7 +185,7 @@ export function Sidebar({
         ))}
       </div>
 
-      {updateInfo?.updateAvailable && (
+      {updateInfo?.updateAvailable ? (
         <div className="p-2 border-t border-border">
           {isOpen ? (
             <div className="p-2.5 rounded-xl bg-accent/10 border border-accent/20 text-xs space-y-2">
@@ -211,7 +220,27 @@ export function Sidebar({
             </a>
           )}
         </div>
-      )}
+      ) : updateInfo ? (
+        <div className="px-3 py-1.5 border-t border-border/60">
+          <a
+            href={updateInfo.releaseUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center gap-1.5 text-[10px] font-mono text-text-muted/70 hover:text-text-muted transition-colors ${
+              !isOpen ? "justify-center" : "justify-between"
+            }`}
+            title={`Kotonoba v${updateInfo.currentVersion} (${t("upToDate")})`}
+          >
+            <span>v{updateInfo.currentVersion}</span>
+            {isOpen && (
+              <span className="flex items-center gap-1 text-[9px] text-emerald-500 font-sans font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {t("upToDate")}
+              </span>
+            )}
+          </a>
+        </div>
+      ) : null}
 
       <div className="p-2 border-t border-border space-y-1">
         <a
