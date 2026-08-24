@@ -2,7 +2,7 @@ import { getDb } from "@/lib/db";
 import { sites, settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { normalizeMediaUrl } from "@/lib/storage";
+import { normalizeMediaUrl, resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Payload structure for a Discord webhook message containing rich embeds.
@@ -62,25 +62,6 @@ export function hexToDecimalColor(hex?: string): number {
   const clean = hex.replace("#", "").trim();
   const parsed = parseInt(clean, 16);
   return isNaN(parsed) ? 3900150 : parsed;
-}
-
-/**
- * Resolves an absolute HTTP URL from a potentially relative asset path.
- *
- * @param {string | null | undefined} urlOrPath - Relative asset path or full URL.
- * @param {string} baseUrl - Canonical site base URL.
- * @returns {string | undefined} Absolute HTTP(S) URL or undefined if input is falsy.
- */
-function resolveAbsoluteUrl(urlOrPath: string | null | undefined, baseUrl: string): string | undefined {
-  if (!urlOrPath) return undefined;
-  const cleanPath = normalizeMediaUrl(urlOrPath);
-  if (!cleanPath) return undefined;
-  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
-    return cleanPath;
-  }
-  const cleanBase = baseUrl.replace(/\/$/, "");
-  const formattedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  return `${cleanBase}${formattedPath}`;
 }
 
 /**

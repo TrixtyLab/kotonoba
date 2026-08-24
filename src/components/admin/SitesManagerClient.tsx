@@ -14,6 +14,26 @@ import { Plus, Edit3, Trash2, Globe, ExternalLink, Check } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { getLocalizedText } from "@/lib/utils/localization";
 
+function getSitePublicUrl(domain?: string | null): string {
+  if (!domain) return "/";
+  const clean = domain
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+    .trim();
+  if (!clean) return "/";
+
+  const isLocal =
+    clean === "localhost" ||
+    clean === "127.0.0.1" ||
+    clean === "::1" ||
+    clean.endsWith(".localhost") ||
+    clean.startsWith("localhost:");
+
+  const protocol = isLocal ? "http" : "https";
+  return `${protocol}://${clean}`;
+}
+
 /**
  * Complete database entity model representation of a website instance.
  */
@@ -252,7 +272,7 @@ export function SitesManagerClient({
                     <span className="text-xs text-accent font-semibold">{t("activeSite")}</span>
                   )}
                   <a
-                    href={`http://${s.domain}`}
+                    href={getSitePublicUrl(s.domain)}
                     target="_blank"
                     rel="noreferrer"
                     className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"

@@ -21,6 +21,7 @@ import { normalizeMediaUrl } from "@/lib/storage";
  */
 export async function generateMetadata(): Promise<Metadata> {
   const site = (await getSiteForHost()) || (await getActiveSite());
+  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
   const defaultFavicon = "/icon.svg";
   const rawFavicon = site?.faviconUrl || defaultFavicon;
   const favicon = normalizeMediaUrl(rawFavicon) || defaultFavicon;
@@ -38,16 +39,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const isAiBlocked = antiAiSetting?.value === "true";
 
-  const robots = isAiBlocked
-    ? {
-        index: true,
-        follow: true,
-        noimageindex: true,
-        nocache: true,
-      }
-    : undefined;
-
   return {
+    metadataBase: new URL(baseUrl),
     icons: {
       icon: favicon.endsWith(".svg")
         ? [{ url: favicon, type: "image/svg+xml" }]
@@ -60,7 +53,18 @@ export async function generateMetadata(): Promise<Metadata> {
         "application/rss+xml": "/feed.xml",
       },
     },
-    robots,
+    robots: {
+      index: true,
+      follow: true,
+    },
+    other: {
+      ...(isAiBlocked
+        ? {
+            robots: "noai, noimageai",
+            "tdm-reservation": "1",
+          }
+        : {}),
+    },
   };
 }
 

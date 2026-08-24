@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, users, categories, tags, postCategories, postTags } from "@/lib/db/schema";
 import { eq, and, desc, lt, gt, asc } from "drizzle-orm";
@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Generates OpenGraph, Twitter, and canonical SEO metadata tags for a published blog post.
@@ -28,7 +29,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const site = (await getSiteForHost()) || (await getActiveSite());
   const t = await getTranslations({ locale, namespace: "blog" });
   if (!site) return { title: t("noPosts") };
 
@@ -42,10 +43,15 @@ export async function generateMetadata({
   if (!post) return { title: t("noPosts") };
 
   const baseUrl = `https://${site.domain}`;
-  const canonicalUrl = `${baseUrl}/entry/${post.slug}`;
+  const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/entry/${post.slug}`;
 
   const siteName = getLocalizedText(site.name, locale);
+  const coverImageUrl = resolveAbsoluteUrl(post.coverImage, baseUrl);
+  const fallbackImageUrl = resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl);
+  const socialImageUrl = coverImageUrl || fallbackImageUrl;
+
   return {
+    metadataBase: new URL(baseUrl),
     title: `${post.title} — ${siteName}`,
     description: post.excerpt || `${post.title} - ${siteName}`,
     alternates: {
@@ -55,15 +61,23 @@ export async function generateMetadata({
       title: post.title,
       description: post.excerpt || undefined,
       url: canonicalUrl,
+      siteName: siteName,
       type: "article",
       publishedTime: post.publishedAt?.toISOString(),
-      images: post.coverImage ? [{ url: post.coverImage }] : undefined,
+      images: socialImageUrl
+        ? [
+            {
+              url: socialImageUrl,
+              alt: post.title,
+            },
+          ]
+        : undefined,
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
       description: post.excerpt || undefined,
-      images: post.coverImage ? [post.coverImage] : undefined,
+      images: socialImageUrl ? [socialImageUrl] : undefined,
     },
     icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };

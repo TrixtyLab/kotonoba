@@ -1,7 +1,8 @@
 import { MetadataRoute } from "next";
 import { getDb } from "@/lib/db";
-import { sites, settings } from "@/lib/db/schema";
+import { settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
 
 const AI_BOTS = [
   "GPTBot",
@@ -25,16 +26,16 @@ const AI_BOTS = [
  *
  * @returns MetadataRoute Robots definition object.
  */
-export default function robots(): MetadataRoute.Robots {
-  const db = getDb();
-  const primarySite = db.select().from(sites).limit(1).get();
-  const baseUrl = primarySite ? `https://${primarySite.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const site = (await getSiteForHost()) || (await getActiveSite());
+  const baseUrl = await getCanonicalBaseUrl(site);
 
-  const antiAiSetting = primarySite
+  const db = getDb();
+  const antiAiSetting = site
     ? db
         .select()
         .from(settings)
-        .where(and(eq(settings.siteId, primarySite.id), eq(settings.key, "block_ai_crawlers")))
+        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
         .get()
     : null;
 
@@ -42,7 +43,7 @@ export default function robots(): MetadataRoute.Robots {
 
   const standardRule = {
     userAgent: "*",
-    allow: ["/", "/entry/*", "/category/*", "/tag/*", "/archive"],
+    allow: ["/", "/entry/*", "/category/*", "/tag/*", "/archive", "/p/*"],
     disallow: ["/admin/", "/api/", "/setup/", "/login"],
   };
 

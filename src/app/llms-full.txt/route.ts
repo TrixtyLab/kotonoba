@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { posts, settings } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { getSiteForHost, getActiveSite } from "@/lib/tenant";
+import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
 
 /**
  * Route handler delivering complete full-text markdown corpus of published blog posts for RAG and deep LLM ingestion.
@@ -41,12 +41,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const siteLocale = site.locale || "en";
   const siteName = getLocalizedText(site.name, siteLocale) || "Kotonoba";
-  const rawHost =
-    req.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
-    req.headers.get("host")?.split(",")[0].trim() ||
-    "localhost";
-  const siteDomain = site.domain || rawHost;
-  const baseUrl = siteDomain.includes("localhost") ? `http://${siteDomain}` : `https://${siteDomain}`;
+  const baseUrl = await getCanonicalBaseUrl(site, req.headers);
 
   const topPosts = db
     .select()

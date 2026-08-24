@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { pages, posts, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -7,6 +7,7 @@ import { ShareButtons } from "@/components/blog/ShareButtons";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { resolveAbsoluteUrl } from "@/lib/storage";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
@@ -23,7 +24,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const site = (await getSiteForHost()) || (await getActiveSite());
   if (!site) return { title: "Page Not Found" };
 
   const db = getDb();
@@ -36,10 +37,15 @@ export async function generateMetadata({
   if (!page) return { title: "Page Not Found" };
 
   const baseUrl = `https://${site.domain}`;
-  const canonicalUrl = `${baseUrl}/p/${page.slug}`;
+  const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/p/${page.slug}`;
   const siteName = getLocalizedText(site.name, locale);
 
+  const coverImageUrl = resolveAbsoluteUrl(page.coverImage, baseUrl);
+  const fallbackImageUrl = resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl);
+  const socialImageUrl = coverImageUrl || fallbackImageUrl;
+
   return {
+    metadataBase: new URL(baseUrl),
     title: `${page.title} — ${siteName}`,
     description: page.excerpt || `${page.title} - ${siteName}`,
     alternates: {
@@ -49,15 +55,23 @@ export async function generateMetadata({
       title: page.title,
       description: page.excerpt || undefined,
       url: canonicalUrl,
+      siteName: siteName,
       type: "article",
       publishedTime: page.publishedAt?.toISOString(),
-      images: page.coverImage ? [{ url: page.coverImage }] : undefined,
+      images: socialImageUrl
+        ? [
+            {
+              url: socialImageUrl,
+              alt: page.title,
+            },
+          ]
+        : undefined,
     },
     twitter: {
       card: "summary_large_image",
       title: page.title,
       description: page.excerpt || undefined,
-      images: page.coverImage ? [page.coverImage] : undefined,
+      images: socialImageUrl ? [socialImageUrl] : undefined,
     },
     icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };

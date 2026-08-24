@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, tags, postTags, postCategories, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -11,12 +11,13 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
+import { resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Generates SEO metadata for a tag archive page.
  *
  * @param props - Object containing route params with tag slug and locale.
- * @returns Metadata object with tag title.
+ * @returns Metadata object with tag title, OpenGraph, Twitter cards, and favicon links.
  */
 export async function generateMetadata({
   params,
@@ -24,14 +25,38 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const site = (await getSiteForHost()) || (await getActiveSite());
   const db = getDb();
-  const tag = db.select().from(tags).where(eq(tags.slug, slug)).get();
+  const tag = site ? db.select().from(tags).where(and(eq(tags.siteId, site.id), eq(tags.slug, slug))).get() : null;
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
+  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/tag/${slug}`;
+  const title = tag ? `#${tag.name} — ${siteName}` : t("tag");
+  const description = `${t("tag")}: #${tag?.name || slug}`;
+  const socialImageUrl = site ? resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl) : undefined;
+
   return {
-    title: tag ? `#${tag.name} — ${siteName}` : t("tag"),
-    description: `${t("tag")}: #${tag?.name}`,
+    metadataBase: new URL(baseUrl),
+    title,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title,
+      description,
+      url: canonicalUrl,
+      siteName: siteName,
+      type: "website",
+      images: socialImageUrl ? [{ url: socialImageUrl, alt: title }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: socialImageUrl ? [socialImageUrl] : undefined,
+    },
     icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }

@@ -30,6 +30,26 @@ export interface SidebarProps {
   canManageSites?: boolean;
 }
 
+function getSitePublicUrl(domain?: string | null): string {
+  if (!domain) return "/";
+  const clean = domain
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+    .trim();
+  if (!clean) return "/";
+
+  const isLocal =
+    clean === "localhost" ||
+    clean === "127.0.0.1" ||
+    clean === "::1" ||
+    clean.endsWith(".localhost") ||
+    clean.startsWith("localhost:");
+
+  const protocol = isLocal ? "http" : "https";
+  return `${protocol}://${clean}`;
+}
+
 /**
  * Modern administration panel sidebar with integrated workspace switcher, collapsible icons, and categorized navigation links.
  *
@@ -103,6 +123,8 @@ export function Sidebar({
     await logoutAction();
     router.push("/login");
   }
+
+  const blogPublicUrl = getSitePublicUrl(currentSite?.domain);
 
   return (
     <aside
@@ -251,7 +273,7 @@ export function Sidebar({
 
       <div className="p-2 border-t border-border space-y-1">
         <a
-          href="/"
+          href={blogPublicUrl}
           target="_blank"
           rel="noopener noreferrer"
           className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-text-muted hover:text-text hover:bg-surface-hover transition-colors ${

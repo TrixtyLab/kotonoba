@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, tags, postCategories, postTags, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -11,12 +11,13 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
+import { resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Generates SEO metadata for a category taxonomy archive page.
  *
  * @param props - Object containing route params with category slug and locale.
- * @returns Metadata object with category title.
+ * @returns Metadata object with category title, OpenGraph, Twitter cards, and favicon links.
  */
 export async function generateMetadata({
   params,
@@ -24,14 +25,38 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const site = (await getSiteForHost()) || (await getActiveSite());
   const db = getDb();
-  const cat = db.select().from(categories).where(eq(categories.slug, slug)).get();
+  const cat = site ? db.select().from(categories).where(and(eq(categories.siteId, site.id), eq(categories.slug, slug))).get() : null;
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
+  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/category/${slug}`;
+  const title = cat ? `${cat.name} — ${siteName}` : t("category");
+  const description = cat?.description || `${t("category")}: ${cat?.name || slug}`;
+  const socialImageUrl = site ? resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl) : undefined;
+
   return {
-    title: cat ? `${cat.name} — ${siteName}` : t("category"),
-    description: cat?.description || `${t("category")}: ${cat?.name}`,
+    metadataBase: new URL(baseUrl),
+    title,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title,
+      description,
+      url: canonicalUrl,
+      siteName: siteName,
+      type: "website",
+      images: socialImageUrl ? [{ url: socialImageUrl, alt: title }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: socialImageUrl ? [socialImageUrl] : undefined,
+    },
     icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }
