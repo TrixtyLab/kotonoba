@@ -14,6 +14,26 @@ import { useToast } from "@/components/ui/Toast";
 import { useLocale, useTranslations } from "next-intl";
 import { getLocalizedText } from "@/lib/utils/localization";
 
+function getSitePublicUrl(domain?: string | null): string {
+  if (!domain) return "/";
+  const clean = domain
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+    .trim();
+  if (!clean) return "/";
+
+  const isLocal =
+    clean === "localhost" ||
+    clean === "127.0.0.1" ||
+    clean === "::1" ||
+    clean.endsWith(".localhost") ||
+    clean.startsWith("localhost:");
+
+  const protocol = isLocal ? "http" : "https";
+  return `${protocol}://${clean}`;
+}
+
 /**
  * Representation of a selectable blog site in the tenant switcher dropdown.
  */
@@ -475,7 +495,7 @@ export function SiteSwitcher({
                     )}
 
                     <a
-                      href={`http://${s.domain}`}
+                      href={getSitePublicUrl(s.domain)}
                       target="_blank"
                       rel="noreferrer"
                       className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"

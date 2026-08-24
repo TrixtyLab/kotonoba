@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -10,12 +10,13 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
+import { resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Generates SEO metadata for the chronological blog archive.
  *
  * @param props - Object containing route params with locale.
- * @returns Metadata object with archive title.
+ * @returns Metadata object with archive title, OpenGraph, Twitter cards, and favicon links.
  */
 export async function generateMetadata({
   params,
@@ -23,12 +24,36 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const site = (await getSiteForHost()) || (await getActiveSite());
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
+  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/archive`;
+  const title = `${t("archive")} — ${siteName}`;
+  const description = t("archive");
+  const socialImageUrl = site ? resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl) : undefined;
+
   return {
-    title: `${t("archive")} — ${siteName}`,
-    description: t("archive"),
+    metadataBase: new URL(baseUrl),
+    title,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title,
+      description,
+      url: canonicalUrl,
+      siteName: siteName,
+      type: "website",
+      images: socialImageUrl ? [{ url: socialImageUrl, alt: title }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: socialImageUrl ? [socialImageUrl] : undefined,
+    },
     icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }

@@ -110,3 +110,54 @@ export function hasAnySite(): boolean {
 
   return (count?.count || 0) > 0;
 }
+
+/**
+ * Resolves the canonical base URL (protocol + host) for a given site context and incoming request.
+ *
+ * @param site - Optional Site entity.
+ * @param reqHeaders - Optional incoming Headers collection.
+ * @returns Fully qualified base URL string (e.g. "https://kagarisoft.unsetsoft.com" or "http://localhost:3000").
+ */
+export async function getCanonicalBaseUrl(site?: Site | null, reqHeaders?: Headers | null): Promise<string> {
+  let domain = site?.domain;
+  let hostHeader = "";
+
+  if (reqHeaders) {
+    hostHeader =
+      reqHeaders.get("x-forwarded-host")?.split(",")[0].trim() ||
+      reqHeaders.get("host")?.split(",")[0].trim() ||
+      "";
+  } else {
+    try {
+      const h = await headers();
+      hostHeader =
+        h.get("x-forwarded-host")?.split(",")[0].trim() ||
+        h.get("host")?.split(",")[0].trim() ||
+        "";
+    } catch {
+      // static/prerender context
+    }
+  }
+
+  if (!domain || domain.includes("localhost") || domain.includes("127.0.0.1")) {
+    if (hostHeader && !hostHeader.includes("localhost") && !hostHeader.includes("127.0.0.1")) {
+      domain = hostHeader;
+    }
+  }
+
+  if (!domain) {
+    domain = process.env.SITE_URL?.replace(/^https?:\/\//, "") || hostHeader || "localhost:3000";
+  }
+
+  const cleanDomain = normalizeDomain(domain);
+  const isLocal =
+    cleanDomain === "localhost" ||
+    cleanDomain === "127.0.0.1" ||
+    cleanDomain === "::1" ||
+    cleanDomain.endsWith(".localhost") ||
+    cleanDomain.startsWith("localhost:");
+
+  const protocol = isLocal ? "http" : "https";
+  return `${protocol}://${cleanDomain}`;
+}
+

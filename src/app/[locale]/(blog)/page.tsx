@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, tags, users, postCategories, postTags } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -10,12 +10,13 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
+import { resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Generates SEO metadata tags for the blog homepage.
  *
  * @param props - Object containing route params with active locale.
- * @returns Metadata object with site title and favicon links.
+ * @returns Metadata object with site title, OpenGraph, Twitter cards, and favicon links.
  */
 export async function generateMetadata({
   params,
@@ -23,13 +24,34 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const site = (await getSiteForHost()) || (await getActiveSite());
   const siteName = site ? getLocalizedText(site.name, locale) : "Kotonoba";
   const siteDesc = site ? getLocalizedText(site.description, locale) || getLocalizedText(site.subtitle, locale) : "Kotonoba CMS";
+  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}`;
+  const socialImageUrl = site ? resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl) : undefined;
 
   return {
+    metadataBase: new URL(baseUrl),
     title: siteName,
     description: siteDesc,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: siteName,
+      description: siteDesc,
+      url: canonicalUrl,
+      siteName: siteName,
+      type: "website",
+      images: socialImageUrl ? [{ url: socialImageUrl, alt: siteName }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: siteName,
+      description: siteDesc,
+      images: socialImageUrl ? [socialImageUrl] : undefined,
+    },
     icons: site?.faviconUrl ? [{ url: site.faviconUrl }] : undefined,
   };
 }

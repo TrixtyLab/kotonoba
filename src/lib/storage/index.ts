@@ -292,6 +292,26 @@ export function normalizeMediaUrl(url?: string | null): string {
 }
 
 /**
+ * Resolves an absolute HTTP URL from a potentially relative asset path or local endpoint.
+ *
+ * @param {string | null | undefined} urlOrPath - Relative asset path, relative URL (/api/uploads/...), or full URL.
+ * @param {string} baseUrl - Canonical site base URL (e.g., https://kagarisoft.unsetsoft.com).
+ * @returns {string | undefined} Fully qualified absolute URL or undefined.
+ */
+export function resolveAbsoluteUrl(urlOrPath: string | null | undefined, baseUrl: string): string | undefined {
+  if (!urlOrPath) return undefined;
+  const cleanPath = normalizeMediaUrl(urlOrPath);
+  if (!cleanPath) return undefined;
+  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+    return cleanPath;
+  }
+  const cleanBase = baseUrl.replace(/\/$/, "");
+  const formattedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  return `${cleanBase}${formattedPath}`;
+}
+
+
+/**
  * Normalizes all legacy S3/R2 presigned image URLs inside HTML or Markdown strings to /api/uploads/...
  *
  * @param content - Raw HTML or Markdown string.

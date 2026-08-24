@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { posts, sites, settings } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { getSiteForHost, getActiveSite } from "@/lib/tenant";
+import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { normalizeMediaUrl } from "@/lib/storage";
+import { normalizeMediaUrl, resolveAbsoluteUrl } from "@/lib/storage";
 
 /**
  * Escapes XML special characters within string literals.
@@ -19,25 +19,6 @@ function escapeXml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
-}
-
-/**
- * Resolves an absolute HTTP URL from a potentially relative asset path.
- *
- * @param {string | null | undefined} urlOrPath - Relative asset path or full URL.
- * @param {string} baseUrl - Canonical site base URL.
- * @returns {string | undefined} Absolute HTTP(S) URL or undefined if input is falsy.
- */
-function resolveAbsoluteUrl(urlOrPath: string | null | undefined, baseUrl: string): string | undefined {
-  if (!urlOrPath) return undefined;
-  const cleanPath = normalizeMediaUrl(urlOrPath);
-  if (!cleanPath) return undefined;
-  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
-    return cleanPath;
-  }
-  const cleanBase = baseUrl.replace(/\/$/, "");
-  const formattedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  return `${cleanBase}${formattedPath}`;
 }
 
 /**
@@ -71,10 +52,7 @@ export async function GET(): Promise<NextResponse> {
   const itemsLimit = Math.min(Math.max(parseInt(configMap.rss_items_count || "20", 10), 1), 100);
   const includeFullContent = configMap.rss_full_content !== "false";
 
-  const siteDomain = site.domain || "localhost:3000";
-  const baseUrl = siteDomain.includes("localhost")
-    ? `http://${siteDomain}`
-    : `https://${siteDomain}`;
+  const baseUrl = await getCanonicalBaseUrl(site);
 
   const publishedPosts = db
     .select()
