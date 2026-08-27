@@ -41,7 +41,7 @@ export async function getCurrentVersion(): Promise<string> {
   } catch {
     // Fall back to bundled package.json
   }
-  return packageJson.version || "1.0.0";
+  return packageJson.version || "1.0.19";
 }
 
 /**

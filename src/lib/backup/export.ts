@@ -14,15 +14,18 @@ import { eq, inArray } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
+import { getCurrentVersion } from "@/actions/updates";
 
 /**
  * Metadata manifest included within the exported site backup archive.
  */
 export interface BackupManifest {
-  /** Format schema version. */
+  /** Application version that generated the backup. */
   version: string;
   /** Schema identifier for compatibility verification. */
   format: string;
+  /** Format schema version for the backup structure. */
+  schemaVersion?: string;
   /** ISO 8601 timestamp when the backup was generated. */
   exportedAt: string;
   /** Core identity metadata of the exported site. */
@@ -114,8 +117,11 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     }
   }
 
+  const appVersion = await getCurrentVersion();
+
   const manifest: BackupManifest = {
-    version: "1.0.0",
+    version: appVersion,
+    schemaVersion: "1.0.0",
     format: "kotonoba-backup",
     exportedAt: new Date().toISOString(),
     site: {

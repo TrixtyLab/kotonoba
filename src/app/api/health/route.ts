@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
+import { getCurrentVersion } from "@/actions/updates";
 
 /**
  * Liveness and readiness health probe verifying database connectivity and reporting server uptime.
@@ -19,12 +20,14 @@ export async function GET(): Promise<NextResponse> {
       );
     }
 
+    const version = await getCurrentVersion();
+
     return NextResponse.json({
       status: "ok",
       uptime: Math.floor(process.uptime()),
       db: "connected",
       timestamp: new Date().toISOString(),
-      version: "1.0.0",
+      version,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Health check failure";
