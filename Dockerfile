@@ -29,19 +29,16 @@ ENV DB_PATH=/app/data/kotonoba.db
 ENV UPLOAD_DIR=/app/data/uploads
 
 RUN apk add --no-cache curl wget
-RUN corepack enable && corepack prepare pnpm@latest --activate
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 RUN mkdir -p /app/data/uploads && chown -R nextjs:nodejs /app/data
 
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/pnpm-lock.yaml* /app/pnpm-workspace.yaml* ./
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+# Leverage Next.js output standalone files for minimal footprint and offline startup
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
@@ -50,4 +47,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]
