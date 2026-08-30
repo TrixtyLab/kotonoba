@@ -56,7 +56,8 @@ export const postSchema = z.object({
   contentHtml: z.string().max(1000000).default(""),
   excerpt: z.string().max(1000).default(""),
   coverImage: z.string().max(2000).optional().nullable(),
-  status: z.enum(["draft", "published", "archived"]).default("draft"),
+  status: z.enum(["draft", "published", "scheduled", "archived"]).default("draft"),
+  publishedAt: z.string().or(z.date()).optional().nullable(),
   locale: z.string().min(2).max(10).default("en"),
   categoryIds: z.array(z.string()).default([]),
   tagIds: z.array(z.string()).default([]),
@@ -74,7 +75,8 @@ export const pageSchema = z.object({
   contentHtml: z.string().max(1000000).default(""),
   excerpt: z.string().max(1000).default(""),
   coverImage: z.string().max(2000).optional().nullable(),
-  status: z.enum(["draft", "published", "archived"]).default("draft"),
+  status: z.enum(["draft", "published", "scheduled", "archived"]).default("draft"),
+  publishedAt: z.string().or(z.date()).optional().nullable(),
   locale: z.string().min(2).max(10).default("en"),
 });
 export type PageInput = z.infer<typeof pageSchema>;

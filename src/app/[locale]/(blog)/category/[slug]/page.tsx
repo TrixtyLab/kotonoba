@@ -2,6 +2,7 @@ import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, tags, postCategories, postTags, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { notFound } from "next/navigation";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
@@ -79,6 +80,8 @@ export default async function CategoryPage({
   const t = await getTranslations({ locale, namespace: "blog" });
 
   const db = getDb();
+  await publishScheduledPosts(site.id);
+
   const cat = db.select().from(categories).where(and(eq(categories.siteId, site.id), eq(categories.slug, slug))).get();
   if (!cat) notFound();
 
@@ -102,7 +105,7 @@ export default async function CategoryPage({
     .from(postCategories)
     .innerJoin(posts, eq(postCategories.postId, posts.id))
     .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(postCategories.categoryId, cat.id), eq(posts.status, "published")))
+    .where(and(eq(postCategories.categoryId, cat.id), getPublicPostCondition()))
     .orderBy(desc(posts.publishedAt))
     .all();
 
@@ -127,10 +130,10 @@ export default async function CategoryPage({
   const totalPages = Math.max(1, Math.ceil(matchingPosts.length / 5));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Post Stream */}
       <div className="lg:col-span-8 min-w-0 w-full space-y-10">
-        <div className="pb-4 border-b border-border/70">
+        <div className="pb-4 border-b border-border/40">
           <p className="text-xs text-text-muted">{t("category")}</p>
           <h1 className="text-2xl font-bold text-text mt-1">{cat.name}</h1>
           {cat.description && <p className="text-xs text-text-muted mt-1">{cat.description}</p>}
@@ -142,7 +145,7 @@ export default async function CategoryPage({
             <p className="text-sm text-text-muted">{t("noPosts")}</p>
           </div>
         ) : (
-          <div className="space-y-12">
+          <div className="space-y-8">
             {matchingPosts.map((post) => (
               <PostCard key={post.id} post={post} locale={locale} />
             ))}

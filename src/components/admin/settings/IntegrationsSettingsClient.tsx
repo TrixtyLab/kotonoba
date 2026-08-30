@@ -62,7 +62,6 @@ export function IntegrationsSettingsClient({
     avatar?: string;
   } | null>(null);
 
-  // Discord State
   const [discordEnabled, setDiscordEnabled] = useState(
     initialSettings.discord_notifications_enabled === "true"
   );
@@ -76,7 +75,6 @@ export function IntegrationsSettingsClient({
     initialSettings.discord_bot_avatar || ""
   );
 
-  // Bluesky State
   const [blueskyEnabled, setBlueskyEnabled] = useState(
     initialSettings.bluesky_enabled === "true"
   );
@@ -93,7 +91,6 @@ export function IntegrationsSettingsClient({
     initialSettings.bluesky_include_tags !== "false"
   );
 
-  // RSS State
   const [rssEnabled, setRssEnabled] = useState(
     initialSettings.rss_enabled !== "false"
   );

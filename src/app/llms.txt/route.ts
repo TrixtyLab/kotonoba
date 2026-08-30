@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { posts, categories, settings } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
 
@@ -18,6 +19,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!site) {
     return new NextResponse("Not Found", { status: 404 });
   }
+
+  await publishScheduledPosts(site.id);
 
   const antiAiSetting = db
     .select()
@@ -53,7 +56,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const topPosts = db
     .select()
     .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
     .orderBy(desc(posts.views), desc(posts.publishedAt))
     .limit(30)
     .all();

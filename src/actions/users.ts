@@ -73,7 +73,6 @@ export async function getUsers(siteId?: string): Promise<UserRecord[]> {
       rows = query.all();
     }
   } else {
-    // Admin is scoped to their own site or themselves
     const effectiveSiteId = currentUser.siteId || siteId || "";
     if (effectiveSiteId) {
       rows = query.where(eq(users.siteId, effectiveSiteId)).all();
@@ -98,15 +97,14 @@ export async function getUsers(siteId?: string): Promise<UserRecord[]> {
 /**
  * Creates a new user account with role-based access control and Argon2id password hashing.
  *
- * @param inputData - User creation payload.
- * @returns A Promise resolving to a UserMutationResponse.
+ * @param {Partial<CreateUserInput>} inputData - User creation payload.
+ * @returns {Promise<UserMutationResponse>} A Promise resolving to a UserMutationResponse.
  * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function createUser(inputData: Partial<CreateUserInput>): Promise<UserMutationResponse> {
   const currentUser = await requireAuth(["super_admin", "admin"]);
   const db = getDb();
 
-  // Role validation for non-super_admin callers
   const candidateRole = inputData.role || "author";
   let targetSiteId = inputData.siteId || null;
 
@@ -130,7 +128,6 @@ export async function createUser(inputData: Partial<CreateUserInput>): Promise<U
   const { email, displayName, password, role, avatarUrl, siteId } = validation.data;
   const cleanEmail = email.toLowerCase().trim();
 
-  // Check email uniqueness
   const existing = db.select({ id: users.id }).from(users).where(eq(users.email, cleanEmail)).get();
   if (existing) {
     return { success: false, errors: { email: ["This email is already registered."] } };
@@ -160,9 +157,9 @@ export async function createUser(inputData: Partial<CreateUserInput>): Promise<U
 /**
  * Updates an existing user's profile, role, site assignment, or password.
  *
- * @param userId - Unique identifier of the user to modify.
- * @param inputData - Partial user payload with updated values.
- * @returns A Promise resolving to a UserMutationResponse.
+ * @param {string} userId - Unique identifier of the user to modify.
+ * @param {Partial<UpdateUserInput>} inputData - Partial user payload with updated values.
+ * @returns {Promise<UserMutationResponse>} A Promise resolving to a UserMutationResponse.
  * @throws {Error} When the caller lacks an authorized administrative role.
  */
 export async function updateUser(
@@ -177,7 +174,6 @@ export async function updateUser(
     return { success: false, error: "User not found." };
   }
 
-  // Permission enforcement
   if (currentUser.role === "admin") {
     if (targetUser.role === "super_admin") {
       return { success: false, error: "You cannot edit a super administrator account." };
@@ -190,7 +186,6 @@ export async function updateUser(
     }
   }
 
-  // Prevent removing the last super_admin
   if (targetUser.role === "super_admin" && inputData.role && inputData.role !== "super_admin") {
     const adminCount = db
       .select({ count: count() })

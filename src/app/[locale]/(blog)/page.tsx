@@ -2,6 +2,7 @@ import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, tags, users, postCategories, postTags } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { LinePagination } from "@/components/blog/LinePagination";
@@ -82,6 +83,7 @@ export default async function BlogHomePage({
   }
 
   const db = getDb();
+  await publishScheduledPosts(site.id);
 
   const rawPosts = db
     .select({
@@ -100,13 +102,12 @@ export default async function BlogHomePage({
     })
     .from(posts)
     .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
     .orderBy(desc(posts.pinned), desc(posts.publishedAt))
     .all();
 
   const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
 
-  // Attach categories and tags to each post
   const allPosts = rawPosts.map((p) => {
     const postCats = db
       .select({ id: categories.id, name: categories.name, slug: categories.slug })
@@ -128,16 +129,16 @@ export default async function BlogHomePage({
   const totalPages = Math.max(1, Math.ceil(allPosts.length / 5));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Post Timeline Stream */}
-      <div className="lg:col-span-8 min-w-0 w-full space-y-12">
+      <div className="lg:col-span-8 min-w-0 w-full space-y-10">
         {allPosts.length === 0 ? (
           <div className="py-20 text-center space-y-3">
             <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
             <p className="text-sm text-text-muted">{t("noPosts")}</p>
           </div>
         ) : (
-          <div className="space-y-12">
+          <div className="space-y-8">
             {allPosts.map((post) => (
               <PostCard key={post.id} post={post} locale={locale} />
             ))}

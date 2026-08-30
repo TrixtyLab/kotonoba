@@ -23,7 +23,7 @@ export interface AdminPageRecord {
   id: string;
   title: string;
   slug: string;
-  status: "draft" | "published" | "archived";
+  status: "draft" | "published" | "scheduled" | "archived";
   locale: string;
   views: number;
   publishedAt: Date | null;
@@ -56,6 +56,7 @@ export async function createPage(siteId: string, inputData: Partial<PageInput>):
     excerpt,
     coverImage,
     status,
+    publishedAt,
     locale,
   } = validation.data;
 
@@ -63,6 +64,11 @@ export async function createPage(siteId: string, inputData: Partial<PageInput>):
   const pageId = generateId();
   const pageSlug = slug ? generateSlug(slug) : generateSlug(title);
   const now = new Date();
+
+  let targetPublishedAt: Date | null = null;
+  if (status === "published" || status === "scheduled") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : now;
+  }
 
   db.insert(pages).values({
     id: pageId,
@@ -76,7 +82,7 @@ export async function createPage(siteId: string, inputData: Partial<PageInput>):
     coverImage: normalizeMediaUrl(coverImage) || null,
     status,
     locale: locale || "en",
-    publishedAt: status === "published" ? now : null,
+    publishedAt: targetPublishedAt,
     createdAt: now,
     updatedAt: now,
     views: 0,
@@ -113,6 +119,7 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
     excerpt,
     coverImage,
     status,
+    publishedAt,
     locale,
   } = validation.data;
 
@@ -124,7 +131,17 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
 
   const now = new Date();
   const pageSlug = slug ? generateSlug(slug) : existing.slug;
-  const shouldSetPublishedAt = status === "published" && !existing.publishedAt;
+
+  let targetPublishedAt: Date | null = null;
+  if (status === "published") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
+  } else if (status === "scheduled") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
+  } else if (status === "draft") {
+    targetPublishedAt = null;
+  } else {
+    targetPublishedAt = existing.publishedAt;
+  }
 
   db.update(pages).set({
     title,
@@ -135,7 +152,7 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
     coverImage: coverImage !== undefined ? normalizeMediaUrl(coverImage) || null : existing.coverImage,
     status,
     locale: locale || existing.locale,
-    publishedAt: shouldSetPublishedAt ? now : (status === "draft" ? null : existing.publishedAt),
+    publishedAt: targetPublishedAt,
     updatedAt: now,
   }).where(eq(pages.id, pageId)).run();
 

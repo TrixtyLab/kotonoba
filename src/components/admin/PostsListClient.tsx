@@ -21,7 +21,7 @@ export interface PostItem {
   /** URL slug string. */
   slug: string;
   /** Publication lifecycle status. */
-  status: "draft" | "published" | "archived";
+  status: "draft" | "published" | "scheduled" | "archived";
   /** Language locale code. */
   locale: string;
   /** View count metric. */
@@ -79,6 +79,7 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
   const statusOptions = [
     { key: "all", label: tc("all"), count: posts.length },
     { key: "published", label: t("publishedPosts"), count: posts.filter((p) => p.status === "published").length },
+    { key: "scheduled", label: t("scheduledPosts"), count: posts.filter((p) => p.status === "scheduled").length },
     { key: "draft", label: t("draftPosts"), count: posts.filter((p) => p.status === "draft").length },
     { key: "archived", label: t("statusArchived"), count: posts.filter((p) => p.status === "archived").length },
   ];
@@ -165,8 +166,8 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                     </span>
                   </td>
                   <td className="p-3.5">
-                    <Badge variant={post.status === "published" ? "success" : post.status === "archived" ? "secondary" : "warning"}>
-                      {post.status === "published" ? t("statusPublished") : post.status === "archived" ? t("statusArchived") : t("statusDraft")}
+                    <Badge variant={post.status === "published" ? "success" : post.status === "scheduled" ? "primary" : post.status === "archived" ? "secondary" : "warning"}>
+                      {post.status === "published" ? t("statusPublished") : post.status === "scheduled" ? t("statusScheduled") : post.status === "archived" ? t("statusArchived") : t("statusDraft")}
                     </Badge>
                   </td>
                   <td className="p-3.5 uppercase font-mono text-[10px] text-text-muted font-semibold">

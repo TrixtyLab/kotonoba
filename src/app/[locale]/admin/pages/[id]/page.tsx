@@ -47,6 +47,7 @@ export default async function EditPagePage({
         excerpt: page.excerpt || "",
         coverImage: page.coverImage,
         status: page.status,
+        publishedAt: page.publishedAt,
         locale: page.locale,
       }}
       availableCategories={[]}

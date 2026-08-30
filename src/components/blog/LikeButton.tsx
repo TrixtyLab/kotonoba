@@ -53,20 +53,20 @@ export function LikeButton({ postId, initialLikes = 0, size = "sm" }: LikeButton
   return (
     <button
       onClick={handleLike}
-      className={`inline-flex items-center gap-1.5 rounded-full transition-all duration-200 btn-press ${
+      className={`inline-flex items-center gap-1.5 transition-all duration-200 select-none ${
         liked
-          ? "text-danger bg-danger/10 border border-danger/20 font-semibold"
-          : "text-text-muted hover:text-danger hover:bg-danger/5 border border-transparent"
-      } ${isSmall ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm"}`}
+          ? "text-rose-500 font-semibold"
+          : "text-text-muted hover:text-rose-500"
+      } ${isSmall ? "text-xs py-0.5" : "text-sm py-1"}`}
       title={liked ? "Ya no me gusta" : "Me gusta"}
       aria-label="Reaccionar con me gusta"
     >
       <Heart
-        className={`transition-transform duration-200 ${liked ? "fill-danger scale-110" : "scale-100"} ${
+        className={`transition-transform duration-200 ${liked ? "fill-rose-500 scale-110" : "scale-100"} ${
           isSmall ? "w-3.5 h-3.5" : "w-4 h-4"
         }`}
       />
-      <span className="tabular-nums font-mono text-xs">{likesCount > 0 ? likesCount : (liked ? 1 : "")}</span>
+      {likesCount > 0 && <span className="tabular-nums font-mono text-xs">{likesCount}</span>}
     </button>
   );
 }

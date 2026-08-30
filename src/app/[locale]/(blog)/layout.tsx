@@ -4,6 +4,7 @@ import { getCategories } from "@/actions/categories";
 import { getDb } from "@/lib/db";
 import { posts, settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { Header } from "@/components/blog/Header";
 import { Footer } from "@/components/blog/Footer";
 import { ScrollToTop } from "@/components/blog/ScrollToTop";
@@ -128,6 +129,10 @@ export default async function BlogLayout({
   const categories = site ? await getCategories(site.id) : [];
 
   const db = getDb();
+  if (site) {
+    await publishScheduledPosts(site.id);
+  }
+
   const searchPosts = site
     ? db
         .select({
@@ -137,7 +142,7 @@ export default async function BlogLayout({
           excerpt: posts.excerpt,
         })
         .from(posts)
-        .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+        .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
         .all()
     : [];
 

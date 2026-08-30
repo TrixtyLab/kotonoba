@@ -21,7 +21,7 @@ export interface PageItem {
   /** URL slug string. */
   slug: string;
   /** Publication lifecycle status. */
-  status: "draft" | "published" | "archived";
+  status: "draft" | "published" | "scheduled" | "archived";
   /** Language locale code. */
   locale: string;
   /** View count metric. */
@@ -77,6 +77,7 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
   const statusOptions = [
     { key: "all", label: tc("all"), count: pagesList.length },
     { key: "published", label: t("statusPublished"), count: pagesList.filter((p) => p.status === "published").length },
+    { key: "scheduled", label: t("statusScheduled"), count: pagesList.filter((p) => p.status === "scheduled").length },
     { key: "draft", label: t("statusDraft"), count: pagesList.filter((p) => p.status === "draft").length },
     { key: "archived", label: t("statusArchived"), count: pagesList.filter((p) => p.status === "archived").length },
   ];
@@ -186,6 +187,8 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
                         variant={
                           page.status === "published"
                             ? "success"
+                            : page.status === "scheduled"
+                            ? "primary"
                             : page.status === "archived"
                             ? "secondary"
                             : "warning"
@@ -193,6 +196,8 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
                       >
                         {page.status === "published"
                           ? t("statusPublished")
+                          : page.status === "scheduled"
+                          ? t("statusScheduled")
                           : page.status === "archived"
                           ? t("statusArchived")
                           : t("statusDraft")}

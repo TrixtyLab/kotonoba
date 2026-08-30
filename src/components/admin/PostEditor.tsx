@@ -27,7 +27,7 @@ import {
   List, ListOrdered, Quote, Minus, Undo, Redo, Image as ImageIcon,
   Sparkles, Save, ArrowLeft, Clock, FileText, CheckCircle2,
   Folder, Tag, Link2, X, Eye, SlidersHorizontal, Upload, Loader2,
-  PlaySquare, RefreshCw, Globe, Send, QrCode, Copy, Share2, ExternalLink
+  PlaySquare, RefreshCw, Globe, Send, QrCode, Copy, Share2, ExternalLink, CalendarClock
 } from "lucide-react";
 import { parseEmbedUrl, extractSteamId, extractItchId, extractYouTubeId, extractVimeoId } from "@/lib/utils/embeds";
 
@@ -39,7 +39,7 @@ export interface PostEditorProps {
   siteId: string;
   /** Operating mode: regular blog post or standalone custom static page. */
   mode?: "post" | "page";
-  /** List of supported BCP 47 locale codes enabled for authoring. */
+  /** Optional array of supported locale codes configured for the active blog site. */
   supportedLocales?: string[];
   /** Flag indicating whether the Dub.co link shortening integration is enabled. */
   isDubEnabled?: boolean;
@@ -51,7 +51,8 @@ export interface PostEditorProps {
     contentMd: string;
     excerpt: string;
     coverImage: string | null;
-    status: "draft" | "published" | "archived";
+    status: "draft" | "published" | "scheduled" | "archived";
+    publishedAt?: string | Date | null;
     locale: string;
     pinned?: boolean;
     shortUrl?: string | null;
@@ -183,12 +184,25 @@ export function PostEditor({
     return ALL_LANGUAGE_OPTIONS.filter((opt) => allowedLocales.includes(opt.value));
   }, [allowedLocales]);
 
+  const formatDateTimeLocal = (date?: Date | string | null): string => {
+    if (!date) {
+      const d = new Date();
+      d.setHours(d.getHours() + 1, 0, 0, 0);
+      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+    const d = new Date(date);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   const [title, setTitle] = useState(initialPost?.title || "");
   const [slug, setSlug] = useState(initialPost?.slug || "");
   const [contentHtml, setContentHtml] = useState(initialPost?.contentMd || "");
   const [excerpt, setExcerpt] = useState(initialPost?.excerpt || "");
   const [coverImage, setCoverImage] = useState(initialPost?.coverImage || "");
-  const [status, setStatus] = useState<"draft" | "published" | "archived">(initialPost?.status || "draft");
+  const [status, setStatus] = useState<"draft" | "published" | "scheduled" | "archived">(initialPost?.status || "draft");
+  const [scheduledAt, setScheduledAt] = useState<string>(
+    initialPost?.publishedAt ? formatDateTimeLocal(initialPost.publishedAt) : formatDateTimeLocal()
+  );
   const [locale, setLocale] = useState(initialPost?.locale || allowedLocales[0] || "es");
   const [pinned, setPinned] = useState(initialPost?.pinned ?? false);
   const [shortUrl, setShortUrl] = useState(initialPost?.shortUrl || "");
@@ -516,7 +530,7 @@ export function PostEditor({
     }
   }
 
-  async function handleSave(forcedStatus?: "draft" | "published" | "archived") {
+  async function handleSave(forcedStatus?: "draft" | "published" | "scheduled" | "archived") {
     const saveStatus = forcedStatus !== undefined ? forcedStatus : status;
     const rawContent = editor ? editor.getHTML() : contentHtml;
 
@@ -533,6 +547,7 @@ export function PostEditor({
       excerpt,
       coverImage,
       status: saveStatus,
+      publishedAt: saveStatus === "scheduled" ? (scheduledAt ? new Date(scheduledAt) : new Date()) : undefined,
       locale,
       pinned,
       shortUrl: shortUrl || undefined,
@@ -550,6 +565,7 @@ export function PostEditor({
           excerpt,
           coverImage,
           status: saveStatus,
+          publishedAt: saveStatus === "scheduled" ? (scheduledAt ? new Date(scheduledAt) : new Date()) : undefined,
           locale,
         };
 
@@ -560,6 +576,8 @@ export function PostEditor({
             toast.success(
               saveStatus === "published"
                 ? t("pagePublishedUpdated")
+                : saveStatus === "scheduled"
+                ? t("pageScheduled")
                 : saveStatus === "archived"
                 ? t("pageArchived")
                 : t("pageDraftSaved")
@@ -572,7 +590,13 @@ export function PostEditor({
           const res = await createPage(siteId, pagePayload);
           if (res.success) {
             setStatus(saveStatus);
-            toast.success(saveStatus === "published" ? t("pagePublished") : t("pageDraftCreated"));
+            toast.success(
+              saveStatus === "published"
+                ? t("pagePublished")
+                : saveStatus === "scheduled"
+                ? t("pageScheduled")
+                : t("pageDraftCreated")
+            );
             router.push(`/admin/pages/${res.pageId}`);
           } else {
             toast.error(res.error || t("pageCreateError"));
@@ -588,6 +612,8 @@ export function PostEditor({
           toast.success(
             saveStatus === "published"
               ? t("postPublishedUpdated")
+              : saveStatus === "scheduled"
+              ? t("postScheduled")
               : saveStatus === "archived"
               ? t("postArchived")
               : t("postDraftSaved")
@@ -600,7 +626,13 @@ export function PostEditor({
         const res = await createPost(siteId, payload);
         if (res.success) {
           setStatus(saveStatus);
-          toast.success(saveStatus === "published" ? t("postPublished") : t("postDraftCreated"));
+          toast.success(
+            saveStatus === "published"
+              ? t("postPublished")
+              : saveStatus === "scheduled"
+              ? t("postScheduled")
+              : t("postDraftCreated")
+          );
           router.push(`/admin/posts/${res.postId}`);
         } else {
           toast.error(res.error || t("postCreateError"));
@@ -863,7 +895,7 @@ export function PostEditor({
             {t("aiAssistant")}
           </Button>
 
-          {status !== "published" && (
+          {status !== "published" && status !== "scheduled" && (
             <Button
               variant="outline"
               size="sm"
@@ -880,9 +912,15 @@ export function PostEditor({
             size="sm"
             onClick={() => handleSave(status === "draft" ? "published" : status)}
             loading={isPending}
-            icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+            icon={status === "scheduled" ? <CalendarClock className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
           >
-            {status === "published" ? t("saveChanges") : status === "archived" ? t("saveArchived") : t("publish")}
+            {status === "published"
+              ? t("saveChanges")
+              : status === "scheduled"
+              ? t("schedulePublication")
+              : status === "archived"
+              ? t("saveArchived")
+              : t("publish")}
           </Button>
         </div>
       </div>
@@ -1155,13 +1193,32 @@ export function PostEditor({
                 <Select
                   label={t("publishStatus")}
                   value={status}
-                  onChange={(val) => setStatus(val as "draft" | "published" | "archived")}
+                  onChange={(val) => setStatus(val as "draft" | "published" | "scheduled" | "archived")}
                   options={[
                     { value: "draft", label: t("draftHidden") },
                     { value: "published", label: t("publishedVisible") },
+                    { value: "scheduled", label: t("scheduledOption") },
                     { value: "archived", label: t("archived") },
                   ]}
                 />
+
+                {status === "scheduled" && (
+                  <div className="space-y-1.5 p-3 rounded-lg bg-surface-hover/50 border border-border">
+                    <label className="text-xs font-semibold text-text flex items-center gap-1.5">
+                      <CalendarClock className="w-3.5 h-3.5 text-accent" />
+                      <span>{t("scheduleDate")}</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      className="w-full bg-surface border border-border rounded-lg px-3 py-1.5 text-xs text-text focus:outline-hidden focus:ring-1 focus:ring-accent font-mono"
+                    />
+                    <p className="text-[11px] text-text-muted">
+                      {t("scheduleHint")}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Categories & Taxonomy (Vertical List) */}

@@ -75,7 +75,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   const initialDefaultLocale = site.locale || "en";
   const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
 
-  // Main / Default details
   const [defaultName, setDefaultName] = useState(() =>
     getLocalizedText(site.name, initialDefaultLocale)
   );
@@ -86,7 +85,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
     getLocalizedText(site.description, initialDefaultLocale)
   );
 
-  // Additional translations
   const [translations, setTranslations] = useState<AdditionalTranslation[]>(() => {
     const rawNames = getLocalizedMap(site.name, []);
     const rawSubtitles = getLocalizedMap(site.subtitle, []);
@@ -112,7 +110,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
     return list;
   });
 
-  // Selected languages for the public blog switcher
   const [selectedLocales, setSelectedLocales] = useState<string[]>(() => {
     if (site.supportedLocales) {
       try {
@@ -121,7 +118,7 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
           return parsed;
         }
       } catch {
-        // Fallback to default
+        // Continue on invalid json
       }
     }
     return ["en"];

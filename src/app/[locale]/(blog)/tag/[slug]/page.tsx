@@ -2,6 +2,7 @@ import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, tags, postTags, postCategories, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { notFound } from "next/navigation";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
@@ -79,6 +80,8 @@ export default async function TagPage({
   const t = await getTranslations({ locale, namespace: "blog" });
 
   const db = getDb();
+  await publishScheduledPosts(site.id);
+
   const tag = db.select().from(tags).where(and(eq(tags.siteId, site.id), eq(tags.slug, slug))).get();
   if (!tag) notFound();
 
@@ -102,7 +105,7 @@ export default async function TagPage({
     .from(postTags)
     .innerJoin(posts, eq(postTags.postId, posts.id))
     .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(postTags.tagId, tag.id), eq(posts.status, "published")))
+    .where(and(eq(postTags.tagId, tag.id), getPublicPostCondition()))
     .orderBy(desc(posts.publishedAt))
     .all();
 
@@ -127,10 +130,10 @@ export default async function TagPage({
   const totalPages = Math.max(1, Math.ceil(matchingPosts.length / 5));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Post Stream */}
       <div className="lg:col-span-8 min-w-0 w-full space-y-10">
-        <div className="pb-4 border-b border-border/70">
+        <div className="pb-4 border-b border-border/40">
           <p className="text-xs text-text-muted">{t("tag")}</p>
           <h1 className="text-2xl font-bold text-text mt-1">#{tag.name}</h1>
         </div>
@@ -141,7 +144,7 @@ export default async function TagPage({
             <p className="text-sm text-text-muted">{t("noPosts")}</p>
           </div>
         ) : (
-          <div className="space-y-12">
+          <div className="space-y-8">
             {matchingPosts.map((post) => (
               <PostCard key={post.id} post={post} locale={locale} />
             ))}
