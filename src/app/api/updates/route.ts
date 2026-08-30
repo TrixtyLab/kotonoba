@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkForUpdates } from "@/actions/updates";
+import { checkForUpdates, getCurrentVersion } from "@/actions/updates";
 
 /**
  * Public/Admin endpoint returning application update status and version metrics.
@@ -15,11 +15,12 @@ export async function GET(): Promise<NextResponse> {
       },
     });
   } catch {
+    const currentVersion = await getCurrentVersion().catch(() => "1.0.19");
     return NextResponse.json(
       {
         updateAvailable: false,
-        currentVersion: "1.0.0",
-        latestVersion: "1.0.0",
+        currentVersion,
+        latestVersion: currentVersion,
         releaseUrl: "https://github.com/TrixtyLab/kotonoba/releases",
         containerUrl: "https://github.com/TrixtyLab/kotonoba/pkgs/container/kotonoba",
       },

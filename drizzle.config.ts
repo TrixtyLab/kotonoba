@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./src/lib/db/migrations",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DB_PATH || "./data/blog.db",
+    url: process.env.DB_PATH || "./data/kotonoba.db",
   },
 });
