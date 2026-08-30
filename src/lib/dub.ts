@@ -39,6 +39,52 @@ export interface DubLinkResult {
 }
 
 /**
+ * Representation of a tracked link record retrieved from Dub.co.
+ */
+export interface DubLinkItem {
+  /** Dub.co link record identifier. */
+  id: string;
+  /** Branded or default domain of the short link. */
+  domain: string;
+  /** Short link slug / key. */
+  key: string;
+  /** Target destination long URL. */
+  url: string;
+  /** Fully qualified short URL string. */
+  shortLink: string;
+  /** Total lifetime clicks recorded for this link. */
+  clicks: number;
+  /** Number of generated leads (if conversion tracking enabled). */
+  leads: number;
+  /** Number of completed sales (if revenue tracking enabled). */
+  sales: number;
+  /** URL to the generated dynamic QR code image. */
+  qrCode?: string;
+  /** ISO timestamp string representing link creation time. */
+  createdAt: string;
+  /** ISO timestamp string of the most recent click event, or null if unclicked. */
+  lastClicked?: string | null;
+}
+
+/**
+ * Aggregated metrics summary of all active Dub.co shortlinks across the blog deployment.
+ */
+export interface DubAnalyticsSummary {
+  /** Boolean flag indicating if DUB_API_KEY is configured in the environment. */
+  isConfigured: boolean;
+  /** Active custom or default Dub.co domain. */
+  domain: string;
+  /** Aggregated sum of clicks across all tracked links. */
+  totalClicks: number;
+  /** Total count of tracked short links. */
+  totalLinks: number;
+  /** Array of individual link records sorted by click count descending. */
+  links: DubLinkItem[];
+  /** The most clicked shortlink record, or null if no links exist. */
+  topLink: DubLinkItem | null;
+}
+
+/**
  * Checks whether the Dub.co integration API key is configured in the environment.
  *
  * @returns True if DUB_API_KEY is present and non-empty, false otherwise.
@@ -109,3 +155,141 @@ export async function createDubLink(options: DubCreateLinkOptions): Promise<DubL
     return null;
   }
 }
+
+/**
+ * Fetches all tracked links and their click analytics from the Dub.co REST API.
+ *
+ * @param customDomain - Optional custom domain filter.
+ * @returns A Promise resolving to an array of DubLinkItem records.
+ */
+export async function getDubLinks(customDomain?: string): Promise<DubLinkItem[]> {
+  const apiKey = process.env.DUB_API_KEY?.trim();
+  if (!apiKey) return [];
+
+  const domain = customDomain || process.env.DUB_DOMAIN || "dub.sh";
+
+  try {
+    const url = new URL("https://api.dub.co/links");
+    if (domain) {
+      url.searchParams.set("domain", domain);
+    }
+    url.searchParams.set("pageSize", "100");
+    url.searchParams.set("sort", "clicks");
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      next: { revalidate: 60 },
+    });
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.map((item: any) => {
+      const shortUrl = item.shortLink || `https://${item.domain}/${item.key}`;
+      return {
+        id: String(item.id || ""),
+        domain: String(item.domain || domain),
+        key: String(item.key || ""),
+        url: String(item.url || ""),
+        shortLink: shortUrl,
+        clicks: typeof item.clicks === "number" ? item.clicks : 0,
+        leads: typeof item.leads === "number" ? item.leads : 0,
+        sales: typeof item.sales === "number" ? item.sales : 0,
+        qrCode: item.qrCode || `https://api.dub.co/qr?url=${encodeURIComponent(shortUrl)}`,
+        createdAt: item.createdAt || new Date().toISOString(),
+        lastClicked: item.lastClicked || null,
+      };
+    });
+  } catch (error) {
+    console.warn("Failed to fetch links from Dub.co API:", error);
+    return [];
+  }
+}
+
+/**
+ * Compiles a comprehensive analytics summary of all active Dub.co shortlinks.
+ *
+ * @param customDomain - Optional custom domain filter.
+ * @returns A Promise resolving to a DubAnalyticsSummary object.
+ */
+export async function getDubAnalyticsSummary(customDomain?: string): Promise<DubAnalyticsSummary> {
+  const isConfigured = isDubConfigured();
+  const domain = customDomain || process.env.DUB_DOMAIN || "dub.sh";
+
+  if (!isConfigured) {
+    return {
+      isConfigured: false,
+      domain,
+      totalClicks: 0,
+      totalLinks: 0,
+      links: [],
+      topLink: null,
+    };
+  }
+
+  const links = await getDubLinks(domain);
+  const totalClicks = links.reduce((acc, l) => acc + l.clicks, 0);
+  const sortedLinks = [...links].sort((a, b) => b.clicks - a.clicks);
+  const topLink = sortedLinks.length > 0 ? sortedLinks[0] : null;
+
+  return {
+    isConfigured: true,
+    domain,
+    totalClicks,
+    totalLinks: links.length,
+    links: sortedLinks,
+    topLink,
+  };
+}
+
+/**
+ * Retrieves detailed link information, real-time clicks, and QR assets for a specific Dub link ID.
+ *
+ * @param linkId - Unique Dub.co link identifier.
+ * @returns A Promise resolving to a DubLinkItem or null.
+ */
+export async function getDubLinkInfo(linkId: string): Promise<DubLinkItem | null> {
+  const apiKey = process.env.DUB_API_KEY?.trim();
+  if (!apiKey || !linkId) return null;
+
+  try {
+    const res = await fetch(`https://api.dub.co/links/${encodeURIComponent(linkId)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      next: { revalidate: 30 },
+    });
+
+    if (!res.ok) return null;
+    const item = await res.json();
+    const shortUrl = item.shortLink || `https://${item.domain}/${item.key}`;
+    return {
+      id: String(item.id || ""),
+      domain: String(item.domain || ""),
+      key: String(item.key || ""),
+      url: String(item.url || ""),
+      shortLink: shortUrl,
+      clicks: typeof item.clicks === "number" ? item.clicks : 0,
+      leads: typeof item.leads === "number" ? item.leads : 0,
+      sales: typeof item.sales === "number" ? item.sales : 0,
+      qrCode: item.qrCode || `https://api.dub.co/qr?url=${encodeURIComponent(shortUrl)}`,
+      createdAt: item.createdAt || new Date().toISOString(),
+      lastClicked: item.lastClicked || null,
+    };
+  } catch (error) {
+    console.warn("Failed to fetch link info from Dub.co:", error);
+    return null;
+  }
+}
+
+

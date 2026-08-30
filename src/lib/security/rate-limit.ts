@@ -34,7 +34,7 @@ export const RATE_LIMITS = {
   default: { maxRequests: 100, windowMs: 60_000 },
   auth: { maxRequests: 10, windowMs: 60_000 },
   upload: { maxRequests: 20, windowMs: 60_000 },
-  analytics: { maxRequests: 60, windowMs: 60_000 },
+  analytics: { maxRequests: 120, windowMs: 60_000 },
   ai: { maxRequests: 30, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 

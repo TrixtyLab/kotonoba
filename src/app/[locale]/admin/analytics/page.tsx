@@ -22,10 +22,15 @@ import {
   FileText,
   ExternalLink,
   Plus,
+  Link2,
+  MousePointerClick,
+  QrCode,
+  Edit3,
 } from "lucide-react";
 import { Link } from "@/i18n/routing";
 import { ResetAnalyticsButton } from "@/components/admin/analytics/ResetAnalyticsButton";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { getDubAnalyticsSummary } from "@/lib/dub";
 
 /**
  * Normalizes raw HTTP Referrer strings into clean root domain names.
@@ -225,6 +230,9 @@ export default async function AdminAnalyticsPage({
   const maxPageViews = Math.max(1, ...topPages.map((p) => p.views));
   const maxPathViews = Math.max(1, ...topPaths.map((p) => p.count));
 
+  const dubSummary = await getDubAnalyticsSummary();
+  const maxDubClicks = Math.max(1, ...dubSummary.links.map((l) => l.clicks));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -241,7 +249,7 @@ export default async function AdminAnalyticsPage({
         <ResetAnalyticsButton siteId={site.id} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${dubSummary.isConfigured ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-4`}>
         <div className="p-4 rounded-xl bg-surface border border-border flex items-center gap-3.5 shadow-xs">
           <div className="w-10 h-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
             <Eye className="w-5 h-5" />
@@ -261,6 +269,18 @@ export default async function AdminAnalyticsPage({
             <p className="text-xl font-bold text-text tabular-nums mt-0.5">{uniqueVisitors.toLocaleString()}</p>
           </div>
         </div>
+
+        {dubSummary.isConfigured && (
+          <div className="p-4 rounded-xl bg-surface border border-border flex items-center gap-3.5 shadow-xs">
+            <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+              <MousePointerClick className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-text-muted">{t("dubTotalClicks")}</p>
+              <p className="text-xl font-bold text-text tabular-nums mt-0.5">{dubSummary.totalClicks.toLocaleString()}</p>
+            </div>
+          </div>
+        )}
 
         <div className="p-4 rounded-xl bg-surface border border-border flex items-center gap-3.5 shadow-xs">
           <div className="w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
@@ -320,6 +340,116 @@ export default async function AdminAnalyticsPage({
         </div>
       </div>
 
+      {/* Dub.co Analytics Section */}
+      {dubSummary.isConfigured && (
+        <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-border gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                <Link2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-text flex items-center gap-2">
+                  <span>{t("dubAnalytics")}</span>
+                  <span className="text-[10px] font-mono font-normal bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    {dubSummary.domain}
+                  </span>
+                </h2>
+                <p className="text-xs text-text-muted mt-0.5">{t("dubSubtitle")}</p>
+              </div>
+            </div>
+            <a
+              href="https://app.dub.co"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold text-accent hover:underline flex items-center gap-1 self-start sm:self-center"
+            >
+              <span>{t("dubViewInDub")}</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div className="p-3.5 rounded-lg bg-surface-hover/40 border border-border/70">
+              <p className="text-[11px] font-medium text-text-muted">{t("dubTotalClicks")}</p>
+              <p className="text-lg font-bold text-text tabular-nums mt-0.5">{dubSummary.totalClicks.toLocaleString()}</p>
+            </div>
+            <div className="p-3.5 rounded-lg bg-surface-hover/40 border border-border/70">
+              <p className="text-[11px] font-medium text-text-muted">{t("dubTrackedLinks")}</p>
+              <p className="text-lg font-bold text-text tabular-nums mt-0.5">{dubSummary.totalLinks.toLocaleString()}</p>
+            </div>
+            <div className="p-3.5 rounded-lg bg-surface-hover/40 border border-border/70">
+              <p className="text-[11px] font-medium text-text-muted">{t("dubTopLink")}</p>
+              <p className="text-sm font-semibold text-accent truncate mt-1">
+                {dubSummary.topLink ? (
+                  <a href={dubSummary.topLink.shortLink} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {dubSummary.topLink.shortLink.replace(/^https?:\/\//, "")} ({dubSummary.topLink.clicks} {t("dubClicks")})
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            {dubSummary.links.map((link) => {
+              const pct = Math.round((link.clicks / maxDubClicks) * 100);
+              return (
+                <div key={link.id} className="space-y-1.5 p-3 rounded-lg bg-surface-hover/30 border border-border/60 hover:border-border transition-colors">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <a
+                          href={link.shortLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono font-semibold text-accent hover:underline flex items-center gap-1"
+                        >
+                          <span>{link.shortLink}</span>
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                        </a>
+                        {link.qrCode && (
+                          <a
+                            href={link.qrCode}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-text-muted hover:text-text flex items-center gap-1 bg-surface-hover px-1.5 py-0.5 rounded border border-border/60"
+                            title={t("dubQrCode")}
+                          >
+                            <QrCode className="w-3 h-3" />
+                            <span>{t("dubQrCode")}</span>
+                          </a>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-text-muted truncate">
+                        <span className="font-medium text-text-muted/80">{t("dubTarget")}: </span>
+                        {link.url}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                      <span className="font-mono text-xs font-semibold text-text bg-surface-hover px-2.5 py-1 rounded-md border border-border/60">
+                        {link.clicks.toLocaleString()} {t("dubClicks")}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.max(link.clicks > 0 ? 5 : 0, pct)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            {dubSummary.links.length === 0 && (
+              <p className="text-xs text-text-muted py-6 text-center">{t("dubNoLinksYet")}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-8 space-y-6">
           {/* Most Viewed Articles */}
@@ -341,18 +471,36 @@ export default async function AdminAnalyticsPage({
                 return (
                   <div key={p.id} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <Link
-                        href={`/admin/posts/${p.id}`}
-                        className="font-medium text-text hover:text-accent transition-colors truncate max-w-sm flex items-center gap-1.5"
-                      >
-                        <span>{p.title}</span>
+                      <div className="flex items-center gap-1.5 min-w-0 max-w-sm">
+                        <Link
+                          href={`/admin/analytics/${p.id}`}
+                          className="font-medium text-text hover:text-accent transition-colors truncate flex items-center gap-1.5"
+                          title={t("viewDetailedAnalytics")}
+                        >
+                          <span>{p.title}</span>
+                        </Link>
                         {p.shortUrl && (
                           <span className="text-[10px] font-mono text-accent bg-accent/10 px-1.5 py-0.2 rounded shrink-0">
                             Dub
                           </span>
                         )}
-                      </Link>
-                      <span className="font-mono text-text-muted shrink-0 ml-2">{p.views.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <Link
+                          href={`/admin/analytics/${p.id}`}
+                          className="font-mono text-text-muted hover:text-accent font-semibold transition-colors"
+                          title={t("viewDetailedAnalytics")}
+                        >
+                          {p.views.toLocaleString()}
+                        </Link>
+                        <Link
+                          href={`/admin/posts/${p.id}`}
+                          className="text-text-muted hover:text-accent p-0.5 rounded transition-colors"
+                          title={tc("edit")}
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </Link>
+                      </div>
                     </div>
                     <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
                       <div
@@ -391,8 +539,9 @@ export default async function AdminAnalyticsPage({
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2 min-w-0 max-w-sm">
                         <Link
-                          href={`/admin/pages/${p.id}`}
+                          href={`/admin/analytics/${p.id}`}
                           className="font-medium text-text hover:text-accent transition-colors truncate"
+                          title={t("viewDetailedAnalytics")}
                         >
                           <span>{p.title}</span>
                         </Link>
@@ -406,7 +555,22 @@ export default async function AdminAnalyticsPage({
                           <ExternalLink className="w-3 h-3" />
                         </a>
                       </div>
-                      <span className="font-mono text-text-muted shrink-0 ml-2">{p.views.toLocaleString()}</span>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <Link
+                          href={`/admin/analytics/${p.id}`}
+                          className="font-mono text-text-muted hover:text-accent font-semibold transition-colors"
+                          title={t("viewDetailedAnalytics")}
+                        >
+                          {p.views.toLocaleString()}
+                        </Link>
+                        <Link
+                          href={`/admin/pages/${p.id}`}
+                          className="text-text-muted hover:text-accent p-0.5 rounded transition-colors"
+                          title={tc("edit")}
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </Link>
+                      </div>
                     </div>
                     <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
                       <div
