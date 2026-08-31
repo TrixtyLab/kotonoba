@@ -6,8 +6,9 @@ import { PostsListClient } from "@/components/admin/PostsListClient";
 /**
  * Server page component loading and rendering the administrative posts management table for the active blog site.
  *
- * @param props - Object containing route params Promise with active locale.
- * @returns React JSX posts list view.
+ * @param {Object} props - Component properties.
+ * @param {Promise<{ locale: string }>} props.params - Promise resolving to route parameters with active locale code.
+ * @returns {Promise<React.JSX.Element>} React JSX posts list view.
  */
 export default async function AdminPostsPage({
   params,

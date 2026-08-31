@@ -227,8 +227,52 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
   }
 
   try {
-    db.run(sql`UPDATE analytics SET created_at = timestamp WHERE created_at = 0 AND timestamp IS NOT NULL`);
-  } catch {}
+    const tableInfo = db.all<{ name: string }>(sql`PRAGMA table_info(analytics)`);
+    const hasTimestamp = tableInfo.some((col) => col.name === "timestamp");
+    if (hasTimestamp) {
+      try {
+        db.run(sql`UPDATE analytics SET created_at = timestamp WHERE (created_at = 0 OR created_at IS NULL) AND timestamp IS NOT NULL`);
+        db.run(sql`ALTER TABLE analytics DROP COLUMN timestamp`);
+      } catch {
+        db.run(sql`
+          CREATE TABLE analytics_migration_temp (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+            post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+            page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,
+            path TEXT NOT NULL,
+            referrer TEXT DEFAULT '',
+            user_agent TEXT DEFAULT '',
+            ip_hash TEXT NOT NULL DEFAULT '',
+            country TEXT DEFAULT '',
+            city TEXT DEFAULT '',
+            device TEXT DEFAULT 'desktop',
+            browser TEXT DEFAULT '',
+            os TEXT DEFAULT '',
+            utm_source TEXT,
+            utm_medium TEXT,
+            utm_campaign TEXT,
+            utm_term TEXT,
+            utm_content TEXT,
+            created_at INTEGER NOT NULL DEFAULT 0
+          );
+        `);
+        db.run(sql`
+          INSERT INTO analytics_migration_temp (id, site_id, post_id, page_id, path, referrer, user_agent, ip_hash, country, city, device, browser, os, utm_source, utm_medium, utm_campaign, utm_term, utm_content, created_at)
+          SELECT id, site_id, post_id, page_id, path, referrer, user_agent, ip_hash, country, city, device, browser, os, utm_source, utm_medium, utm_campaign, utm_term, utm_content, COALESCE(NULLIF(created_at, 0), timestamp, CAST(strftime('%s','now') AS INTEGER) * 1000)
+          FROM analytics;
+        `);
+        db.run(sql`DROP TABLE analytics;`);
+        db.run(sql`ALTER TABLE analytics_migration_temp RENAME TO analytics;`);
+        db.run(sql`CREATE INDEX IF NOT EXISTS analytics_site_idx ON analytics(site_id);`);
+        db.run(sql`CREATE INDEX IF NOT EXISTS analytics_post_idx ON analytics(post_id);`);
+        db.run(sql`CREATE INDEX IF NOT EXISTS analytics_page_idx ON analytics(page_id);`);
+        db.run(sql`CREATE INDEX IF NOT EXISTS analytics_created_idx ON analytics(created_at);`);
+      }
+    }
+  } catch (err) {
+    console.warn("Analytics legacy timestamp migration notice:", err);
+  }
 
   try {
     // Backfill browser and device for legacy analytics rows with missing browser

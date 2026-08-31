@@ -11,8 +11,9 @@ import { notFound } from "next/navigation";
 /**
  * Server page component loading an existing post by identifier and initializing the WYSIWYG editor with its contents.
  *
- * @param props - Object containing route params Promise with article ID.
- * @returns React JSX post editor view.
+ * @param {Object} props - Component properties.
+ * @param {Promise<{ id: string }>} props.params - Promise resolving to route parameters with the target post database ID.
+ * @returns {Promise<React.JSX.Element>} React JSX post editor view.
  */
 export default async function EditPostPage({
   params,
@@ -65,6 +66,7 @@ export default async function EditPostPage({
         excerpt: post.excerpt || "",
         coverImage: post.coverImage,
         status: post.status,
+        publishedAt: post.publishedAt,
         locale: post.locale,
         pinned: post.pinned,
         shortUrl: post.shortUrl,

@@ -77,7 +77,6 @@ export function MediaManagerClient({
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
-  // Modals & Actions
   const [previewFile, setPreviewFile] = useState<MediaFileItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string; isFolder: boolean } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);

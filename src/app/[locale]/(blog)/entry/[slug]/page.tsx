@@ -2,6 +2,7 @@ import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, users, categories, tags, postCategories, postTags } from "@/lib/db/schema";
 import { eq, and, desc, lt, gt, asc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils/date";
 import { ShareButtons } from "@/components/blog/ShareButtons";
@@ -16,6 +17,7 @@ import type { Metadata } from "next";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 
 /**
  * Generates OpenGraph, Twitter, and canonical SEO metadata tags for a published blog post.
@@ -37,7 +39,7 @@ export async function generateMetadata({
   const post = db
     .select()
     .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), getPublicPostCondition()))
     .get();
 
   if (!post) return { title: t("noPosts") };
@@ -98,6 +100,7 @@ export default async function PostEntryPage({
   const site = await getActiveSite();
   if (!site) notFound();
 
+  await publishScheduledPosts(site.id);
   const t = await getTranslations({ locale, namespace: "blog" });
 
   const db = getDb();
@@ -118,7 +121,7 @@ export default async function PostEntryPage({
     })
     .from(posts)
     .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), getPublicPostCondition()))
     .get();
 
   if (!post) notFound();
@@ -152,7 +155,7 @@ export default async function PostEntryPage({
         .where(
           and(
             eq(posts.siteId, site.id),
-            eq(posts.status, "published"),
+            getPublicPostCondition(),
             lt(posts.publishedAt, post.publishedAt)
           )
         )
@@ -168,7 +171,7 @@ export default async function PostEntryPage({
         .where(
           and(
             eq(posts.siteId, site.id),
-            eq(posts.status, "published"),
+            getPublicPostCondition(),
             gt(posts.publishedAt, post.publishedAt)
           )
         )
@@ -181,7 +184,7 @@ export default async function PostEntryPage({
   const latestPosts = db
     .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })
     .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
     .orderBy(desc(posts.publishedAt))
     .limit(5)
     .all();
@@ -198,7 +201,7 @@ export default async function PostEntryPage({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Article Content */}
       <article className="lg:col-span-8 min-w-0 w-full space-y-6">
         {/* Article Title */}
@@ -207,7 +210,7 @@ export default async function PostEntryPage({
         </h1>
 
         {/* Date & Categories */}
-        <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
+        <div className="flex items-center gap-2 text-xs text-text-muted flex-wrap">
           {post.publishedAt && (
             <time dateTime={post.publishedAt.toISOString()}>
               {formatDate(post.publishedAt, locale)}
@@ -216,7 +219,7 @@ export default async function PostEntryPage({
 
           {assignedCategories.length > 0 && (
             <>
-              <span>•</span>
+              <span className="text-text-muted/40">•</span>
               <div className="flex items-center gap-2 flex-wrap">
                 {assignedCategories.map((c) => (
                   <Link
@@ -252,8 +255,8 @@ export default async function PostEntryPage({
         {/* Mermaid Diagrams */}
         {mermaidDiagrams.length > 0 && (
           <div className="space-y-6 pt-4">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-text pb-2.5 border-b border-border">
-              <Sparkles className="w-4 h-4 text-primary" />
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-text pb-2.5 border-b border-border/40">
+              <Sparkles className="w-4 h-4 text-accent" />
               <span>Diagrams ({mermaidDiagrams.length})</span>
             </div>
             {mermaidDiagrams.map((chart, idx) => (
@@ -263,7 +266,7 @@ export default async function PostEntryPage({
         )}
 
         {/* Bottom Reactions & Tags Bar */}
-        <div className="pt-8 border-t border-border/70 flex flex-wrap items-center justify-between gap-4 text-xs text-text-muted">
+        <div className="pt-6 border-t border-border/40 flex flex-wrap items-center justify-between gap-4 text-xs text-text-muted">
           <div className="flex items-center gap-4">
             <LikeButton postId={post.id} initialLikes={Math.floor((post.views || 0) / 8)} size="md" />
 
@@ -283,7 +286,7 @@ export default async function PostEntryPage({
                 <Link
                   key={t.id}
                   href={`/tag/${t.slug}`}
-                  className="hover:text-primary transition-colors"
+                  className="hover:text-accent transition-colors"
                 >
                   {t.name}
                 </Link>
@@ -293,20 +296,25 @@ export default async function PostEntryPage({
         </div>
 
         {/* Share buttons */}
-        <div className="pt-4 flex items-center justify-between border-t border-border/50 text-xs text-text-muted">
+        <div className="pt-4 flex items-center justify-between border-t border-border/40 text-xs text-text-muted">
           <span>{t("shareArticle")}:</span>
           <ShareButtons url={shareUrl} title={post.title} />
         </div>
 
-        {/* Prev / Next article link */}
-        <div className="flex items-center justify-between pt-6 border-t border-border/50 text-xs">
+        {/* Prev / Next article navigation */}
+        <nav aria-label="Article navigation" className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-6 border-t border-border/40">
           {prevPost ? (
             <Link
               href={`/entry/${prevPost.slug}`}
-              className="hover:text-primary transition-colors inline-flex items-center gap-1 max-w-[45%] truncate"
+              className="group flex flex-col items-start p-3 rounded-lg hover:bg-surface-hover/40 transition-colors text-left"
             >
-              <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">« {t("previousPost")}: {prevPost.title}</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted group-hover:text-accent transition-colors">
+                <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+                <span>{t("previousPost")}</span>
+              </span>
+              <span className="text-sm font-semibold text-text group-hover:text-accent transition-colors line-clamp-2 mt-1">
+                {prevPost.title}
+              </span>
             </Link>
           ) : (
             <div />
@@ -315,13 +323,18 @@ export default async function PostEntryPage({
           {nextPost && (
             <Link
               href={`/entry/${nextPost.slug}`}
-              className="hover:text-primary transition-colors inline-flex items-center gap-1 max-w-[45%] truncate text-right ml-auto"
+              className="group flex flex-col items-end p-3 rounded-lg hover:bg-surface-hover/40 transition-colors text-right sm:col-start-2"
             >
-              <span className="truncate">{t("nextPost")}: {nextPost.title} »</span>
-              <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted group-hover:text-accent transition-colors">
+                <span>{t("nextPost")}</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+              <span className="text-sm font-semibold text-text group-hover:text-accent transition-colors line-clamp-2 mt-1">
+                {nextPost.title}
+              </span>
             </Link>
           )}
-        </div>
+        </nav>
       </article>
 
       <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
@@ -329,6 +342,7 @@ export default async function PostEntryPage({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
+          sidebarBanners={await getSidebarBanners(site.id)}
           locale={locale}
         />
       </div>

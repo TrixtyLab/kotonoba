@@ -26,7 +26,7 @@ export interface AdminPostRecord {
   id: string;
   title: string;
   slug: string;
-  status: "draft" | "published" | "archived";
+  status: "draft" | "published" | "scheduled" | "archived";
   locale: string;
   views: number;
   pinned: boolean;
@@ -61,6 +61,7 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
     excerpt,
     coverImage,
     status,
+    publishedAt,
     locale,
     categoryIds,
     tagIds,
@@ -73,6 +74,13 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
   const postId = generateId();
   const postSlug = slug ? generateSlug(slug) : generateSlug(title);
   const now = new Date();
+
+  let targetPublishedAt: Date | null = null;
+  if (status === "published") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : now;
+  } else if (status === "scheduled") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : now;
+  }
 
   let finalShortUrl = shortUrl || null;
   let finalDubLinkId = dubLinkId || null;
@@ -114,7 +122,7 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
       coverImage: normalizeMediaUrl(coverImage) || null,
       status,
       locale,
-      publishedAt: status === "published" ? now : null,
+      publishedAt: targetPublishedAt,
       createdAt: now,
       updatedAt: now,
       views: 0,
@@ -214,6 +222,7 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
     excerpt,
     coverImage,
     status,
+    publishedAt,
     locale,
     categoryIds,
     tagIds,
@@ -224,8 +233,17 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
 
   const postSlug = slug ? generateSlug(slug) : generateSlug(title);
   const now = new Date();
-  const publishedAt =
-    status === "published" && !existing.publishedAt ? now : status === "published" ? existing.publishedAt : null;
+
+  let targetPublishedAt: Date | null = null;
+  if (status === "published") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
+  } else if (status === "scheduled") {
+    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
+  } else if (status === "draft") {
+    targetPublishedAt = null;
+  } else {
+    targetPublishedAt = existing.publishedAt;
+  }
 
   let finalShortUrl = shortUrl !== undefined ? shortUrl : existing.shortUrl;
   let finalDubLinkId = dubLinkId !== undefined ? dubLinkId : existing.dubLinkId;
@@ -264,7 +282,7 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
       coverImage: normalizeMediaUrl(coverImage) || null,
       status,
       locale,
-      publishedAt,
+      publishedAt: targetPublishedAt,
       updatedAt: now,
       pinned,
       shortUrl: finalShortUrl,
@@ -295,7 +313,7 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
       slug: postSlug,
       excerpt,
       coverImage,
-      publishedAt: publishedAt || now,
+      publishedAt: targetPublishedAt || now,
       locale,
       shortUrl: finalShortUrl,
       tagIds,

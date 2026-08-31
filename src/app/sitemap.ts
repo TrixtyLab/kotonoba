@@ -2,6 +2,7 @@ import { MetadataRoute } from "next";
 import { getDb } from "@/lib/db";
 import { posts, pages, categories } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition, getPublicPageCondition } from "@/lib/db/scheduled";
 import { LOCALES } from "@/i18n/routing";
 import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
 
@@ -15,6 +16,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = await getCanonicalBaseUrl(site);
 
   const db = getDb();
+  if (site) {
+    await publishScheduledPosts(site.id);
+  }
 
   const publishedPosts = site
     ? db
@@ -24,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           updatedAt: posts.updatedAt,
         })
         .from(posts)
-        .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+        .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
         .orderBy(desc(posts.publishedAt))
         .limit(5000)
         .all()
@@ -37,7 +41,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           updatedAt: pages.updatedAt,
         })
         .from(pages)
-        .where(and(eq(pages.siteId, site.id), eq(pages.status, "published")))
+        .where(and(eq(pages.siteId, site.id), getPublicPageCondition()))
         .orderBy(desc(pages.updatedAt))
         .limit(1000)
         .all()

@@ -213,8 +213,24 @@ export default async function AdminDashboardPage({
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <Badge variant={post.status === "published" ? "success" : "warning"}>
-                    {post.status === "published" ? t("statusPublished") : t("statusDraft")}
+                  <Badge
+                    variant={
+                      post.status === "published"
+                        ? "success"
+                        : post.status === "scheduled"
+                        ? "primary"
+                        : post.status === "archived"
+                        ? "secondary"
+                        : "warning"
+                    }
+                  >
+                    {post.status === "published"
+                      ? t("statusPublished")
+                      : post.status === "scheduled"
+                      ? t("statusScheduled")
+                      : post.status === "archived"
+                      ? t("statusArchived")
+                      : t("statusDraft")}
                   </Badge>
                   <Link href={`/admin/posts/${post.id}`}>
                     <Button variant="ghost" size="sm" className="text-xs">

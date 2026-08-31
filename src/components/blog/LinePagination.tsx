@@ -31,17 +31,26 @@ export function LinePagination({
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   return (
-    <div className="flex items-center justify-center gap-1.5 py-10">
+    <div className="flex items-center justify-center gap-2 py-8">
+      {currentPage > 1 && (
+        <Link
+          href={`${baseUrl}?page=${currentPage - 1}`}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border/40 bg-surface/50 text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+        >
+          Previous
+        </Link>
+      )}
+
       {pages.map((p) => {
         const isActive = p === currentPage;
         return (
           <Link
             key={p}
             href={`${baseUrl}?page=${p}`}
-            className={`w-8 h-8 flex items-center justify-center text-xs font-semibold transition-colors ${
+            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold transition-all ${
               isActive
-                ? "bg-[#2563eb] text-white"
-                : "border border-border bg-surface text-text hover:bg-surface-hover"
+                ? "bg-accent text-white shadow-xs"
+                : "border border-border/40 bg-surface/50 text-text-muted hover:text-text hover:bg-surface-hover"
             }`}
           >
             {p}
@@ -52,10 +61,9 @@ export function LinePagination({
       {currentPage < totalPages && (
         <Link
           href={`${baseUrl}?page=${currentPage + 1}`}
-          className="w-8 h-8 flex items-center justify-center text-xs border border-border bg-surface text-text hover:bg-surface-hover transition-colors"
-          aria-label="Next page"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border/40 bg-surface/50 text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
         >
-          ›
+          Next
         </Link>
       )}
     </div>

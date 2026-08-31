@@ -3,14 +3,43 @@ import { getDb } from "@/lib/db";
 import { analytics, posts, pages } from "@/lib/db/schema";
 import { eq, and, gt, sql } from "drizzle-orm";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
-import { getCurrentUser } from "@/lib/auth/session";
 import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
+import { verifyToken } from "@/lib/auth/jwt";
 import crypto from "crypto";
 
 const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegram|discordbot|headless|lighthouse|pingdom|uptimerobot|preview|google-read-aloud/i;
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
- * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots, platform administrators, content authors, and duplicate visits within a 15-minute deduplication window.
+ * Handles GET health probe checks on the analytics endpoint.
+ *
+ * @returns {Promise<NextResponse>} Simple JSON probe confirmation.
+ */
+export async function GET(): Promise<NextResponse> {
+  return NextResponse.json({ status: "ok", endpoint: "/api/analytics/hit" });
+}
+
+/**
+ * Handles CORS preflight requests on the analytics endpoint.
+ *
+ * @returns {Promise<NextResponse>} Response with allowed methods.
+ */
+export async function OPTIONS(): Promise<NextResponse> {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      Allow: "POST, GET, OPTIONS",
+      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
+/**
+ * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots,
+ * logged-in administrators/authors, and duplicate visits within a 15-minute deduplication window.
  *
  * @param {NextRequest} req - Incoming beacon payload containing siteId, optional postId or pageId, path, and UTM campaign parameters.
  * @returns {Promise<NextResponse>} JSON response indicating whether the pageview was recorded, ignored, or rejected.
@@ -20,9 +49,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, ignored: "prefetch" });
   }
 
-  const rawIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ip = rawIp && rawIp.length > 0 ? rawIp : "127.0.0.1";
-  const rate = checkRateLimit(ip, RATE_LIMITS.analytics);
+  // Filter out authenticated dashboard users (super_admin, admin, author) from recording their own visits
+  const accessToken = req.cookies.get("access_token")?.value;
+  const refreshToken = req.cookies.get("refresh_token")?.value;
+  if (accessToken) {
+    const payload = await verifyToken(accessToken);
+    if (payload?.userId) {
+      return NextResponse.json({ success: true, ignored: "logged_in_user" });
+    }
+  }
+  if (refreshToken) {
+    const payload = await verifyToken(refreshToken);
+    if (payload?.userId) {
+      return NextResponse.json({ success: true, ignored: "logged_in_user" });
+    }
+  }
+
+  const rawIp =
+    req.headers.get("x-real-ip")?.trim() ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "";
+  const ip = rawIp.length > 0 ? rawIp : "0.0.0.0";
+  const rateLimitKey = `analytics:${ip}`;
+  const rate = checkRateLimit(rateLimitKey, RATE_LIMITS.analytics);
 
   if (!rate.allowed) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
@@ -55,20 +104,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const db = getDb();
     let resolvedPostId: string | null = postId || null;
     let resolvedPageId: string | null = pageId || null;
-    let authorIdToCheck: string | null = null;
 
     if (!resolvedPostId && !resolvedPageId) {
       const entryMatch = String(path).match(/(?:^|\/)entry\/([^/?#]+)/);
       if (entryMatch) {
         const postSlug = decodeURIComponent(entryMatch[1]);
         const post = db
-          .select({ id: posts.id, authorId: posts.authorId })
+          .select({ id: posts.id })
           .from(posts)
           .where(and(eq(posts.siteId, siteId), eq(posts.slug, postSlug)))
           .get();
         if (post) {
           resolvedPostId = post.id;
-          authorIdToCheck = post.authorId;
         }
       }
 
@@ -76,36 +123,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (pageMatch) {
         const pageSlug = decodeURIComponent(pageMatch[1]);
         const page = db
-          .select({ id: pages.id, authorId: pages.authorId })
+          .select({ id: pages.id })
           .from(pages)
           .where(and(eq(pages.siteId, siteId), eq(pages.slug, pageSlug)))
           .get();
         if (page) {
           resolvedPageId = page.id;
-          authorIdToCheck = page.authorId;
         }
       }
-    } else if (resolvedPostId && !authorIdToCheck) {
-      const post = db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, resolvedPostId)).get();
-      if (post) authorIdToCheck = post.authorId;
-    } else if (resolvedPageId && !authorIdToCheck) {
-      const page = db.select({ authorId: pages.authorId }).from(pages).where(eq(pages.id, resolvedPageId)).get();
-      if (page) authorIdToCheck = page.authorId;
-    }
-
-    try {
-      const currentUser = await getCurrentUser();
-      if (currentUser) {
-        if (currentUser.role === "super_admin") {
-          return NextResponse.json({ success: true, ignored: "super_admin" });
-        }
-
-        if (authorIdToCheck && authorIdToCheck === currentUser.userId) {
-          return NextResponse.json({ success: true, ignored: "author" });
-        }
-      }
-    } catch {
-      // Session retrieval failed — treat as anonymous visitor and continue recording
     }
 
     const ipHash = crypto.createHash("sha256").update(`${ip}-${userAgent}`).digest("hex").slice(0, 16);
@@ -168,8 +193,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err: unknown) {
+    console.error("[analytics/hit] Error recording pageview:", err instanceof Error ? err.message : err);
     return NextResponse.json({ success: false }, { status: 500 });
   }
 }
-

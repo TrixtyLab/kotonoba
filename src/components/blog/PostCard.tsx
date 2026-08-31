@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
 import { LikeButton } from "@/components/blog/LikeButton";
-import { Tag, Eye } from "lucide-react";
+import { Pin, Eye } from "lucide-react";
 
 /**
  * Properties configuring the PostCard feed article component.
@@ -41,27 +41,27 @@ export function PostCard({ post, locale = "en" }: PostCardProps) {
   const postUrl = `/entry/${post.slug}`;
 
   return (
-    <article className="group space-y-4 pb-14 border-b border-border/70 last:border-b-0">
+    <article className="group space-y-3 pb-8 border-b border-border/40 last:border-b-0">
       {post.coverImage && (
-        <div className="pb-1">
-          <Link href={postUrl} className="block overflow-hidden rounded-xl">
-            <img
-              src={post.coverImage}
-              alt={post.title}
-              className="max-w-full h-auto object-cover rounded-xl transition-transform duration-300 group-hover:scale-[1.01]"
-            />
-          </Link>
-        </div>
+        <Link href={postUrl} className="block overflow-hidden rounded-lg aspect-2/1 sm:aspect-16/9 bg-surface-hover/30 mb-4">
+          <img
+            src={post.coverImage}
+            alt={post.title}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+          />
+        </Link>
       )}
 
-      <h2 className="text-2xl sm:text-3xl font-bold text-text tracking-tight leading-snug">
-        <Link href={postUrl} className="group-hover:text-primary hover:text-primary transition-colors">
-          {post.title}
-        </Link>
-      </h2>
+      {/* Metadata: Date, Categories, Pinned */}
+      <div className="flex items-center gap-2 text-xs text-text-muted flex-wrap">
+        {post.pinned && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent uppercase tracking-wider">
+            <Pin className="w-3 h-3 rotate-45" />
+            <span>Featured</span>
+            <span className="text-text-muted/40">•</span>
+          </span>
+        )}
 
-      {/* Date & Categories */}
-      <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
         {post.publishedAt && (
           <time dateTime={typeof post.publishedAt === "string" ? post.publishedAt : post.publishedAt.toISOString()}>
             {formatDate(post.publishedAt, locale)}
@@ -70,7 +70,7 @@ export function PostCard({ post, locale = "en" }: PostCardProps) {
 
         {post.categories && post.categories.length > 0 && (
           <>
-            <span>•</span>
+            <span className="text-text-muted/40">•</span>
             <div className="flex items-center gap-2 flex-wrap">
               {post.categories.map((c) => (
                 <Link
@@ -86,34 +86,44 @@ export function PostCard({ post, locale = "en" }: PostCardProps) {
         )}
       </div>
 
+      {/* Headline */}
+      <h2 className="text-xl sm:text-2xl font-bold text-text tracking-tight leading-snug">
+        <Link href={postUrl} className="group-hover:text-accent transition-colors">
+          {post.title}
+        </Link>
+      </h2>
+
+      {/* Excerpt Body (Clickable to post) */}
       {post.excerpt && (
-        <div className="text-[15.5px] text-text leading-[2.1] space-y-4 pt-1">
-          <p>{post.excerpt}</p>
-        </div>
+        <Link
+          href={postUrl}
+          className="block text-sm sm:text-[15px] text-text-muted/90 leading-relaxed line-clamp-3 hover:text-text transition-colors"
+        >
+          {post.excerpt}
+        </Link>
       )}
 
-      <div className="pt-4 flex flex-wrap items-center justify-between gap-4 text-xs text-text-muted">
-        <div className="flex items-center gap-4">
+      {/* Footer bar: LikeButton, Views, Tags */}
+      <div className="pt-2 flex items-center justify-between gap-4 text-xs text-text-muted">
+        <div className="flex items-center gap-3">
           <LikeButton postId={post.id} initialLikes={Math.floor((post.views || 0) / 8)} />
-
           {post.views !== undefined && post.views > 0 && (
-            <span className="flex items-center gap-1 font-mono text-xs text-text-muted tabular-nums">
-              <Eye className="w-3.5 h-3.5" />
-              {post.views}
+            <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-muted tabular-nums">
+              <Eye className="w-3.5 h-3.5 text-text-muted/70" />
+              <span>{post.views}</span>
             </span>
           )}
         </div>
 
         {post.tags && post.tags.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
-            <Tag className="w-3.5 h-3.5 text-text-muted shrink-0" />
             {post.tags.map((t) => (
               <Link
                 key={t.id}
                 href={`/tag/${t.slug}`}
-                className="hover:text-primary transition-colors"
+                className="text-[11px] text-text-muted hover:text-accent transition-colors"
               >
-                {t.name}
+                #{t.name}
               </Link>
             ))}
           </div>

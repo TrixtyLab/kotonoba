@@ -79,12 +79,10 @@ export function UsersManagerClient({
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [siteFilter, setSiteFilter] = useState<string>("all");
 
-  // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserRecord | null>(null);
 
-  // Form State
   const [formDisplayName, setFormDisplayName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPassword, setFormPassword] = useState("");
@@ -93,7 +91,6 @@ export function UsersManagerClient({
   const [formAvatarUrl, setFormAvatarUrl] = useState("");
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
 
-  // Stats calculation
   const stats = useMemo(() => {
     const total = users.length;
     const superAdmins = users.filter((u) => u.role === "super_admin").length;
@@ -103,7 +100,6 @@ export function UsersManagerClient({
     return { total, superAdmins, admins, editors, authors };
   }, [users]);
 
-  // Filtered list
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       const matchesSearch =

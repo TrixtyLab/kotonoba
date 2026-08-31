@@ -5,7 +5,7 @@ import { Link } from "@/i18n/routing";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { deletePost } from "@/actions/posts";
-import { Search, Eye, Edit3, Trash2, Pin, ExternalLink, Plus, FileText } from "lucide-react";
+import { Search, Eye, Edit3, Trash2, Pin, ExternalLink, Plus, FileText, BarChart3 } from "lucide-react";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
@@ -21,7 +21,7 @@ export interface PostItem {
   /** URL slug string. */
   slug: string;
   /** Publication lifecycle status. */
-  status: "draft" | "published" | "archived";
+  status: "draft" | "published" | "scheduled" | "archived";
   /** Language locale code. */
   locale: string;
   /** View count metric. */
@@ -45,6 +45,7 @@ export interface PostItem {
 export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) {
   const t = useTranslations("admin");
   const tc = useTranslations("common");
+  const ta = useTranslations("analytics");
   const toast = useToast();
   const [posts, setPosts] = useState(initialPosts);
   const [search, setSearch] = useState("");
@@ -78,6 +79,7 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
   const statusOptions = [
     { key: "all", label: tc("all"), count: posts.length },
     { key: "published", label: t("publishedPosts"), count: posts.filter((p) => p.status === "published").length },
+    { key: "scheduled", label: t("scheduledPosts"), count: posts.filter((p) => p.status === "scheduled").length },
     { key: "draft", label: t("draftPosts"), count: posts.filter((p) => p.status === "draft").length },
     { key: "archived", label: t("statusArchived"), count: posts.filter((p) => p.status === "archived").length },
   ];
@@ -164,24 +166,35 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                     </span>
                   </td>
                   <td className="p-3.5">
-                    <Badge variant={post.status === "published" ? "success" : post.status === "archived" ? "secondary" : "warning"}>
-                      {post.status === "published" ? t("statusPublished") : post.status === "archived" ? t("statusArchived") : t("statusDraft")}
+                    <Badge variant={post.status === "published" ? "success" : post.status === "scheduled" ? "primary" : post.status === "archived" ? "secondary" : "warning"}>
+                      {post.status === "published" ? t("statusPublished") : post.status === "scheduled" ? t("statusScheduled") : post.status === "archived" ? t("statusArchived") : t("statusDraft")}
                     </Badge>
                   </td>
                   <td className="p-3.5 uppercase font-mono text-[10px] text-text-muted font-semibold">
                     {post.locale}
                   </td>
                   <td className="p-3.5 font-mono text-xs">
-                    <span className="inline-flex items-center gap-1 text-text-muted">
+                    <Link
+                      href={`/admin/analytics/${post.id}`}
+                      className="inline-flex items-center gap-1 text-text-muted hover:text-accent font-semibold transition-colors"
+                      title={ta("viewDetailedAnalytics")}
+                    >
                       <Eye className="w-3 h-3" />
-                      {post.views}
-                    </span>
+                      <span>{post.views}</span>
+                    </Link>
                   </td>
                   <td className="p-3.5 text-text-muted text-xs whitespace-nowrap">
                     {post.publishedAtFormatted || post.createdAtFormatted}
                   </td>
                   <td className="p-3.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1">
+                      <Link
+                        href={`/admin/analytics/${post.id}`}
+                        className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
+                        title={ta("viewDetailedAnalytics")}
+                      >
+                        <BarChart3 className="w-3.5 h-3.5" />
+                      </Link>
                       {post.status === "published" && (
                         <Link
                           href={`/entry/${post.slug}`}

@@ -2,6 +2,7 @@ import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { formatDate } from "@/lib/utils/date";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { Link } from "@/i18n/routing";
@@ -11,6 +12,7 @@ import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 
 /**
  * Generates SEO metadata for the chronological blog archive.
@@ -74,6 +76,10 @@ export default async function ArchivePage({
   const db = getDb();
   const t = await getTranslations({ locale, namespace: "blog" });
 
+  if (site) {
+    await publishScheduledPosts(site.id);
+  }
+
   const allPosts = site
     ? db
         .select({
@@ -85,7 +91,7 @@ export default async function ArchivePage({
           views: posts.views,
         })
         .from(posts)
-        .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+        .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
         .orderBy(desc(posts.publishedAt))
         .all()
     : [];
@@ -102,10 +108,10 @@ export default async function ArchivePage({
   const years = Object.keys(groupedByYear).sort((a, b) => Number(b) - Number(a));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Chronological Post List */}
       <div className="lg:col-span-8 min-w-0 w-full space-y-10">
-        <div className="pb-4 border-b border-border/70">
+        <div className="pb-4 border-b border-border/40">
           <h1 className="text-2xl font-bold text-text">{t("archive")}</h1>
           <p className="text-xs text-text-muted mt-1">{t("totalArticles", { count: allPosts.length })}</p>
         </div>
@@ -113,7 +119,7 @@ export default async function ArchivePage({
         <div className="space-y-10">
           {years.map((year) => (
             <section key={year} className="space-y-4">
-              <h2 className="text-base font-bold text-text pb-2 border-b border-border/60">
+              <h2 className="text-base font-bold text-text pb-2 border-b border-border/40">
                 {year}
               </h2>
 
@@ -122,12 +128,12 @@ export default async function ArchivePage({
                   <li key={post.id} className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 text-sm">
                     <Link
                       href={`/entry/${post.slug}`}
-                      className="hover:text-primary transition-colors font-medium line-clamp-1"
+                      className="hover:text-accent transition-colors font-medium line-clamp-1"
                     >
                       {post.title}
                     </Link>
                     {post.publishedAt && (
-                      <span className="text-xs text-text-muted shrink-0">
+                      <span className="text-xs text-text-muted shrink-0 font-mono">
                         {formatDate(post.publishedAt, locale)}
                       </span>
                     )}
@@ -152,6 +158,7 @@ export default async function ArchivePage({
           site={site || { name: "Blog" }}
           latestPosts={allPosts.slice(0, 5)}
           categories={allCategories}
+          sidebarBanners={site ? await getSidebarBanners(site.id) : []}
           locale={locale}
         />
       </div>

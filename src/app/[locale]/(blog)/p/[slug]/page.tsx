@@ -2,12 +2,14 @@ import { getActiveSite, getSiteForHost } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { pages, posts, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPageCondition, getPublicPostCondition } from "@/lib/db/scheduled";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/blog/ShareButtons";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
@@ -25,13 +27,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug, locale } = await params;
   const site = (await getSiteForHost()) || (await getActiveSite());
-  if (!site) return { title: "Page Not Found" };
+  const t = await getTranslations({ locale, namespace: "blog" });
+  if (!site) return { title: t("noPosts") };
 
   const db = getDb();
   const page = db
     .select()
     .from(pages)
-    .where(and(eq(pages.siteId, site.id), eq(pages.slug, slug), eq(pages.status, "published")))
+    .where(and(eq(pages.siteId, site.id), eq(pages.slug, slug), getPublicPageCondition()))
     .get();
 
   if (!page) return { title: "Page Not Found" };
@@ -95,6 +98,7 @@ export default async function CustomPageEntry({
 
   const t = await getTranslations({ locale, namespace: "blog" });
 
+  await publishScheduledPosts(site.id);
   const db = getDb();
   const page = db
     .select({
@@ -111,7 +115,7 @@ export default async function CustomPageEntry({
     })
     .from(pages)
     .leftJoin(users, eq(pages.authorId, users.id))
-    .where(and(eq(pages.siteId, site.id), eq(pages.slug, slug), eq(pages.status, "published")))
+    .where(and(eq(pages.siteId, site.id), eq(pages.slug, slug), getPublicPageCondition()))
     .get();
 
   if (!page) notFound();
@@ -120,7 +124,7 @@ export default async function CustomPageEntry({
   const latestPosts = db
     .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })
     .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
     .orderBy(desc(posts.publishedAt))
     .limit(5)
     .all();
@@ -140,7 +144,7 @@ export default async function CustomPageEntry({
   const pageUrl = `https://${site.domain}/p/${page.slug}`;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start w-full">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Page Content */}
       <article className="lg:col-span-8 min-w-0 w-full space-y-6">
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-text tracking-tight leading-snug">
@@ -160,7 +164,7 @@ export default async function CustomPageEntry({
         />
 
         {/* Bottom Share Bar */}
-        <div className="pt-4 flex items-center justify-between border-t border-border/50 text-xs text-text-muted">
+        <div className="pt-4 flex items-center justify-between border-t border-border/40 text-xs text-text-muted">
           <span>{t("sharePage")}:</span>
           <ShareButtons title={page.title} url={pageUrl} />
         </div>
@@ -172,6 +176,7 @@ export default async function CustomPageEntry({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
+          sidebarBanners={await getSidebarBanners(site.id)}
           locale={locale}
         />
       </div>

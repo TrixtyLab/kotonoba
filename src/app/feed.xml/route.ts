@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { posts, sites, settings } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { normalizeMediaUrl, resolveAbsoluteUrl } from "@/lib/storage";
@@ -53,11 +54,12 @@ export async function GET(): Promise<NextResponse> {
   const includeFullContent = configMap.rss_full_content !== "false";
 
   const baseUrl = await getCanonicalBaseUrl(site);
+  await publishScheduledPosts(site.id);
 
   const publishedPosts = db
     .select()
     .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.status, "published")))
+    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
     .orderBy(desc(posts.publishedAt), desc(posts.createdAt))
     .limit(itemsLimit)
     .all();

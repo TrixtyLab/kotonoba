@@ -94,7 +94,6 @@ export function SiteSwitcher({
   const [manageModalOpen, setManageModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Sites management state
   const [sites, setSites] = useState<SiteOption[]>(initialSites);
 
   useEffect(() => {
@@ -105,7 +104,6 @@ export function SiteSwitcher({
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [siteToDelete, setSiteToDelete] = useState<string | null>(null);
 
-  // Form fields
   const [formName, setFormName] = useState("");
   const [formDomain, setFormDomain] = useState("");
   const [formSubtitle, setFormSubtitle] = useState("");
