@@ -278,7 +278,7 @@ export default async function IndividualAnalyticsPage({
       dubInfo = await getDubLinkInfo(post.dubLinkId);
     }
     if (!dubInfo && post.shortUrl) {
-      const allLinks = await getDubLinks();
+      const allLinks = await getDubLinks({ siteId: site.id });
       dubInfo = allLinks.find((l) => l.shortLink === post.shortUrl || l.key === post.slug) || null;
     }
   }

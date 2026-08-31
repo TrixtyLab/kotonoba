@@ -96,8 +96,8 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
       const dubResult = await createDubLink({
         url: fullUrl,
         slug: postSlug,
-        tags: ["blog", locale],
-        comments: `Article: ${title.slice(0, 50)}`,
+        tags: ["blog", "blog-cms", locale],
+        comments: `Article: ${title.slice(0, 50)} (Kotonoba CMS)`,
       });
 
       if (dubResult) {
@@ -259,8 +259,8 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
       const dubResult = await createDubLink({
         url: fullUrl,
         slug: postSlug,
-        tags: ["blog", locale || existing.locale],
-        comments: `Article: ${title.slice(0, 50)}`,
+        tags: ["blog", "blog-cms", locale || existing.locale],
+        comments: `Article: ${title.slice(0, 50)} (Kotonoba CMS)`,
       });
 
       if (dubResult) {
