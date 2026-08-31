@@ -1,3 +1,7 @@
+import { getDb } from "@/lib/db";
+import { posts, sites } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+
 /**
  * Configuration options for generating a tracked short URL via the Dub.co API.
  */
@@ -67,6 +71,18 @@ export interface DubLinkItem {
 }
 
 /**
+ * Query options for fetching and filtering Dub.co links.
+ */
+export interface GetDubLinksOptions {
+  /** Optional custom domain filter. */
+  customDomain?: string;
+  /** Optional database site identifier to filter links specific to a site. */
+  siteId?: string;
+  /** Optional tag name filter. */
+  tag?: string;
+}
+
+/**
  * Aggregated metrics summary of all active Dub.co shortlinks across the blog deployment.
  */
 export interface DubAnalyticsSummary {
@@ -87,7 +103,7 @@ export interface DubAnalyticsSummary {
 /**
  * Checks whether the Dub.co integration API key is configured in the environment.
  *
- * @returns True if DUB_API_KEY is present and non-empty, false otherwise.
+ * @returns {boolean} True if DUB_API_KEY is present and non-empty, false otherwise.
  */
 export function isDubConfigured(): boolean {
   const key = process.env.DUB_API_KEY;
@@ -97,8 +113,8 @@ export function isDubConfigured(): boolean {
 /**
  * Creates a shortened, campaign-tracked link using the Dub.co REST API.
  *
- * @param options - Parameters configuring the destination URL, UTM tags, and custom slug.
- * @returns A Promise resolving to the created DubLinkResult, or null if the integration is disabled or the API returns an error.
+ * @param {DubCreateLinkOptions} options - Parameters configuring the destination URL, UTM tags, and custom slug.
+ * @returns {Promise<DubLinkResult | null>} A Promise resolving to the created DubLinkResult, or null if disabled/error.
  */
 export async function createDubLink(options: DubCreateLinkOptions): Promise<DubLinkResult | null> {
   const apiKey = process.env.DUB_API_KEY?.trim();
@@ -116,7 +132,7 @@ export async function createDubLink(options: DubCreateLinkOptions): Promise<DubL
     utm_campaign: options.utmCampaign || undefined,
     utm_term: options.utmTerm || undefined,
     utm_content: options.utmContent || undefined,
-    tags: options.tags || ["blog-cms"],
+    tags: options.tags || ["blog", "blog-cms"],
     comments: options.comments || "Created via Kotonoba CMS",
   };
 
@@ -157,16 +173,24 @@ export async function createDubLink(options: DubCreateLinkOptions): Promise<DubL
 }
 
 /**
- * Fetches all tracked links and their click analytics from the Dub.co REST API.
+ * Fetches tracked links created for this blog and their click analytics from the Dub.co REST API.
+ * Filters out links from other external applications or projects in the same Dub account.
  *
- * @param customDomain - Optional custom domain filter.
- * @returns A Promise resolving to an array of DubLinkItem records.
+ * @param {string | GetDubLinksOptions} [options] - Custom domain string or GetDubLinksOptions object.
+ * @returns {Promise<DubLinkItem[]>} A Promise resolving to an array of DubLinkItem records created in this blog.
  */
-export async function getDubLinks(customDomain?: string): Promise<DubLinkItem[]> {
+export async function getDubLinks(options?: string | GetDubLinksOptions): Promise<DubLinkItem[]> {
   const apiKey = process.env.DUB_API_KEY?.trim();
   if (!apiKey) return [];
 
-  const domain = customDomain || process.env.DUB_DOMAIN || "dub.sh";
+  const opts: GetDubLinksOptions =
+    typeof options === "string"
+      ? options.includes("-") && options.length > 20
+        ? { siteId: options }
+        : { customDomain: options }
+      : options || {};
+
+  const domain = opts.customDomain || process.env.DUB_DOMAIN || "dub.sh";
 
   try {
     const url = new URL("https://api.dub.co/links");
@@ -192,7 +216,95 @@ export async function getDubLinks(customDomain?: string): Promise<DubLinkItem[]>
     const data = await res.json();
     if (!Array.isArray(data)) return [];
 
-    return data.map((item: any) => {
+    const knownLinkIds = new Set<string>();
+    const knownShortUrls = new Set<string>();
+    let siteDomain = "";
+
+    try {
+      const db = getDb();
+      if (opts.siteId) {
+        const siteRecord = db
+          .select({ domain: sites.domain })
+          .from(sites)
+          .where(eq(sites.id, opts.siteId))
+          .get();
+
+        if (siteRecord?.domain) {
+          siteDomain = siteRecord.domain
+            .toLowerCase()
+            .replace(/^https?:\/\//, "")
+            .replace(/\/+$/, "");
+        }
+
+        const sitePosts = db
+          .select({
+            dubLinkId: posts.dubLinkId,
+            shortUrl: posts.shortUrl,
+          })
+          .from(posts)
+          .where(eq(posts.siteId, opts.siteId))
+          .all();
+
+        for (const p of sitePosts) {
+          if (p.dubLinkId) knownLinkIds.add(p.dubLinkId);
+          if (p.shortUrl) knownShortUrls.add(p.shortUrl.toLowerCase());
+        }
+      } else {
+        const allPosts = db
+          .select({
+            dubLinkId: posts.dubLinkId,
+            shortUrl: posts.shortUrl,
+          })
+          .from(posts)
+          .all();
+
+        for (const p of allPosts) {
+          if (p.dubLinkId) knownLinkIds.add(p.dubLinkId);
+          if (p.shortUrl) knownShortUrls.add(p.shortUrl.toLowerCase());
+        }
+      }
+    } catch {
+      // Non-blocking DB fallback
+    }
+
+    const filtered = data.filter((item: any) => {
+      const id = String(item.id || "");
+      const shortUrl = (item.shortLink || `https://${item.domain}/${item.key}`).toLowerCase();
+      const targetUrl = String(item.url || "").toLowerCase();
+      const comments = typeof item.comments === "string" ? item.comments : "";
+
+      const rawTags: string[] = Array.isArray(item.tags)
+        ? item.tags
+            .map((t: any) => (typeof t === "string" ? t : t?.name || t?.slug || ""))
+            .filter(Boolean)
+        : [];
+
+      if (knownLinkIds.has(id)) return true;
+
+      if (knownShortUrls.has(shortUrl)) return true;
+
+      const hasBlogTag = rawTags.some((t) => {
+        const lower = t.toLowerCase();
+        return lower === "blog" || lower === "blog-cms" || lower.includes("kotonoba");
+      });
+      if (hasBlogTag) return true;
+
+      if (
+        comments.includes("Kotonoba") ||
+        comments.includes("blog-cms") ||
+        comments.startsWith("Article:")
+      ) {
+        return true;
+      }
+
+      if (siteDomain && targetUrl.includes(siteDomain)) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return filtered.map((item: any) => {
       const shortUrl = item.shortLink || `https://${item.domain}/${item.key}`;
       return {
         id: String(item.id || ""),
@@ -215,14 +327,23 @@ export async function getDubLinks(customDomain?: string): Promise<DubLinkItem[]>
 }
 
 /**
- * Compiles a comprehensive analytics summary of all active Dub.co shortlinks.
+ * Compiles a comprehensive analytics summary of active Dub.co shortlinks created for the blog.
  *
- * @param customDomain - Optional custom domain filter.
- * @returns A Promise resolving to a DubAnalyticsSummary object.
+ * @param {string | GetDubLinksOptions} [options] - Optional site ID or GetDubLinksOptions.
+ * @returns {Promise<DubAnalyticsSummary>} A Promise resolving to a DubAnalyticsSummary object.
  */
-export async function getDubAnalyticsSummary(customDomain?: string): Promise<DubAnalyticsSummary> {
+export async function getDubAnalyticsSummary(
+  options?: string | GetDubLinksOptions
+): Promise<DubAnalyticsSummary> {
   const isConfigured = isDubConfigured();
-  const domain = customDomain || process.env.DUB_DOMAIN || "dub.sh";
+  const opts: GetDubLinksOptions =
+    typeof options === "string"
+      ? options.includes("-") && options.length > 20
+        ? { siteId: options }
+        : { customDomain: options }
+      : options || {};
+
+  const domain = opts.customDomain || process.env.DUB_DOMAIN || "dub.sh";
 
   if (!isConfigured) {
     return {
@@ -235,7 +356,7 @@ export async function getDubAnalyticsSummary(customDomain?: string): Promise<Dub
     };
   }
 
-  const links = await getDubLinks(domain);
+  const links = await getDubLinks(opts);
   const totalClicks = links.reduce((acc, l) => acc + l.clicks, 0);
   const sortedLinks = [...links].sort((a, b) => b.clicks - a.clicks);
   const topLink = sortedLinks.length > 0 ? sortedLinks[0] : null;
@@ -253,8 +374,8 @@ export async function getDubAnalyticsSummary(customDomain?: string): Promise<Dub
 /**
  * Retrieves detailed link information, real-time clicks, and QR assets for a specific Dub link ID.
  *
- * @param linkId - Unique Dub.co link identifier.
- * @returns A Promise resolving to a DubLinkItem or null.
+ * @param {string} linkId - Unique Dub.co link identifier.
+ * @returns {Promise<DubLinkItem | null>} A Promise resolving to a DubLinkItem or null.
  */
 export async function getDubLinkInfo(linkId: string): Promise<DubLinkItem | null> {
   const apiKey = process.env.DUB_API_KEY?.trim();
@@ -291,5 +412,3 @@ export async function getDubLinkInfo(linkId: string): Promise<DubLinkItem | null
     return null;
   }
 }
-
-

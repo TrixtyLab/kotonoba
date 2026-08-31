@@ -230,7 +230,7 @@ export default async function AdminAnalyticsPage({
   const maxPageViews = Math.max(1, ...topPages.map((p) => p.views));
   const maxPathViews = Math.max(1, ...topPaths.map((p) => p.count));
 
-  const dubSummary = await getDubAnalyticsSummary();
+  const dubSummary = await getDubAnalyticsSummary({ siteId: site.id });
   const maxDubClicks = Math.max(1, ...dubSummary.links.map((l) => l.clicks));
 
   return (
