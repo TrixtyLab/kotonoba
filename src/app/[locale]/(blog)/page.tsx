@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 
 /**
  * Generates SEO metadata tags for the blog homepage.
@@ -153,6 +154,7 @@ export default async function BlogHomePage({
           site={site}
           latestPosts={allPosts.slice(0, 5)}
           categories={allCategories}
+          sidebarBanners={await getSidebarBanners(site.id)}
           locale={locale}
         />
       </div>

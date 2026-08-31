@@ -9,6 +9,7 @@ import { LineSidebar } from "@/components/blog/LineSidebar";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
@@ -175,6 +176,7 @@ export default async function CustomPageEntry({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
+          sidebarBanners={await getSidebarBanners(site.id)}
           locale={locale}
         />
       </div>

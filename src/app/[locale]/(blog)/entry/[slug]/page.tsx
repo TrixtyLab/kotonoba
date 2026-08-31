@@ -17,6 +17,7 @@ import type { Metadata } from "next";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 
 /**
  * Generates OpenGraph, Twitter, and canonical SEO metadata tags for a published blog post.
@@ -341,6 +342,7 @@ export default async function PostEntryPage({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
+          sidebarBanners={await getSidebarBanners(site.id)}
           locale={locale}
         />
       </div>

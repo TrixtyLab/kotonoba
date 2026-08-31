@@ -13,6 +13,7 @@ import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 
 /**
  * Generates SEO metadata for a category taxonomy archive page.
@@ -161,6 +162,7 @@ export default async function CategoryPage({
           site={site}
           latestPosts={matchingPosts.slice(0, 5)}
           categories={allCategories}
+          sidebarBanners={await getSidebarBanners(site.id)}
           locale={locale}
         />
       </div>

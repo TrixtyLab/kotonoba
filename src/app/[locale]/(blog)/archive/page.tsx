@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/storage";
+import { getSidebarBanners } from "@/lib/banners";
 
 /**
  * Generates SEO metadata for the chronological blog archive.
@@ -157,6 +158,7 @@ export default async function ArchivePage({
           site={site || { name: "Blog" }}
           latestPosts={allPosts.slice(0, 5)}
           categories={allCategories}
+          sidebarBanners={site ? await getSidebarBanners(site.id) : []}
           locale={locale}
         />
       </div>

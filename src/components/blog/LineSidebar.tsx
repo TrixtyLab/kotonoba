@@ -6,6 +6,8 @@ import { Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils/date";
 import { useTranslations, useLocale } from "next-intl";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { normalizeMediaUrl } from "@/lib/utils/media";
+import type { SidebarBannerItem } from "@/lib/banners";
 
 /**
  * Properties configuring the blog sidebar column.
@@ -31,6 +33,8 @@ export interface LineSidebarProps {
     name: string;
     slug: string;
   }>;
+  /** Sidebar promotional mini banners. */
+  sidebarBanners?: SidebarBannerItem[];
   /** Explicit language code override. */
   locale?: string;
 }
@@ -38,13 +42,14 @@ export interface LineSidebarProps {
 /**
  * Clean blog sidebar column presenting creator identity, recent articles list, taxonomy categories, and monthly archive links.
  *
- * @param props - LineSidebarProps configuring site profile, recent post lists, and categories.
+ * @param props - LineSidebarProps configuring site profile, recent post lists, categories, and mini banners.
  * @returns React JSX sidebar aside element.
  */
 export function LineSidebar({
   site,
   latestPosts = [],
   categories = [],
+  sidebarBanners = [],
   locale: propLocale,
 }: LineSidebarProps) {
   const t = useTranslations("blog");
@@ -79,6 +84,62 @@ export function LineSidebar({
           )}
         </div>
       </div>
+
+      {/* Mini Banners */}
+      {sidebarBanners.length > 0 && (
+        <div className="space-y-3">
+          {sidebarBanners.map((banner) => {
+            const resolvedImg = normalizeMediaUrl(banner.imageUrl);
+            if (!resolvedImg) return null;
+
+            const bannerImg = (
+              <img
+                src={resolvedImg}
+                alt={banner.alt || name}
+                className="w-full h-auto rounded-lg object-cover shadow-xs border border-border/40 hover:opacity-90 transition-opacity"
+              />
+            );
+
+            if (banner.linkUrl && banner.linkUrl.trim()) {
+              const cleanLink = banner.linkUrl.trim();
+              const isExternal =
+                cleanLink.startsWith("http://") ||
+                cleanLink.startsWith("https://") ||
+                cleanLink.startsWith("//");
+
+              if (isExternal) {
+                return (
+                  <a
+                    key={banner.id}
+                    href={cleanLink}
+                    target={banner.target || "_blank"}
+                    rel={banner.target === "_blank" ? "noopener noreferrer" : undefined}
+                    className="block overflow-hidden rounded-lg group"
+                  >
+                    {bannerImg}
+                  </a>
+                );
+              }
+
+              return (
+                <Link
+                  key={banner.id}
+                  href={cleanLink}
+                  className="block overflow-hidden rounded-lg group"
+                >
+                  {bannerImg}
+                </Link>
+              );
+            }
+
+            return (
+              <div key={banner.id} className="overflow-hidden rounded-lg">
+                {bannerImg}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Latest Posts */}
       {latestPosts.length > 0 && (

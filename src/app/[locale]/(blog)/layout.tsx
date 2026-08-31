@@ -6,12 +6,14 @@ import { posts, settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
 import { Header } from "@/components/blog/Header";
+import { HeaderBanner } from "@/components/blog/HeaderBanner";
 import { Footer } from "@/components/blog/Footer";
 import { ScrollToTop } from "@/components/blog/ScrollToTop";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { redirect } from "@/i18n/routing";
 import { headers } from "next/headers";
 import { getLocalizedText } from "@/lib/utils/localization";
+import { getSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
 
 import { normalizeMediaUrl } from "@/lib/storage";
 
@@ -166,6 +168,8 @@ export default async function BlogLayout({
 
   const enableLlmsTxt = !isAiBlocked && llmsSetting?.value === "true";
 
+  const bannersConfig = site ? await getSiteBanners(site.id) : { headerBanner: null, sidebarBanners: [] };
+
   const primaryColor = site?.primaryColor || "#3b82f6";
   const themeStyles = {
     "--color-primary": primaryColor,
@@ -174,12 +178,24 @@ export default async function BlogLayout({
     "--color-accent-hover": `color-mix(in srgb, ${primaryColor} 85%, black)`,
   } as React.CSSProperties;
 
+  const activeHeaderBanner = bannersConfig.headerBanner
+    ? getResolvedHeaderBanner(bannersConfig.headerBanner)
+    : null;
+
   return (
     <div
       className="min-h-screen flex flex-col justify-between bg-bg text-text"
       style={themeStyles}
     >
       {site && <AnalyticsTracker siteId={site.id} />}
+      {activeHeaderBanner && (
+        <HeaderBanner
+          imageUrl={activeHeaderBanner.imageUrl}
+          linkUrl={activeHeaderBanner.linkUrl}
+          target={activeHeaderBanner.target}
+          alt={activeHeaderBanner.alt || getLocalizedText(siteData.name, locale)}
+        />
+      )}
       <Header site={siteData} categories={categories} searchPosts={searchPosts} />
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-10 animate-fade-in">
         {children}
