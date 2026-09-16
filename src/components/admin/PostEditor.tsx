@@ -685,7 +685,7 @@ export function PostEditor({
 
     setAiLoading(true);
     try {
-      const res = await generateExcerptAction(siteId, text || title);
+      const res = await generateExcerptAction(siteId, text, title);
       if (res.success) {
         setExcerpt(res.excerpt);
         toast.success(t("aiExcerptSuccess"));

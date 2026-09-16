@@ -166,6 +166,8 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
     { key: "bluesky_identifier", value: "" },
     { key: "bluesky_app_password", value: "" },
     { key: "bluesky_include_tags", value: "true" },
+    { key: "bluesky_include_title", value: "true" },
+    { key: "bluesky_include_description", value: "true" },
     { key: "rss_enabled", value: "true" },
     { key: "rss_items_count", value: "20" },
     { key: "rss_full_content", value: "true" },

@@ -90,6 +90,12 @@ export function IntegrationsSettingsClient({
   const [blueskyIncludeTags, setBlueskyIncludeTags] = useState(
     initialSettings.bluesky_include_tags !== "false"
   );
+  const [blueskyIncludeTitle, setBlueskyIncludeTitle] = useState(
+    initialSettings.bluesky_include_title !== "false"
+  );
+  const [blueskyIncludeDescription, setBlueskyIncludeDescription] = useState(
+    initialSettings.bluesky_include_description !== "false"
+  );
 
   const [rssEnabled, setRssEnabled] = useState(
     initialSettings.rss_enabled !== "false"
@@ -118,6 +124,8 @@ export function IntegrationsSettingsClient({
         bluesky_app_password: blueskyAppPassword.trim(),
         bluesky_service_url: blueskyServiceUrl.trim(),
         bluesky_include_tags: blueskyIncludeTags ? "true" : "false",
+        bluesky_include_title: blueskyIncludeTitle ? "true" : "false",
+        bluesky_include_description: blueskyIncludeDescription ? "true" : "false",
         rss_enabled: rssEnabled ? "true" : "false",
         rss_items_count: rssItemsCount,
         rss_full_content: rssFullContent ? "true" : "false",
@@ -308,7 +316,17 @@ export function IntegrationsSettingsClient({
                 onChange={(e) => setBlueskyServiceUrl(e.target.value)}
                 placeholder="https://bsky.social"
               />
-              <div className="pt-4">
+              <div className="pt-4 space-y-3">
+                <Checkbox
+                  checked={blueskyIncludeTitle}
+                  onChange={(checked) => setBlueskyIncludeTitle(checked)}
+                  label={t("blueskyIncludeTitle")}
+                />
+                <Checkbox
+                  checked={blueskyIncludeDescription}
+                  onChange={(checked) => setBlueskyIncludeDescription(checked)}
+                  label={t("blueskyIncludeDescription")}
+                />
                 <Checkbox
                   checked={blueskyIncludeTags}
                   onChange={(checked) => setBlueskyIncludeTags(checked)}

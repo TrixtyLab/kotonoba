@@ -46,17 +46,28 @@ export async function generateSeoAction(siteId: string, contentMd: string): Prom
     return { success: false, error: "Please write more content before generating SEO metadata." };
   }
 
-  const prompt = `You are an SEO specialist. Analyze the following article content and output a JSON object with "title" (under 60 characters) and "description" (under 155 characters).
-Output ONLY valid JSON in format: {"title": "...", "description": "..."}
+  const systemPrompt = `You are an SEO specialist and social metadata editor.
 
-Article:
-${contentMd.slice(0, 3000)}`;
+STRICT RULES & CONSTRAINTS:
+1. 100% FACTUAL ACCURACY: Rely strictly and solely on the provided article text. Never hallucinate, extrapolate, or invent details, capabilities, or claims not present in the content.
+2. TITLE SPECIFICATION: Compelling hook directly reflecting the content, under 60 characters. No clickbait or corporate buzzwords.
+3. DESCRIPTION SPECIFICATION: Concrete, punchy summary under 155 characters that provides immediate standalone value. Zero PR fluff or corporate jargon ("empowers", "game-changing", "seamless", etc.).
+4. LANGUAGE: Match the primary language of the article.
+5. OUTPUT FORMAT: Output ONLY a valid JSON object matching the schema: {"title": "string", "description": "string"}. Do not include markdown formatting, backticks, or introductory text.`;
+
+  const userPrompt = `Please generate the SEO title and description for this article:
+
+${contentMd.slice(0, 15000)}`;
 
   try {
-    const raw = await callAiChat(siteId, [
-      { role: "system", content: "You output JSON only." },
-      { role: "user", content: prompt },
-    ]);
+    const raw = await callAiChat(
+      siteId,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { temperature: 0.3 }
+    );
 
     const jsonStr = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(jsonStr) as { title: string; description: string };
@@ -68,29 +79,66 @@ ${contentMd.slice(0, 3000)}`;
 }
 
 /**
- * Generates a concise two-sentence summary excerpt from the provided article body.
+ * Generates a concise, high-impact summary excerpt optimized for social platforms (X/Twitter, Bluesky) and SEO.
+ * Adheres to algorithm-friendly distribution principles: standalone substance, reply/share-worthy framing, and strict ban on AI buzzwords.
  *
  * @param siteId - Unique database identifier of the target site.
- * @param contentMd - Raw markdown text of the article.
+ * @param contentMd - Raw text or markdown content of the article.
+ * @param title - Optional article title for enhanced context.
  * @returns A Promise resolving to an AiExcerptResponse containing the clean excerpt string.
  * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
-export async function generateExcerptAction(siteId: string, contentMd: string): Promise<AiExcerptResponse> {
+export async function generateExcerptAction(
+  siteId: string,
+  contentMd: string,
+  title?: string
+): Promise<AiExcerptResponse> {
   await requireAuth(["super_admin", "admin", "editor", "author"]);
 
-  if (!contentMd || contentMd.trim().length < 10) {
-    return { success: false, error: "Content too short to generate excerpt." };
+  const rawContent = (contentMd || "").trim();
+  const rawTitle = (title || "").trim();
+
+  if (rawContent.length < 10 && rawTitle.length < 5) {
+    return { success: false, error: "Content or title too short to generate excerpt." };
   }
 
-  const prompt = `Write a compelling 2-sentence summary/excerpt for the following article. Do not include quotes or prefixes:
-${contentMd.slice(0, 2500)}`;
+  const systemPrompt = `You are an elite editorial writer and social media growth strategist specializing in distribution across platforms like X (Twitter), Bluesky, and LinkedIn.
+
+BEHAVIORAL CONSTRAINTS & RULES:
+1. 100% FACTUAL FIDELITY (ZERO HALLUCINATION):
+   - Rely strictly and exclusively on the explicit facts, features, claims, and data provided in the article.
+   - Never invent, assume, extrapolate, or embellish capabilities, dates, or results.
+   - Summarize precisely what was built, launched, fixed, or argued—no more, no less. Factual accuracy overrides marketing flair.
+
+2. STANDALONE SUBSTANCE (OPTIMIZED FOR REPLIES & SHARES):
+   - Highlight the central fact, concrete takeaway, or key result.
+   - Must stand completely on its own as a valuable, insight-rich post worth quoting or sharing—not just passive likes.
+
+3. FORBIDDEN PATTERNS & VOCABULARY:
+   - STRICTLY BANNED AI clichés and PR fluff: "empowers", "seamless/seamlessly", "game-changing", "fosters", "delve", "testament", "revolutionary", "unlocking", "excited to announce", "in today's digital landscape", "look no further".
+   - STRICTLY BANNED engagement bait: Do not ask questions or prompt replies ("What do you think?", "RT if you agree", "Reply below", "Check out the link").
+
+4. OUTPUT FORMAT & LENGTH:
+   - Strictly 1 to 2 punchy, active-voice sentences.
+   - Maximum length: under 250 characters (to fit within a 280-char tweet with link, and Bluesky 300 limit).
+   - Match the primary language of the article.
+   - Output ONLY the final plain excerpt text. Do not wrap in quotes, brackets, markdown prefixes, or conversational remarks.`;
+
+  const userPrompt = `Please generate the social excerpt and summary for this article:
+
+${rawTitle ? `Title: ${rawTitle}\n\n` : ""}Article Content:
+${rawContent.slice(0, 3000)}`;
 
   try {
-    const excerpt = await callAiChat(siteId, [
-      { role: "system", content: "You are a concise blog editor." },
-      { role: "user", content: prompt },
-    ]);
-    return { success: true, excerpt: excerpt.trim() };
+    const excerpt = await callAiChat(
+      siteId,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { temperature: 0.3 }
+    );
+    return { success: true, excerpt: excerpt.trim().replace(/^["']|["']$/g, "") };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to generate excerpt.";
     return { success: false, error: message };
@@ -111,13 +159,22 @@ export async function translateAction(siteId: string, text: string, targetLocale
 
   if (!text) return { success: false, error: "No text provided." };
 
-  const prompt = `Translate the following markdown text accurately into language code "${targetLocale}". Preserve all markdown syntax, links, headers, code blocks, and Mermaid diagrams untouched:
+  const systemPrompt = `You are an expert technical translator.
+
+RULES:
+1. Accurately translate the provided text into the requested target language code.
+2. Preserve all markdown syntax, formatting, links, headers, code blocks, and Mermaid diagrams completely untouched.
+3. Output ONLY the translated markdown text without introductory phrases or additional remarks.`;
+
+  const userPrompt = `Target Language Code: ${targetLocale}
+
+Content to translate:
 ${text}`;
 
   try {
     const translated = await callAiChat(siteId, [
-      { role: "system", content: "You are an expert technical translator." },
-      { role: "user", content: prompt },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ]);
     return { success: true, translated: translated.trim() };
   } catch (err) {
@@ -140,13 +197,22 @@ export async function rewriteAction(siteId: string, text: string, tone = "profes
 
   if (!text) return { success: false, error: "No text provided." };
 
-  const prompt = `Rewrite the following text with a ${tone} tone. Improve flow, clarity, and precision while maintaining the core message:
+  const systemPrompt = `You are an expert copy editor.
+
+RULES:
+1. Rewrite the provided text to improve flow, clarity, and precision according to the specified tone.
+2. Strictly maintain the core message, factual accuracy, and intent of the original text. Never invent details or fluff.
+3. Output ONLY the rewritten text without quotation marks or conversational commentary.`;
+
+  const userPrompt = `Requested Tone: ${tone}
+
+Text to rewrite:
 ${text}`;
 
   try {
     const result = await callAiChat(siteId, [
-      { role: "system", content: "You are an expert editor." },
-      { role: "user", content: prompt },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ]);
     return { success: true, result: result.trim() };
   } catch (err) {

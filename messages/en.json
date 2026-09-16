@@ -727,6 +727,8 @@
     "blueskyAppPasswordHelp": "Create a dedicated App Password in Bluesky Settings > Privacy & Security > App Passwords.",
     "blueskyServiceUrl": "PDS Service URL (Optional)",
     "blueskyIncludeTags": "Include post tags as #hashtags",
+    "blueskyIncludeTitle": "Include title in post text",
+    "blueskyIncludeDescription": "Include description / SEO excerpt in post text",
     "sendTestBluesky": "Test Connection",
     "blueskyTesting": "Connecting to Bluesky…",
     "blueskyCredentialsRequired": "Please enter your Bluesky identifier and App Password.",
