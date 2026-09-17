@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Radio, Users, Eye, Globe, Monitor, Clock } from "lucide-react";
 import { getRealtimeFeedAction, RealtimeDataResponse } from "@/actions/analytics";
+import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
 
 interface RealtimeFeedClientProps {
   siteId: string;
@@ -135,10 +136,20 @@ export function RealtimeFeedClient({ siteId, initialData }: RealtimeFeedClientPr
                   </div>
 
                   <div className="flex items-center gap-2 text-[11px] text-text-muted font-mono shrink-0">
-                    <span className="flex items-center gap-1">
-                      <Globe className="w-3 h-3 opacity-60" />
-                      {hit.country || "Global"}
-                    </span>
+                    {(() => {
+                      const isKnown = Boolean(hit.country && /^[A-Za-z]{2}$/.test(hit.country));
+                      const englishName = isKnown ? getCountryName(hit.country, "en") : (hit.country || "Global / Unknown");
+
+                      return (
+                        <span
+                          className="flex items-center gap-1.5 cursor-help select-none"
+                          title={englishName}
+                        >
+                          <CountryFlag code={hit.country} size="xs" title={englishName} />
+                          <span>{hit.country || "Global"}</span>
+                        </span>
+                      );
+                    })()}
                     <span className="hidden sm:inline opacity-40">•</span>
                     <span className="hidden sm:flex items-center gap-1">
                       <Monitor className="w-3 h-3 opacity-60" />

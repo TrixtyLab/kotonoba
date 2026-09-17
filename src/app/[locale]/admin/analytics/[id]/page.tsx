@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { isDubConfigured, getDubLinkInfo, getDubLinks } from "@/lib/dub";
 import { DubPostAnalyticsCard } from "@/components/admin/analytics/DubPostAnalyticsCard";
+import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
 
 /**
  * Normalizes raw HTTP Referrer strings into clean root domain names.
@@ -514,7 +515,10 @@ export default async function IndividualAnalyticsPage({
                       {log.country && (
                         <>
                           <span>•</span>
-                          <span className="text-text-muted font-mono">{log.country}</span>
+                          <span className="inline-flex items-center gap-1 text-text-muted font-mono">
+                            <CountryFlag code={log.country} locale={locale} size="xs" />
+                            <span>{log.country}</span>
+                          </span>
                         </>
                       )}
                     </div>
@@ -611,14 +615,27 @@ export default async function IndividualAnalyticsPage({
               <span>{t("geoDistribution")}</span>
             </h3>
             <div className="space-y-2 text-xs">
-              {topCountries.map((c, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-text">{c.country || t("globalUnknown")}</span>
-                  <span className="font-mono text-text-muted bg-surface-hover px-2 py-0.5 rounded text-[11px]">
-                    {c.count}
-                  </span>
-                </div>
-              ))}
+              {topCountries.map((c, i) => {
+                const isKnown = Boolean(c.country && c.country !== t("globalUnknown"));
+                const countryName = isKnown ? getCountryName(c.country, locale) : (c.country || t("globalUnknown"));
+
+                return (
+                  <div key={i} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CountryFlag code={c.country} locale={locale} />
+                      <span className="text-text truncate">{countryName}</span>
+                      {isKnown && (
+                        <span className="font-mono text-[10px] text-text-muted shrink-0">
+                          {c.country}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-text-muted bg-surface-hover px-2 py-0.5 rounded text-[11px] shrink-0">
+                      {c.count}
+                    </span>
+                  </div>
+                );
+              })}
               {topCountries.length === 0 && (
                 <p className="text-xs text-text-muted py-1.5">{t("noGeo")}</p>
               )}

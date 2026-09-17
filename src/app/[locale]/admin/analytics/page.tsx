@@ -23,6 +23,7 @@ import {
 } from "@/lib/analytics/query";
 import { MetricCard } from "@/components/admin/analytics/MetricCard";
 import { BarChart } from "@/components/admin/analytics/BarChart";
+import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -297,16 +298,29 @@ export default async function AdminAnalyticsOverviewPage({
             </div>
             <div className="divide-y divide-border/60 pt-1">
               {topCountries.length > 0 ? (
-                topCountries.map((c) => (
-                  <div key={c.country || "unknown"} className="py-2 flex items-center justify-between text-xs gap-2">
-                    <span className="font-medium text-text truncate max-w-[70%]">
-                      {c.country || t("globalUnknown")}
-                    </span>
-                    <span className="font-mono font-bold text-text tabular-nums shrink-0">
-                      {c.count.toLocaleString()}
-                    </span>
-                  </div>
-                ))
+                topCountries.map((c) => {
+                  const isKnown = Boolean(c.country && c.country !== t("globalUnknown"));
+                  const countryName = isKnown ? getCountryName(c.country, locale) : (c.country || t("globalUnknown"));
+
+                  return (
+                    <div key={c.country || "unknown"} className="py-2 flex items-center justify-between text-xs gap-2">
+                      <div className="flex items-center gap-2 min-w-0 max-w-[75%]">
+                        <CountryFlag code={c.country} locale={locale} />
+                        <span className="font-medium text-text truncate">
+                          {countryName}
+                        </span>
+                        {isKnown && (
+                          <span className="font-mono text-[10px] text-text-muted shrink-0">
+                            {c.country}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-mono font-bold text-text tabular-nums shrink-0">
+                        {c.count.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })
               ) : (
                 <p className="py-4 text-center text-xs text-text-muted italic">{t("noGeo")}</p>
               )}

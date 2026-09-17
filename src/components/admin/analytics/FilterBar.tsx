@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { X, Filter, RotateCcw } from "lucide-react";
+import { CountryFlag } from "@/components/ui/CountryFlag";
 
 const FILTER_KEYS = ["country", "browser", "device", "os", "campaign"] as const;
 type FilterKey = (typeof FILTER_KEYS)[number];
@@ -61,7 +62,10 @@ export function FilterBar(): React.JSX.Element | null {
             className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-surface border border-accent/30 text-text font-medium text-[11px] shadow-2xs"
           >
             <span className="text-text-muted capitalize">{f.key}:</span>
-            <span className="font-semibold">{f.value}</span>
+            <span className="font-semibold inline-flex items-center gap-1">
+              {f.key === "country" && <CountryFlag code={f.value} size="xs" />}
+              <span>{f.value}</span>
+            </span>
             <button
               type="button"
               onClick={() => removeFilter(f.key)}
