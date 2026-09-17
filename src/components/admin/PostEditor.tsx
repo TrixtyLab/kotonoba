@@ -539,6 +539,22 @@ export function PostEditor({
       return;
     }
 
+    let finalPublishedAt: Date | undefined = undefined;
+    if (saveStatus === "scheduled") {
+      if (scheduledAt && scheduledAt.trim()) {
+        const parsed = new Date(scheduledAt);
+        if (isNaN(parsed.getTime())) {
+          toast.error(t("invalidScheduleDate"));
+          return;
+        }
+        finalPublishedAt = parsed;
+      } else {
+        const fallback = new Date();
+        fallback.setHours(fallback.getHours() + 1);
+        finalPublishedAt = fallback;
+      }
+    }
+
     const payload = {
       title,
       slug: slug || slugify(title),
@@ -547,7 +563,7 @@ export function PostEditor({
       excerpt,
       coverImage,
       status: saveStatus,
-      publishedAt: saveStatus === "scheduled" ? (scheduledAt ? new Date(scheduledAt) : new Date()) : undefined,
+      publishedAt: finalPublishedAt,
       locale,
       pinned,
       shortUrl: shortUrl || undefined,
@@ -565,7 +581,7 @@ export function PostEditor({
           excerpt,
           coverImage,
           status: saveStatus,
-          publishedAt: saveStatus === "scheduled" ? (scheduledAt ? new Date(scheduledAt) : new Date()) : undefined,
+          publishedAt: finalPublishedAt,
           locale,
         };
 
@@ -584,7 +600,8 @@ export function PostEditor({
             );
             router.refresh();
           } else {
-            toast.error(res.error || t("saveChangesError"));
+            const detail = res.errors ? Object.values(res.errors).flat().join(" ") : null;
+            toast.error(detail || res.error || t("saveChangesError"));
           }
         } else {
           const res = await createPage(siteId, pagePayload);
@@ -599,7 +616,8 @@ export function PostEditor({
             );
             router.push(`/admin/pages/${res.pageId}`);
           } else {
-            toast.error(res.error || t("pageCreateError"));
+            const detail = res.errors ? Object.values(res.errors).flat().join(" ") : null;
+            toast.error(detail || res.error || t("pageCreateError"));
           }
         }
         return;
@@ -620,7 +638,8 @@ export function PostEditor({
           );
           router.refresh();
         } else {
-          toast.error(res.error || t("saveChangesError"));
+          const detail = res.errors ? Object.values(res.errors).flat().join(" ") : null;
+          toast.error(detail || res.error || t("saveChangesError"));
         }
       } else {
         const res = await createPost(siteId, payload);
@@ -635,7 +654,8 @@ export function PostEditor({
           );
           router.push(`/admin/posts/${res.postId}`);
         } else {
-          toast.error(res.error || t("postCreateError"));
+          const detail = res.errors ? Object.values(res.errors).flat().join(" ") : null;
+          toast.error(detail || res.error || t("postCreateError"));
         }
       }
     });

@@ -416,7 +416,11 @@
     "hoursAgo": "hace {hours}h",
     "syncing": "Sincronizando…",
     "liveAutoRefresh": "Actualización en vivo cada 10s",
-    "filterBy": "Filtrar por {name}"
+    "filterBy": "Filtrar por {name}",
+    "city": "Ciudad",
+    "samples": "Muestras",
+    "metric": "Métrica",
+    "dubNoPostLinkDesc": "Genera un enlace corto oficial con etiquetas de campaña para medir clics y rendimiento en Dub.co."
   },
   "media": {
     "title": "Biblioteca de Medios",
@@ -477,6 +481,7 @@
     "schedule": "Programar",
     "scheduleDate": "Fecha y hora de publicación",
     "scheduleHint": "El contenido se publicará automáticamente en la fecha y hora seleccionada.",
+    "invalidScheduleDate": "Por favor selecciona una fecha y hora de publicación válida.",
     "archived": "Archivado",
     "publishNow": "Publicar Ahora",
     "saveDraft": "Guardar como Borrador",

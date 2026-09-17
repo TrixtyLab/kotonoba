@@ -416,7 +416,11 @@
     "hoursAgo": "{hours}h ago",
     "syncing": "Syncing…",
     "liveAutoRefresh": "Live 10s auto-refresh",
-    "filterBy": "Filter by {name}"
+    "filterBy": "Filter by {name}",
+    "city": "City",
+    "samples": "Samples",
+    "metric": "Metric",
+    "dubNoPostLinkDesc": "Generate an official short link with campaign tags to track visitor clicks and performance in Dub.co."
   },
   "media": {
     "title": "Media Library",
@@ -477,6 +481,7 @@
     "schedule": "Schedule",
     "scheduleDate": "Publication Date & Time",
     "scheduleHint": "The content will automatically publish at the selected date and time.",
+    "invalidScheduleDate": "Please select a valid publication date and time.",
     "archived": "Archived",
     "publishNow": "Publish Now",
     "saveDraft": "Save as Draft",
