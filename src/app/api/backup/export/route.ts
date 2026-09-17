@@ -5,8 +5,8 @@ import { createSiteBackupZip } from "@/lib/backup/export";
 /**
  * HTTP GET endpoint streaming a compressed ZIP archive containing all site database entities, media assets, and manifest metadata.
  *
- * @param req - The incoming NextRequest containing the target siteId query parameter.
- * @returns Binary ZIP stream response or 401/400 error status.
+ * @param {NextRequest} req - The incoming NextRequest containing the target siteId query parameter.
+ * @returns {Promise<NextResponse>} Binary ZIP stream response or 401/400 error status.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();

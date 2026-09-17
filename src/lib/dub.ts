@@ -412,3 +412,37 @@ export async function getDubLinkInfo(linkId: string): Promise<DubLinkItem | null
     return null;
   }
 }
+
+/**
+ * Permanently deletes a tracked short link from the Dub.co API.
+ *
+ * @param {string} linkId - Unique identifier of the Dub.co link to remove.
+ * @returns {Promise<boolean>} A Promise resolving to true if deleted successfully or already non-existent, false on failure.
+ */
+export async function deleteDubLink(linkId: string): Promise<boolean> {
+  const apiKey = process.env.DUB_API_KEY?.trim();
+  if (!apiKey || !linkId) return false;
+
+  try {
+    const res = await fetch(`https://api.dub.co/links/${encodeURIComponent(linkId)}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return true;
+      }
+      const errorData = await res.json().catch(() => ({}));
+      console.warn("Dub.co API delete error:", errorData);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error deleting Dub.co link:", error);
+    return false;
+  }
+}

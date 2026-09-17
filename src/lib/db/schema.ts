@@ -159,6 +159,12 @@ export const analytics = sqliteTable("analytics", {
   device: text("device").default("desktop"),
   browser: text("browser").default(""),
   os: text("os").default(""),
+  language: text("language").default(""),
+  sessionId: text("session_id").default(""),
+  loadTime: integer("load_time"),
+  timeOnPage: integer("time_on_page").default(0),
+  screenWidth: integer("screen_width"),
+  screenHeight: integer("screen_height"),
   utmSource: text("utm_source"),
   utmMedium: text("utm_medium"),
   utmCampaign: text("utm_campaign"),
@@ -170,6 +176,8 @@ export const analytics = sqliteTable("analytics", {
   index("analytics_post_idx").on(table.postId),
   index("analytics_page_idx").on(table.pageId),
   index("analytics_created_idx").on(table.createdAt),
+  index("analytics_session_idx").on(table.sessionId),
+  index("analytics_language_idx").on(table.language),
 ]);
 
 /**
@@ -183,3 +191,17 @@ export const settings = sqliteTable("settings", {
 }, (table) => [
   index("settings_site_key_idx").on(table.siteId, table.key),
 ]);
+
+/**
+ * Saved filter segments for custom analytics reporting and cohort slicing.
+ */
+export const analyticsSegments = sqliteTable("analytics_segments", {
+  id: text("id").primaryKey(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  filters: text("filters").notNull().default("{}"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("analytics_segments_site_idx").on(table.siteId),
+]);
+

@@ -1,8 +1,8 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { pages, users } from "@/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { pages, users, analytics } from "@/lib/db/schema";
+import { eq, desc, and, or, like } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import { generateId, generateSlug } from "@/lib/utils/slug";
 import { pageSchema, validate, type PageInput } from "@/lib/security/validate";
@@ -164,7 +164,7 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
 }
 
 /**
- * Deletes a custom page by its database identifier.
+ * Deletes a custom page by its database identifier and purges associated analytics records.
  *
  * @param {string} pageId - Database identifier of the page to delete.
  * @returns {Promise<{ success: boolean; error?: string }>} A Promise resolving to an object indicating operation success.
@@ -178,6 +178,18 @@ export async function deletePage(pageId: string): Promise<{ success: boolean; er
   if (!existing) {
     return { success: false, error: "Page not found" };
   }
+
+  db.delete(analytics)
+    .where(
+      or(
+        eq(analytics.pageId, pageId),
+        and(
+          eq(analytics.siteId, existing.siteId),
+          like(analytics.path, `%${existing.slug}%`)
+        )
+      )
+    )
+    .run();
 
   db.delete(pages).where(eq(pages.id, pageId)).run();
 

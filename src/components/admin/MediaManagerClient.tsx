@@ -280,7 +280,7 @@ export function MediaManagerClient({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="px-3 py-1.5 rounded-lg bg-surface border border-border flex items-center gap-2 text-xs font-semibold shadow-2xs">
             {currentStorage?.provider === "r2" ? (
               <>
@@ -292,7 +292,7 @@ export function MediaManagerClient({
                   </span>
                 )}
                 <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded font-medium">
-                  Privado
+                  {tc("private")}
                 </span>
               </>
             ) : currentStorage?.provider === "s3" ? (
@@ -305,7 +305,7 @@ export function MediaManagerClient({
                   </span>
                 )}
                 <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded font-medium">
-                  Privado
+                  {tc("private")}
                 </span>
               </>
             ) : (
@@ -464,7 +464,7 @@ export function MediaManagerClient({
                   <button
                     type="button"
                     onClick={() => setDeleteTarget({ path: f.path, name: f.name, isFolder: true })}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/10 text-rose-500 transition-opacity ml-1 shrink-0"
+                    className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded hover:bg-rose-500/10 text-rose-500 transition-opacity ml-1 shrink-0"
                     title={t("deleteFolder")}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -518,12 +518,12 @@ export function MediaManagerClient({
                       loading="lazy"
                     />
 
-                    {/* Quick actions overlay */}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-2">
+                    {/* Quick actions overlay: permanent semi-transparent controls on mobile touch screens, hover-revealed on desktop */}
+                    <div className="absolute inset-0 bg-black/40 lg:bg-black/60 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 sm:gap-1.5 p-1.5 sm:p-2">
                       <button
                         type="button"
                         onClick={() => setPreviewFile(file)}
-                        className="p-1.5 rounded-lg bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={t("preview")}
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -534,7 +534,7 @@ export function MediaManagerClient({
                           setMoveTargetFile(file);
                           setTargetDestinationFolder(currentFolder);
                         }}
-                        className="p-1.5 rounded-lg bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={t("moveFile")}
                       >
                         <FolderInput className="w-3.5 h-3.5" />
@@ -542,7 +542,7 @@ export function MediaManagerClient({
                       <button
                         type="button"
                         onClick={() => copyToClipboard(file.url)}
-                        className="p-1.5 rounded-lg bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={t("copyUrl")}
                       >
                         <Copy className="w-3.5 h-3.5" />
@@ -550,7 +550,7 @@ export function MediaManagerClient({
                       <button
                         type="button"
                         onClick={() => setDeleteTarget({ path: file.path, name: file.filename, isFolder: false })}
-                        className="p-1.5 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white backdrop-blur-xs transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={tc("delete")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -609,7 +609,7 @@ export function MediaManagerClient({
           <div className="space-y-3 text-xs">
             <Input
               label={t("destinationFolder")}
-              placeholder="covers / articles"
+              placeholder={t("destinationFolderPlaceholder")}
               value={targetDestinationFolder}
               onChange={(e) => setTargetDestinationFolder(e.target.value)}
             />

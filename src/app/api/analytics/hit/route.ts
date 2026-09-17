@@ -95,6 +95,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       utm_campaign,
       utm_term,
       utm_content,
+      language: rawLanguage,
+      sessionId: rawSessionId,
+      loadTime: rawLoadTime,
+      screenWidth: rawScreenWidth,
+      screenHeight: rawScreenHeight,
     } = body;
 
     if (!siteId || !path) {
@@ -155,7 +160,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const referrer = req.headers.get("referer") || undefined;
     const country = req.headers.get("cf-ipcountry") || req.headers.get("x-vercel-ip-country") || undefined;
-    const { device, browser } = parseDeviceAndBrowser(userAgent);
+    const { device, browser, os } = parseDeviceAndBrowser(userAgent);
+    const headerLang = req.headers.get("accept-language")?.split(",")[0]?.split(";")[0]?.trim();
+    const language = (typeof rawLanguage === "string" && rawLanguage.trim() ? rawLanguage.trim() : headerLang || "").slice(0, 20);
+    const sessionId = typeof rawSessionId === "string" ? rawSessionId.slice(0, 64) : "";
+    const loadTime = typeof rawLoadTime === "number" && !isNaN(rawLoadTime) && rawLoadTime > 0 ? Math.round(rawLoadTime) : undefined;
+    const screenWidth = typeof rawScreenWidth === "number" && !isNaN(rawScreenWidth) && rawScreenWidth > 0 ? Math.round(rawScreenWidth) : undefined;
+    const screenHeight = typeof rawScreenHeight === "number" && !isNaN(rawScreenHeight) && rawScreenHeight > 0 ? Math.round(rawScreenHeight) : undefined;
 
     db.insert(analytics)
       .values({
@@ -168,6 +179,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         country,
         device,
         browser,
+        os,
+        language,
+        sessionId,
+        loadTime,
+        screenWidth,
+        screenHeight,
         utmSource: utm_source ? String(utm_source).slice(0, 100) : undefined,
         utmMedium: utm_medium ? String(utm_medium).slice(0, 100) : undefined,
         utmCampaign: utm_campaign ? String(utm_campaign).slice(0, 100) : undefined,

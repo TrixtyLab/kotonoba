@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { usePathname } from "@/i18n/routing";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { TopBar } from "@/components/admin/TopBar";
 import type { SiteOption } from "@/components/admin/SiteSwitcher";
@@ -25,28 +26,93 @@ export interface AdminClientLayoutProps {
   };
 }
 
+const SIDEBAR_STORAGE_KEY = "kotonoba_admin_sidebar_open";
+
 /**
  * Master client layout shell for the administration dashboard managing desktop sidebar collapse states and mobile drawer visibility.
  *
- * @param props - AdminClientLayoutProps configuring sites, user metadata, and children.
- * @returns React JSX dashboard layout shell.
+ * @param {AdminClientLayoutProps} props - Component properties configuring sites, user metadata, and children.
+ * @returns {React.JSX.Element} Dashboard layout shell with responsive drawer management.
  */
-export function AdminClientLayout({ children, currentSite, allSites, canManageSites = false, user }: AdminClientLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+export function AdminClientLayout({
+  children,
+  currentSite,
+  allSites,
+  canManageSites = false,
+  user,
+}: AdminClientLayoutProps): React.JSX.Element {
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (stored !== null) {
+        setSidebarOpen(stored === "true");
+      }
+    } catch {
+      // Gracefully ignore environments where localStorage is restricted
+    }
+  }, []);
+
+  /**
+   * Toggles the collapsed state of the desktop navigation sidebar and persists the user preference in local storage.
+   */
+  const handleToggleSidebar = (): void => {
+    setSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      } catch {
+        // Gracefully ignore local storage write exceptions
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && mobileSidebarOpen) {
+        setMobileSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileSidebarOpen]);
+
+  useEffect(() => {
+    if (mobileSidebarOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileSidebarOpen]);
 
   return (
     <div className="min-h-screen bg-bg text-text flex flex-col">
       {mobileSidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-xs lg:hidden transition-opacity"
+          role="presentation"
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs lg:hidden transition-opacity cursor-pointer touch-manipulation"
           onClick={() => setMobileSidebarOpen(false)}
         />
       )}
 
       <Sidebar
         isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        isMobileOpen={mobileSidebarOpen}
+        onToggle={handleToggleSidebar}
         onCloseMobile={() => setMobileSidebarOpen(false)}
         currentSite={currentSite}
         allSites={allSites}
@@ -62,7 +128,7 @@ export function AdminClientLayout({ children, currentSite, allSites, canManageSi
           user={user}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto animate-fade-in">
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto animate-fade-in">
           {children}
         </main>
       </div>

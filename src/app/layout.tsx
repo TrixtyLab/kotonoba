@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || "http://localhost:3000"),
@@ -37,9 +36,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen">
         <ThemeProvider>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
+          {children}
         </ThemeProvider>
       </body>
     </html>

@@ -2,16 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
+import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
 import { generateId } from "@/lib/utils/slug";
 
 /**
  * Dynamic client-side renderer for Mermaid flowchart and sequence diagrams with theme synchronization.
  *
- * @param props - Object containing the raw chart definition string.
- * @returns React JSX SVG container or syntax error fallback.
+ * @param {Object} props - Component properties.
+ * @param {string} props.chart - Raw Mermaid graph definition string.
+ * @returns {React.JSX.Element} React JSX SVG diagram container or localized syntax error fallback.
  */
 export function MermaidRenderer({ chart }: { chart: string }) {
+  const tc = useTranslations("common");
   const containerRef = useRef<HTMLDivElement>(null);
   const [svgHtml, setSvgHtml] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +59,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
   if (error) {
     return (
       <div className="p-3 my-3 bg-danger/10 border border-danger/30 rounded-md text-xs font-mono text-danger">
-        <p className="font-semibold mb-1">Diagram Syntax Error:</p>
+        <p className="font-semibold mb-1">{tc("diagramSyntaxError")}</p>
         <pre className="overflow-x-auto">{chart}</pre>
       </div>
     );
@@ -65,7 +68,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
   if (!svgHtml) {
     return (
       <div className="p-4 my-3 text-center text-text-muted text-xs bg-surface-hover/30 rounded-md animate-pulse">
-        Rendering diagram…
+        {tc("renderingDiagram")}
       </div>
     );
   }

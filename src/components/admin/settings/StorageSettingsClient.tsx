@@ -118,17 +118,17 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px] text-text-muted">
               {envStorageInfo?.r2Bucket && (
                 <div>
-                  <span className="font-semibold text-text">Bucket:</span> {envStorageInfo.r2Bucket}
+                  <span className="font-semibold text-text">{t("envBucket")}</span> {envStorageInfo.r2Bucket}
                 </div>
               )}
               {envStorageInfo?.r2AccountId && (
                 <div>
-                  <span className="font-semibold text-text">Account:</span> {envStorageInfo.r2AccountId}
+                  <span className="font-semibold text-text">{t("envAccount")}</span> {envStorageInfo.r2AccountId}
                 </div>
               )}
               {envStorageInfo?.r2PublicUrl && (
                 <div className="sm:col-span-2">
-                  <span className="font-semibold text-text">Public URL:</span> {envStorageInfo.r2PublicUrl}
+                  <span className="font-semibold text-text">{t("envPublicUrl")}</span> {envStorageInfo.r2PublicUrl}
                 </div>
               )}
             </div>

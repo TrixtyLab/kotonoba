@@ -499,7 +499,7 @@ export default async function IndividualAnalyticsPage({
                 <span>{t("recentVisitsLog")}</span>
               </h3>
               <span className="text-xs font-mono text-text-muted">
-                {recentLogs.length} logs
+                {recentLogs.length} {tc("logs")}
               </span>
             </div>
 
@@ -519,7 +519,7 @@ export default async function IndividualAnalyticsPage({
                       )}
                     </div>
                     <p className="text-[11px] text-text-muted truncate">
-                      {log.referrer ? cleanReferrerDomain(log.referrer) : "Direct"}
+                      {log.referrer ? cleanReferrerDomain(log.referrer) : tc("direct")}
                       {log.utmSource ? ` (utm_source: ${log.utmSource})` : ""}
                     </p>
                   </div>

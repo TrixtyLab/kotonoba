@@ -391,7 +391,7 @@ export function BannersSettingsClient({
               type="text"
               value={defaultAlt}
               onChange={(e) => setDefaultAlt(e.target.value)}
-              placeholder="e.g. Kotonoba Main Banner"
+              placeholder={t("mainBannerPlaceholder")}
               className="text-xs"
             />
           </div>
@@ -566,7 +566,7 @@ export function BannersSettingsClient({
                   type="text"
                   value={scheduledAlt}
                   onChange={(e) => setScheduledAlt(e.target.value)}
-                  placeholder="e.g. Summer Festival 2026"
+                  placeholder={t("bannerSummerPlaceholder")}
                   className="text-xs"
                 />
               </div>
@@ -667,7 +667,7 @@ export function BannersSettingsClient({
               >
                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/30 text-xs">
                   <span className="font-semibold text-text">
-                    #{index + 1} Mini Banner
+                    {t("miniBanner", { index: index + 1 })}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
@@ -675,7 +675,7 @@ export function BannersSettingsClient({
                       disabled={index === 0}
                       onClick={() => moveSidebarBanner(index, "up")}
                       className="p-1 rounded text-text-muted hover:text-text hover:bg-surface-hover disabled:opacity-30"
-                      title="Move up"
+                      title={t("moveUp")}
                     >
                       <ArrowUp className="w-3.5 h-3.5" />
                     </button>
@@ -684,7 +684,7 @@ export function BannersSettingsClient({
                       disabled={index === sidebarBanners.length - 1}
                       onClick={() => moveSidebarBanner(index, "down")}
                       className="p-1 rounded text-text-muted hover:text-text hover:bg-surface-hover disabled:opacity-30"
-                      title="Move down"
+                      title={t("moveDown")}
                     >
                       <ArrowDown className="w-3.5 h-3.5" />
                     </button>
@@ -692,7 +692,7 @@ export function BannersSettingsClient({
                       type="button"
                       onClick={() => removeSidebarBanner(index)}
                       className="p-1 rounded text-danger hover:bg-danger/10 ml-2"
-                      title="Delete mini banner"
+                      title={t("deleteBanner")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -753,7 +753,7 @@ export function BannersSettingsClient({
                         onChange={(e) =>
                           updateSidebarBannerField(index, "alt", e.target.value)
                         }
-                        placeholder="e.g. Special Discount 50% Off"
+                        placeholder={t("bannerPlaceholder")}
                         className="text-xs"
                       />
                     </div>

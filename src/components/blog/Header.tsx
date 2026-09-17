@@ -277,7 +277,7 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="md:hidden p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-                aria-label="Toggle navigation menu"
+                aria-label={t("toggleNavigation")}
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>

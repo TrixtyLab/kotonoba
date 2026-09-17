@@ -248,7 +248,7 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
             label={t("siteName")}
             value={defaultName}
             onChange={(e) => setDefaultName(e.target.value)}
-            placeholder="KagariSoft"
+            placeholder={t("siteNamePlaceholder")}
             required
           />
 
@@ -256,7 +256,7 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
             label={t("siteSubtitle")}
             value={defaultSubtitle}
             onChange={(e) => setDefaultSubtitle(e.target.value)}
-            placeholder="Official Blog"
+            placeholder={t("siteSubtitlePlaceholder")}
           />
 
           <Textarea
@@ -422,7 +422,7 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
             label={t("domain")}
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
-            placeholder="blog.domain.com"
+            placeholder={t("domainPlaceholder")}
             helperText={t("domainHint")}
             required
           />

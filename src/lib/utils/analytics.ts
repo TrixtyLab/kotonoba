@@ -1,21 +1,21 @@
 /**
- * Utilities for extracting device classifications and browser vendors from User-Agent strings.
+ * Client device classification, browser vendor, and operating system extracted from User-Agent.
  */
-
 export interface ParsedClientInfo {
   device: "desktop" | "mobile" | "tablet";
   browser: string;
+  os: string;
 }
 
 /**
- * Extracts device category (mobile, tablet, desktop) and browser vendor from a User-Agent string.
+ * Extracts normalized device category, browser vendor, and operating system name from a raw User-Agent string.
  *
- * @param userAgent - Raw client User-Agent string.
- * @returns Object with normalized device and browser identifiers.
+ * @param {string} userAgent - Raw client User-Agent string from request headers.
+ * @returns {ParsedClientInfo} Normalized device classification, browser name, and operating system.
  */
 export function parseDeviceAndBrowser(userAgent: string): ParsedClientInfo {
   if (!userAgent || typeof userAgent !== "string") {
-    return { device: "desktop", browser: "Other" };
+    return { device: "desktop", browser: "Other", os: "Other" };
   }
 
   const ua = userAgent.toLowerCase();
@@ -50,5 +50,21 @@ export function parseDeviceAndBrowser(userAgent: string): ParsedClientInfo {
     browser = "Internet Explorer";
   }
 
-  return { device, browser };
+  let os = "Other";
+  if (/iphone|ipad|ipod/i.test(ua)) {
+    os = "iOS";
+  } else if (/android/i.test(ua)) {
+    os = "Android";
+  } else if (/windows|win32|win64/i.test(ua)) {
+    os = "Windows";
+  } else if (/macintosh|mac os x/i.test(ua)) {
+    os = "macOS";
+  } else if (/cros/i.test(ua)) {
+    os = "Chrome OS";
+  } else if (/linux/i.test(ua)) {
+    os = "Linux";
+  }
+
+  return { device, browser, os };
 }
+

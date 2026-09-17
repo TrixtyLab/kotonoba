@@ -77,8 +77,8 @@ export default async function BlogHomePage({
   if (!site) {
     return (
       <div className="text-center py-20 space-y-4">
-        <h1 className="text-2xl font-bold text-text">No active site configured</h1>
-        <p className="text-sm text-text-muted">Please visit the setup wizard or admin panel.</p>
+        <h1 className="text-2xl font-bold text-text">{t("noActiveSite")}</h1>
+        <p className="text-sm text-text-muted">{t("noActiveSiteHint")}</p>
       </div>
     );
   }

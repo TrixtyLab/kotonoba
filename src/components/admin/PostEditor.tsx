@@ -873,7 +873,7 @@ export function PostEditor({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
           <Button
             variant="outline"
             size="sm"
@@ -928,9 +928,9 @@ export function PostEditor({
       {/* Main Grid: Left Editor + Right Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Editor Main Canvas */}
-        <div className={`${showInspector ? "lg:col-span-8" : "lg:col-span-12"} space-y-4`}>
+        <div className={`${showInspector ? "lg:col-span-8" : "lg:col-span-12"} space-y-4 min-w-0`}>
           {/* Title Box */}
-          <div className="p-6 bg-surface border border-border rounded-xl shadow-xs space-y-3">
+          <div className="p-4 sm:p-6 bg-surface border border-border rounded-xl shadow-xs space-y-3">
             <input
               type="text"
               value={title}
@@ -940,13 +940,13 @@ export function PostEditor({
             />
           </div>
 
-          {/* WYSIWYG Formatting Toolbar */}
-          <div className="bg-surface border border-border rounded-xl p-2 flex flex-wrap items-center gap-1 shadow-xs sticky top-20 z-20">
+          {/* WYSIWYG Formatting Toolbar (Single-row scrollable on mobile) */}
+          <div className="bg-surface border border-border rounded-xl p-1.5 sm:p-2 flex items-center gap-1 shadow-xs sticky top-16 sm:top-20 z-20 overflow-x-auto no-scrollbar">
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("bold")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("bold") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("bold") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("boldTooltip")}
             >
               <Bold className="w-4 h-4" />
@@ -955,7 +955,7 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("italic")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("italic") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("italic") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("italicTooltip")}
             >
               <Italic className="w-4 h-4" />
@@ -964,7 +964,7 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("strike")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("strike") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("strike") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("strikeTooltip")}
             >
               <Strikethrough className="w-4 h-4" />
@@ -973,19 +973,19 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleMark("code")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors ${editor?.isActive("code") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("code") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("codeTooltip")}
             >
               <Code className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-border mx-1" />
+            <span className="w-px h-4 bg-border mx-1 shrink-0" />
 
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleHeading(1)}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 1 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("heading", { level: 1 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("h1")}
             >
               <Heading1 className="w-4 h-4" />
@@ -994,7 +994,7 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleHeading(2)}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 2 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("heading", { level: 2 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("h2")}
             >
               <Heading2 className="w-4 h-4" />
@@ -1003,19 +1003,19 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => toggleHeading(3)}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("heading", { level: 3 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("heading", { level: 3 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
               title={t("h3")}
             >
               <Heading3 className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-border mx-1" />
+            <span className="w-px h-4 bg-border mx-1 shrink-0" />
 
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleBullet}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("bulletList") ? "text-accent bg-accent/10" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("bulletList") ? "text-accent bg-accent/10" : "text-text"}`}
               title={t("bulletList")}
             >
               <List className="w-4 h-4" />
@@ -1024,7 +1024,7 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleOrdered}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("orderedList") ? "text-accent bg-accent/10" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("orderedList") ? "text-accent bg-accent/10" : "text-text"}`}
               title={t("orderedList")}
             >
               <ListOrdered className="w-4 h-4" />
@@ -1033,7 +1033,7 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleBlockquote}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("blockquote") ? "text-accent bg-accent/10" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("blockquote") ? "text-accent bg-accent/10" : "text-text"}`}
               title={t("quote")}
             >
               <Quote className="w-4 h-4" />
@@ -1042,19 +1042,19 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => editor?.chain().focus().setHorizontalRule().run()}
-              className="p-1.5 rounded-lg hover:bg-surface-hover text-text"
+              className="p-1.5 rounded-lg hover:bg-surface-hover text-text shrink-0"
               title={t("divider")}
             >
               <Minus className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-border mx-1" />
+            <span className="w-px h-4 bg-border mx-1 shrink-0" />
 
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={openLinkModal}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover ${editor?.isActive("link") ? "text-accent bg-accent/10" : "text-text"}`}
+              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("link") ? "text-accent bg-accent/10" : "text-text"}`}
               title={t("link")}
             >
               <Link2 className="w-4 h-4" />
@@ -1065,7 +1065,7 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => openMediaPicker("editor")}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text ml-1"
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text ml-1 shrink-0 whitespace-nowrap"
               title={t("library")}
             >
               <ImageIcon className="w-3.5 h-3.5 text-accent" />
@@ -1085,7 +1085,7 @@ export function PostEditor({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => inlineFileInputRef.current?.click()}
               disabled={isUploadingInline}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text"
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text shrink-0 whitespace-nowrap"
               title={t("directUpload")}
             >
               {isUploadingInline ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 text-accent" />}
@@ -1097,20 +1097,20 @@ export function PostEditor({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setEmbedModalOpen(true)}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text"
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text shrink-0 whitespace-nowrap"
               title={t("embed")}
             >
               <PlaySquare className="w-3.5 h-3.5 text-accent" />
               <span>{t("embed")}</span>
             </button>
 
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex items-center gap-1 shrink-0 pl-2">
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => editor?.chain().focus().undo().run()}
                 disabled={!editor?.can().undo()}
-                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text"
+                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text shrink-0"
                 title={t("undo")}
               >
                 <Undo className="w-4 h-4" />
@@ -1120,7 +1120,7 @@ export function PostEditor({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => editor?.chain().focus().redo().run()}
                 disabled={!editor?.can().redo()}
-                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text"
+                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text shrink-0"
                 title={t("redo")}
               >
                 <Redo className="w-4 h-4" />
@@ -1129,7 +1129,7 @@ export function PostEditor({
           </div>
 
           {/* Editor Canvas */}
-          <div className="bg-surface border border-border rounded-xl p-6 sm:p-8 min-h-[500px] shadow-xs">
+          <div className="bg-surface border border-border rounded-xl p-3.5 sm:p-6 lg:p-8 min-h-[350px] sm:min-h-[500px] shadow-xs">
             <EditorContent editor={editor} className="prose-blog focus:outline-hidden" />
           </div>
         </div>
@@ -1138,7 +1138,7 @@ export function PostEditor({
         {showInspector && (
           <div className="lg:col-span-4 space-y-4">
             {/* Slug & Language */}
-            <div className="p-5 rounded-xl bg-surface border border-border space-y-3.5 shadow-xs">
+            <div className="p-4 sm:p-5 rounded-xl bg-surface border border-border space-y-3.5 shadow-xs">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border">
                 {t("postParams")}
               </h3>
@@ -1408,7 +1408,7 @@ export function PostEditor({
                           size="sm"
                           onClick={() => setQrModalOpen(true)}
                           className="p-1 h-auto text-xs shrink-0"
-                          title="QR Code"
+                          title={tc("qrCode")}
                         >
                           <QrCode className="w-3 h-3" />
                         </Button>
@@ -1424,7 +1424,7 @@ export function PostEditor({
             </div>
 
             {/* Cover Image */}
-            <div className="p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
+            <div className="p-4 sm:p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-text">
                   {t("coverImage")}
@@ -1624,10 +1624,10 @@ export function PostEditor({
 
           <Input
             label={t("embedInputLabel")}
-            placeholder="steam:1299800, itch:2548291, https://... o <iframe>"
+            placeholder={t("embedInputPlaceholder")}
             value={embedUrl}
             onChange={(e) => setEmbedUrl(e.target.value)}
-            helperText="Para juegos escribe steam:1299800 o itch:2548291. También puedes pegar URLs directas o código iframe."
+            helperText={t("embedHelperText")}
           />
 
           <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1.5 text-text-muted">

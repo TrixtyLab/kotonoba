@@ -34,7 +34,12 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  async function handleExportBackup() {
+  /**
+   * Generates and downloads a complete ZIP snapshot archive of the active site database and media files.
+   *
+   * @returns {Promise<void>} A Promise resolving once the download stream commences or fails.
+   */
+  async function handleExportBackup(): Promise<void> {
     setIsExporting(true);
     try {
       const res = await fetch(`/api/backup/export?siteId=${encodeURIComponent(siteId)}`);
@@ -61,14 +66,24 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
     }
   }
 
-  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  /**
+   * Handles user file selection for backup restoration.
+   *
+   * @param {React.ChangeEvent<HTMLInputElement>} e - Change event containing the selected file.
+   */
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     if (file) {
       setImportFile(file);
     }
   }
 
-  async function executeImport() {
+  /**
+   * Dispatches the selected ZIP archive to the import API endpoint using the chosen merge or replace strategy.
+   *
+   * @returns {Promise<void>} A Promise resolving once restoration completes or reports an error.
+   */
+  async function executeImport(): Promise<void> {
     if (!importFile) {
       toast.error(t("noFileSelected"));
       return;
@@ -90,11 +105,13 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
       if (data.success && data.stats) {
         toast.success(
           t("restoreSuccess", {
-            posts: data.stats.posts,
-            categories: data.stats.categories,
-            tags: data.stats.tags,
-            settings: data.stats.settings,
-            media: data.stats.media,
+            posts: data.stats.posts || 0,
+            pages: data.stats.pages || 0,
+            categories: data.stats.categories || 0,
+            tags: data.stats.tags || 0,
+            settings: data.stats.settings || 0,
+            analytics: data.stats.analytics || 0,
+            media: data.stats.media || 0,
           })
         );
         setImportFile(null);

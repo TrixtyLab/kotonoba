@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition, useState, useMemo } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/routing";
 import { LOCALES, LOCALE_NAMES, type Locale } from "@/i18n/routing";
 import { Globe, Check, Search } from "lucide-react";
@@ -22,6 +22,7 @@ export interface LocaleSwitcherProps {
  * @returns React JSX locale selector dropdown element, or null if only 1 language is available.
  */
 export function LocaleSwitcher({ enabledLocales }: LocaleSwitcherProps) {
+  const t = useTranslations("common");
   const currentLocale = useLocale() as Locale;
   const router = useRouter();
   const pathname = usePathname();
@@ -61,7 +62,7 @@ export function LocaleSwitcher({ enabledLocales }: LocaleSwitcherProps) {
     <div className="relative inline-block text-left">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        aria-label="Change language"
+        aria-label={t("changeLanguage")}
         aria-expanded={isOpen}
         disabled={isPending}
         className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md hover:bg-surface-hover transition-colors btn-press text-text-muted hover:text-text"
@@ -79,7 +80,7 @@ export function LocaleSwitcher({ enabledLocales }: LocaleSwitcherProps) {
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-text-muted" />
                 <input
                   type="text"
-                  placeholder="Search language…"
+                  placeholder={t("searchLanguage")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full bg-input border border-border rounded-md pl-8 pr-3 py-1.5 text-xs text-text placeholder-text-muted focus:outline-none focus:border-primary"
@@ -102,7 +103,7 @@ export function LocaleSwitcher({ enabledLocales }: LocaleSwitcherProps) {
                 </button>
               ))}
               {filteredLocales.length === 0 && (
-                <div className="p-3 text-center text-xs text-text-muted">No languages found.</div>
+                <div className="p-3 text-center text-xs text-text-muted">{t("noLanguagesFound")}</div>
               )}
             </div>
           </div>

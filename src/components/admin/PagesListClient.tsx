@@ -35,13 +35,21 @@ export interface PageItem {
 }
 
 /**
+ * Properties configuring the administrative pages list view.
+ */
+export interface PagesListClientProps {
+  /** Initial catalog of PageItem records loaded from the server. */
+  initialPages: PageItem[];
+}
+
+/**
  * Administrative custom pages management table with search, status filters, and deletion.
+ * Includes responsive column collapsing and mobile metadata chips for compact phone displays.
  *
- * @param {Object} props - Component properties.
- * @param {PageItem[]} props.initialPages - Initial catalog of PageItem records loaded from the server.
+ * @param {PagesListClientProps} props - Component properties containing the initial page catalog.
  * @returns {React.JSX.Element} React JSX pages list view.
  */
-export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) {
+export function PagesListClient({ initialPages }: PagesListClientProps): React.JSX.Element {
   const t = useTranslations("admin");
   const tc = useTranslations("common");
   const toast = useToast();
@@ -59,7 +67,7 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
     });
   }, [pagesList, search, statusFilter]);
 
-  async function handleConfirmDelete() {
+  async function handleConfirmDelete(): Promise<void> {
     if (!pageToDelete) return;
     const id = pageToDelete;
     startTransition(async () => {
@@ -107,13 +115,13 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
       {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3 rounded-xl border border-border">
         {/* Status Pills */}
-        <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
           {statusOptions.map((opt) => (
             <button
               key={opt.key}
               type="button"
               onClick={() => setStatusFilter(opt.key)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
                 statusFilter === opt.key
                   ? "bg-accent text-white font-semibold shadow-2xs"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
@@ -151,10 +159,10 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
             <thead>
               <tr className="border-b border-border bg-surface-hover/30 text-[11px] font-bold text-text-muted uppercase tracking-wider">
                 <th className="py-3 px-4">{tc("title")}</th>
-                <th className="py-3 px-4">{tc("status")}</th>
-                <th className="py-3 px-4">{tc("language")}</th>
-                <th className="py-3 px-4">{tc("views")}</th>
-                <th className="py-3 px-4">{tc("date")}</th>
+                <th className="py-3 px-4 hidden sm:table-cell">{tc("status")}</th>
+                <th className="py-3 px-4 hidden md:table-cell">{tc("language")}</th>
+                <th className="py-3 px-4 hidden sm:table-cell">{tc("views")}</th>
+                <th className="py-3 px-4 hidden md:table-cell">{tc("date")}</th>
                 <th className="py-3 px-4 text-right">{tc("actions")}</th>
               </tr>
             </thead>
@@ -180,9 +188,42 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
                       <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-muted font-mono">
                         <span>/p/{page.slug}</span>
                       </div>
+
+                      {/* Mobile metadata badge sub-line */}
+                      <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
+                        <Badge
+                          variant={
+                            page.status === "published"
+                              ? "success"
+                              : page.status === "scheduled"
+                              ? "primary"
+                              : page.status === "archived"
+                              ? "secondary"
+                              : "warning"
+                          }
+                          className="text-[9px] py-0 px-1.5"
+                        >
+                          {page.status === "published"
+                            ? t("statusPublished")
+                            : page.status === "scheduled"
+                            ? t("statusScheduled")
+                            : page.status === "archived"
+                            ? t("statusArchived")
+                            : t("statusDraft")}
+                        </Badge>
+                        <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
+                          {page.locale}
+                        </span>
+                        <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
+                          <Eye className="w-2.5 h-2.5" /> {page.views.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-text-muted">
+                          {page.publishedAtFormatted || page.createdAtFormatted}
+                        </span>
+                      </div>
                     </td>
 
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 hidden sm:table-cell">
                       <Badge
                         variant={
                           page.status === "published"
@@ -204,20 +245,20 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
                       </Badge>
                     </td>
 
-                    <td className="py-3 px-4">
-                      <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-hover text-text-muted border border-border/50">
+                    <td className="py-3 px-4 hidden md:table-cell">
+                      <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
                         {page.locale}
                       </span>
                     </td>
 
-                    <td className="py-3 px-4 text-text-muted">
-                      <span className="flex items-center gap-1">
+                    <td className="py-3 px-4 text-text-muted hidden sm:table-cell">
+                      <span className="flex items-center gap-1 font-mono">
                         <Eye className="w-3.5 h-3.5" />
                         {page.views.toLocaleString()}
                       </span>
                     </td>
 
-                    <td className="py-3 px-4 text-text-muted whitespace-nowrap">
+                    <td className="py-3 px-4 text-text-muted whitespace-nowrap hidden md:table-cell">
                       {page.publishedAtFormatted || page.createdAtFormatted}
                     </td>
 
@@ -228,7 +269,7 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
                             href={`/p/${page.slug}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+                            className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                             title={tc("preview")}
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
@@ -237,7 +278,7 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
 
                         <Link
                           href={`/admin/pages/${page.id}`}
-                          className="p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+                          className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                           title={tc("edit")}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
@@ -246,7 +287,7 @@ export function PagesListClient({ initialPages }: { initialPages: PageItem[] }) 
                         <button
                           type="button"
                           onClick={() => setPageToDelete(page.id)}
-                          className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+                          className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer"
                           title={tc("delete")}
                         >
                           <Trash2 className="w-3.5 h-3.5" />

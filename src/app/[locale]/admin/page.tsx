@@ -131,7 +131,7 @@ export default async function AdminDashboardPage({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link href="/admin/media">
             <Button size="sm" variant="outline" icon={<ImageIcon className="w-3.5 h-3.5 text-accent" />}>
               {t("media")}
@@ -152,14 +152,14 @@ export default async function AdminDashboardPage({
           return (
             <div
               key={m.label}
-              className="p-4 rounded-xl bg-surface border border-border flex items-center gap-3.5 shadow-xs"
+              className="p-3.5 sm:p-4 rounded-xl bg-surface border border-border flex items-center gap-3 sm:gap-3.5 shadow-xs"
             >
-              <div className={`w-10 h-10 rounded-lg ${m.bg} ${m.color} flex items-center justify-center shrink-0`}>
-                <Icon className="w-5 h-5" />
+              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg ${m.bg} ${m.color} flex items-center justify-center shrink-0`}>
+                <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-medium text-text-muted truncate">{m.label}</p>
-                <p className="text-xl font-bold text-text tabular-nums mt-0.5">{m.value}</p>
+                <p className="text-[10px] sm:text-[11px] font-medium text-text-muted truncate">{m.label}</p>
+                <p className="text-lg sm:text-xl font-bold text-text tabular-nums mt-0.5">{m.value}</p>
               </div>
             </div>
           );
@@ -169,7 +169,7 @@ export default async function AdminDashboardPage({
       {/* 2-Column Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Recent Articles */}
-        <div className="lg:col-span-8 bg-surface border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
+        <div className="lg:col-span-8 bg-surface border border-border rounded-xl p-4 sm:p-6 space-y-4 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-border">
             <div>
               <h2 className="text-sm font-bold text-text">{t("recentPosts")}</h2>
@@ -185,14 +185,14 @@ export default async function AdminDashboardPage({
 
           <div className="divide-y divide-border/60">
             {recentPosts.map((post) => (
-              <div key={post.id} className="py-3 flex items-center justify-between gap-4 group">
+              <div key={post.id} className="py-3 flex items-center justify-between gap-3 sm:gap-4 group">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   {post.coverImage ? (
-                    <div className="w-10 h-10 rounded-lg border border-border overflow-hidden shrink-0 bg-surface-hover/30">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg border border-border overflow-hidden shrink-0 bg-surface-hover/30">
                       <img src={post.coverImage} alt={post.title} className="w-full h-full object-cover" />
                     </div>
                   ) : (
-                    <div className="w-10 h-10 rounded-lg border border-border bg-surface-hover/40 flex items-center justify-center text-text-muted shrink-0">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg border border-border bg-surface-hover/40 flex items-center justify-center text-text-muted shrink-0">
                       <FileText className="w-4 h-4" />
                     </div>
                   )}
@@ -204,7 +204,7 @@ export default async function AdminDashboardPage({
                     >
                       {post.title}
                     </Link>
-                    <p className="text-[11px] text-text-muted flex items-center gap-2">
+                    <p className="text-[10px] sm:text-[11px] text-text-muted flex items-center gap-1.5 sm:gap-2">
                       <span>{post.publishedAt ? formatDate(post.publishedAt, locale) : t("statusDraft")}</span>
                       <span>•</span>
                       <span>{t("viewsCount", { count: post.views })}</span>
@@ -212,7 +212,7 @@ export default async function AdminDashboardPage({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                   <Badge
                     variant={
                       post.status === "published"
@@ -223,6 +223,7 @@ export default async function AdminDashboardPage({
                         ? "secondary"
                         : "warning"
                     }
+                    className="text-[9px] sm:text-xs"
                   >
                     {post.status === "published"
                       ? t("statusPublished")
@@ -232,7 +233,7 @@ export default async function AdminDashboardPage({
                       ? t("statusArchived")
                       : t("statusDraft")}
                   </Badge>
-                  <Link href={`/admin/posts/${post.id}`}>
+                  <Link href={`/admin/posts/${post.id}`} className="hidden sm:inline-flex">
                     <Button variant="ghost" size="sm" className="text-xs">
                       {tc("edit")}
                     </Button>

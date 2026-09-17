@@ -194,6 +194,12 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     device TEXT DEFAULT 'desktop',
     browser TEXT DEFAULT '',
     os TEXT DEFAULT '',
+    language TEXT DEFAULT '',
+    session_id TEXT DEFAULT '',
+    load_time INTEGER,
+    time_on_page INTEGER DEFAULT 0,
+    screen_width INTEGER,
+    screen_height INTEGER,
     utm_source TEXT,
     utm_medium TEXT,
     utm_campaign TEXT,
@@ -213,6 +219,12 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     sql`ALTER TABLE analytics ADD COLUMN device TEXT DEFAULT 'desktop'`,
     sql`ALTER TABLE analytics ADD COLUMN browser TEXT DEFAULT ''`,
     sql`ALTER TABLE analytics ADD COLUMN os TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN language TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN session_id TEXT DEFAULT ''`,
+    sql`ALTER TABLE analytics ADD COLUMN load_time INTEGER`,
+    sql`ALTER TABLE analytics ADD COLUMN time_on_page INTEGER DEFAULT 0`,
+    sql`ALTER TABLE analytics ADD COLUMN screen_width INTEGER`,
+    sql`ALTER TABLE analytics ADD COLUMN screen_height INTEGER`,
     sql`ALTER TABLE analytics ADD COLUMN utm_source TEXT`,
     sql`ALTER TABLE analytics ADD COLUMN utm_medium TEXT`,
     sql`ALTER TABLE analytics ADD COLUMN utm_campaign TEXT`,
@@ -225,6 +237,23 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
       db.run(query);
     } catch { }
   }
+
+  try {
+    db.run(sql`CREATE INDEX IF NOT EXISTS analytics_session_idx ON analytics (session_id)`);
+    db.run(sql`CREATE INDEX IF NOT EXISTS analytics_language_idx ON analytics (language)`);
+  } catch { }
+
+  db.run(sql`CREATE TABLE IF NOT EXISTS analytics_segments (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    filters TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL
+  )`);
+
+  try {
+    db.run(sql`CREATE INDEX IF NOT EXISTS analytics_segments_site_idx ON analytics_segments (site_id)`);
+  } catch { }
 
   try {
     const tableInfo = db.all<{ name: string }>(sql`PRAGMA table_info(analytics)`);

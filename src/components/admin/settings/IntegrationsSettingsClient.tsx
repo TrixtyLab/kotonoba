@@ -296,7 +296,7 @@ export function IntegrationsSettingsClient({
                 label={t("blueskyIdentifier")}
                 value={blueskyIdentifier}
                 onChange={(e) => setBlueskyIdentifier(e.target.value)}
-                placeholder="username.bsky.social"
+                placeholder={t("blueskyIdentifierPlaceholder")}
                 helperText={t("blueskyIdentifierHelp")}
               />
               <Input
@@ -424,7 +424,7 @@ export function IntegrationsSettingsClient({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 rounded-lg border border-border bg-surface text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-                  title="Feed XML"
+                  title={t("rssFeed")}
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
