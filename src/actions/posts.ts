@@ -76,10 +76,13 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
   const now = new Date();
 
   let targetPublishedAt: Date | null = null;
-  if (status === "published") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : now;
-  } else if (status === "scheduled") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : now;
+  if (status === "published" || status === "scheduled") {
+    if (publishedAt) {
+      const parsed = new Date(publishedAt);
+      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : now;
+    } else {
+      targetPublishedAt = now;
+    }
   }
 
   let finalShortUrl = shortUrl || null;
@@ -235,10 +238,13 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
   const now = new Date();
 
   let targetPublishedAt: Date | null = null;
-  if (status === "published") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
-  } else if (status === "scheduled") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
+  if (status === "published" || status === "scheduled") {
+    if (publishedAt) {
+      const parsed = new Date(publishedAt);
+      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : (existing.publishedAt || now);
+    } else {
+      targetPublishedAt = existing.publishedAt || now;
+    }
   } else if (status === "draft") {
     targetPublishedAt = null;
   } else {

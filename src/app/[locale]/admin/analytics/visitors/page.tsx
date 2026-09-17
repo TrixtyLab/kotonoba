@@ -19,6 +19,7 @@ import {
 } from "@/lib/analytics/query";
 import { BarChart, BarChartItem } from "@/components/admin/analytics/BarChart";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
+import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -208,18 +209,27 @@ export default async function AnalyticsVisitorsPage({
     {
       key: "country",
       header: t("geoDistribution"),
-      render: (row) =>
-        row.country && row.country !== t("globalUnknown") ? (
+      render: (row) => {
+        const isKnown = Boolean(row.country && row.country !== t("globalUnknown"));
+        const countryName = isKnown ? getCountryName(row.country, locale) : row.country;
+
+        return isKnown ? (
           <a
             href={getFilterHref("country", row.country)}
-            className="font-semibold text-text hover:text-accent hover:underline"
-            title={t("filterBy", { name: row.country })}
+            className="font-semibold text-text hover:text-accent hover:underline inline-flex items-center gap-2"
+            title={t("filterBy", { name: countryName })}
           >
-            {row.country}
+            <CountryFlag code={row.country} locale={locale} />
+            <span>{countryName}</span>
+            <span className="text-[11px] font-mono text-text-muted font-normal">({row.country})</span>
           </a>
         ) : (
-          <span className="font-semibold text-text">{row.country}</span>
-        ),
+          <span className="font-semibold text-text inline-flex items-center gap-2">
+            <Globe className="w-3.5 h-3.5 text-text-muted" />
+            <span>{row.country}</span>
+          </span>
+        );
+      },
     },
     {
       key: "city",

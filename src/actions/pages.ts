@@ -67,7 +67,12 @@ export async function createPage(siteId: string, inputData: Partial<PageInput>):
 
   let targetPublishedAt: Date | null = null;
   if (status === "published" || status === "scheduled") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : now;
+    if (publishedAt) {
+      const parsed = new Date(publishedAt);
+      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : now;
+    } else {
+      targetPublishedAt = now;
+    }
   }
 
   db.insert(pages).values({
@@ -133,10 +138,13 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
   const pageSlug = slug ? generateSlug(slug) : existing.slug;
 
   let targetPublishedAt: Date | null = null;
-  if (status === "published") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
-  } else if (status === "scheduled") {
-    targetPublishedAt = publishedAt ? new Date(publishedAt) : (existing.publishedAt || now);
+  if (status === "published" || status === "scheduled") {
+    if (publishedAt) {
+      const parsed = new Date(publishedAt);
+      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : (existing.publishedAt || now);
+    } else {
+      targetPublishedAt = existing.publishedAt || now;
+    }
   } else if (status === "draft") {
     targetPublishedAt = null;
   } else {

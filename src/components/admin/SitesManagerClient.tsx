@@ -192,14 +192,14 @@ export function SitesManagerClient({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-text tracking-tight">{t("siteManager")}</h1>
+          <h1 className="text-xl font-bold text-text tracking-tight">{tSites("siteManager")}</h1>
           <p className="text-xs text-text-muted mt-0.5">
-            {t("siteManager")} ({sites.length} {tc("sites").toLowerCase()}).
+            {tSites("siteManager")} ({sites.length} {tc("sites").toLowerCase()}).
           </p>
         </div>
 
         <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-3.5 h-3.5" />}>
-          {t("addSite")}
+          {tSites("addSite")}
         </Button>
       </div>
 
@@ -227,7 +227,7 @@ export function SitesManagerClient({
                   </div>
                   {isCurrent ? (
                     <Badge variant="success">
-                      <Check className="w-3 h-3 mr-1" /> {t("activeSite")}
+                      <Check className="w-3.5 h-3.5 mr-1" /> {tSites("activeSite")}
                     </Badge>
                   ) : (
                     <Badge variant="secondary">{tc("inactive")}</Badge>
@@ -270,7 +270,7 @@ export function SitesManagerClient({
                       {tc("admin")}
                     </Button>
                   ) : (
-                    <span className="text-xs text-accent font-semibold">{t("activeSite")}</span>
+                    <span className="text-xs text-accent font-semibold">{tSites("activeSite")}</span>
                   )}
                   <a
                     href={getSitePublicUrl(s.domain)}
@@ -313,7 +313,7 @@ export function SitesManagerClient({
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? tc("edit") : t("addSite")}
+        title={editingId ? tc("edit") : tSites("addSite")}
       >
         <div className="space-y-3 text-xs">
           <Input
@@ -323,7 +323,7 @@ export function SitesManagerClient({
             onChange={(e) => setName(e.target.value)}
           />
           <Input
-            label={t("domain")}
+            label={tSites("domain")}
             placeholder={tSites("domainPlaceholder")}
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
@@ -361,7 +361,7 @@ export function SitesManagerClient({
               {tc("cancel")}
             </Button>
             <Button variant="primary" size="sm" onClick={handleSave} loading={isPending}>
-              {editingId ? t("saveChanges") : t("addSite")}
+              {editingId ? tSites("saveChanges") : tSites("addSite")}
             </Button>
           </div>
         </div>
