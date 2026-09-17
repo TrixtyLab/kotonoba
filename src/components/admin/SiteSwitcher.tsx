@@ -386,14 +386,14 @@ export function SiteSwitcher({
 
               <Input
                 label={t("siteName")}
-                placeholder="ej. Blog de Tecnología"
+                placeholder={t("siteNamePlaceholder")}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
 
               <Input
                 label={t("domain")}
-                placeholder="ej. blog.midominio.com o localhost:3000"
+                placeholder={t("domainPlaceholder")}
                 value={formDomain}
                 onChange={(e) => setFormDomain(e.target.value)}
                 helperText={t("multiTenantHint")}
@@ -401,7 +401,7 @@ export function SiteSwitcher({
 
               <Input
                 label={t("siteSubtitle")}
-                placeholder="Reflexiones sobre tecnología y diseño"
+                placeholder={t("siteSubtitlePlaceholder")}
                 value={formSubtitle}
                 onChange={(e) => setFormSubtitle(e.target.value)}
               />

@@ -23,6 +23,7 @@ export interface ShareButtonsProps {
  * @returns React JSX sharing buttons cluster.
  */
 export function ShareButtons({ url, title }: ShareButtonsProps) {
+  const t = useTranslations("blog");
   const tc = useTranslations("common");
   const [copied, setCopied] = useState(false);
   const toast = useToast();
@@ -47,9 +48,9 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
         href={`https://x.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}`}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Compartir en X"
+        aria-label={t("shareOnX")}
         className={buttonClass}
-        title="Compartir en X (Twitter)"
+        title={t("shareOnXTitle")}
       >
         <FaXTwitter className="w-4 h-4" />
       </a>
@@ -57,9 +58,9 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
         href={`https://bsky.app/intent/compose?text=${bskyText}`}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Compartir en Bluesky"
+        aria-label={t("shareOnBluesky")}
         className={buttonClass}
-        title="Compartir en Bluesky"
+        title={t("shareOnBluesky")}
       >
         <FaBluesky className="w-4 h-4" />
       </a>
@@ -67,9 +68,9 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
         href={`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Compartir en Facebook"
+        aria-label={t("shareOnFacebook")}
         className={buttonClass}
-        title="Compartir en Facebook"
+        title={t("shareOnFacebook")}
       >
         <FaFacebook className="w-4 h-4" />
       </a>
@@ -77,9 +78,9 @@ export function ShareButtons({ url, title }: ShareButtonsProps) {
         href={`https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Compartir en WhatsApp"
+        aria-label={t("shareOnWhatsApp")}
         className={buttonClass}
-        title="Compartir en WhatsApp"
+        title={t("shareOnWhatsApp")}
       >
         <FaWhatsapp className="w-4 h-4" />
       </a>

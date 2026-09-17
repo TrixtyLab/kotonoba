@@ -31,9 +31,10 @@ export interface ConfirmModalProps {
 
 /**
  * Accessible modal confirmation dialog component replacing native browser confirm() dialogs.
+ * Includes mobile view height constraints and touch-friendly targets.
  *
- * @param props - ConfirmModalProps configuring prompt message, action handler, and severity styling.
- * @returns React JSX confirmation dialog element or null when inactive.
+ * @param {ConfirmModalProps} props - Configuration properties specifying message, confirmation handler, and action buttons.
+ * @returns {React.JSX.Element | null} React JSX confirmation dialog element or null when inactive.
  */
 export function ConfirmModal({
   isOpen,
@@ -45,7 +46,7 @@ export function ConfirmModal({
   cancelText,
   variant = "danger",
   isLoading = false,
-}: ConfirmModalProps) {
+}: ConfirmModalProps): React.JSX.Element | null {
   const tc = useTranslations("common");
   const resolvedConfirmText = confirmText || tc("confirm");
   const resolvedCancelText = cancelText || tc("cancel");
@@ -62,7 +63,7 @@ export function ConfirmModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-md transition-opacity animate-fade-in"
         onClick={() => {
@@ -74,13 +75,13 @@ export function ConfirmModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
-        className="relative w-full max-w-md glass-strong p-6 rounded-2xl border border-border shadow-2xl z-10 animate-slide-up space-y-5"
+        className="relative w-full max-w-md glass-strong p-4 sm:p-6 rounded-2xl border border-border shadow-2xl z-10 animate-slide-up space-y-4 sm:space-y-5 max-h-[90dvh] overflow-y-auto"
       >
         <button
           onClick={onClose}
           disabled={isLoading}
-          className="absolute top-4 right-4 p-1 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-          aria-label="Cerrar modal"
+          className="absolute top-3 right-3 sm:top-4 sm:right-4 p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+          aria-label={tc("closeModal")}
         >
           <X className="w-4 h-4" />
         </button>

@@ -101,10 +101,10 @@ export async function testBlueskyConnection(creds: BlueskyCredentials): Promise<
 
 /**
  * Dispatches an automated post with rich link embed card and hashtags to Bluesky when an article is published.
- * Executes safely in a non-blocking background context.
+ * Respects tenant-configured syndication preferences for title and description inclusion, as well as the 300-grapheme limit.
  *
  * @param {string} siteId - Unique database identifier of the blog site.
- * @param {BlueskyPostPayload} post - Published post data payload.
+ * @param {BlueskyPostPayload} post - Published post data payload containing headline, slug, excerpt, and media assets.
  * @returns {Promise<boolean>} Promise resolving to true if published successfully, false otherwise.
  */
 export async function sendBlueskyPostNotification(
@@ -129,6 +129,8 @@ export async function sendBlueskyPostNotification(
     const appPassword = configMap.bluesky_app_password?.trim();
     const serviceUrl = configMap.bluesky_service_url?.trim() || "https://bsky.social";
     const includeTags = configMap.bluesky_include_tags !== "false";
+    const includeTitle = configMap.bluesky_include_title !== "false";
+    const includeDescription = configMap.bluesky_include_description !== "false";
 
     if (!enabled || !identifier || !appPassword) {
       return false;
@@ -150,7 +152,6 @@ export async function sendBlueskyPostNotification(
     const canonicalPostUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
     const postUrl = post.shortUrl || canonicalPostUrl;
 
-    // Fetch tags if not passed
     let tagNames: string[] = [];
     if (includeTags) {
       if (post.tagIds && post.tagIds.length > 0) {
@@ -177,30 +178,47 @@ export async function sendBlueskyPostNotification(
       .slice(0, 5)
       .join(" ");
 
-    // Compose text respecting Bluesky's 300 grapheme limit
-    const title = post.title.trim();
+    const title = (post.title || "").trim();
     const excerpt = (post.excerpt || "").trim();
 
-    let postText = `📢 ${title}`;
-    if (excerpt) {
-      const remainingForExcerpt = 260 - postText.length - (hashtags ? hashtags.length + 2 : 0);
-      if (remainingForExcerpt > 20) {
-        const truncatedExcerpt =
-          excerpt.length > remainingForExcerpt
-            ? `${excerpt.slice(0, remainingForExcerpt - 3)}…`
-            : excerpt;
-        postText += `\n\n${truncatedExcerpt}`;
+    const textSegments: string[] = [];
+    if (includeTitle && title) {
+      textSegments.push(title);
+    }
+    if (includeDescription && excerpt) {
+      textSegments.push(excerpt);
+    }
+
+    if (textSegments.length === 0) {
+      if (title) {
+        textSegments.push(title);
+      } else if (excerpt) {
+        textSegments.push(excerpt);
+      } else {
+        textSegments.push(postUrl);
       }
     }
 
+    let postText = textSegments.join("\n\n");
+
     if (hashtags) {
-      postText += `\n\n${hashtags}`;
+      const remainingLength = 295 - postText.length;
+      if (remainingLength > hashtags.length + 2) {
+        postText = postText ? `${postText}\n\n${hashtags}` : hashtags;
+      } else if (remainingLength > 10) {
+        postText = postText
+          ? `${postText}\n\n${hashtags.slice(0, remainingLength - 3)}…`
+          : hashtags.slice(0, 297);
+      }
+    }
+
+    if (postText.length > 300) {
+      postText = `${postText.slice(0, 297)}…`;
     }
 
     const rt = new RichText({ text: postText });
     await rt.detectFacets(agent);
 
-    // Build external embed link card with optional cover thumbnail
     let embed: any = undefined;
     let thumbBlob: any = undefined;
 
@@ -215,7 +233,6 @@ export async function sendBlueskyPostNotification(
         if (imgRes.ok) {
           const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
           const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          // Ensure image buffer is under 1MB for Bluesky thumbnail blob limits
           if (imgBuffer.length > 0 && imgBuffer.length < 1000000) {
             const uploadRes = await agent.uploadBlob(imgBuffer, { encoding: contentType });
             thumbBlob = uploadRes.data.blob;
@@ -230,8 +247,8 @@ export async function sendBlueskyPostNotification(
       $type: "app.bsky.embed.external",
       external: {
         uri: postUrl,
-        title: post.title,
-        description: post.excerpt?.slice(0, 300) || "",
+        title: title || postUrl,
+        description: excerpt ? excerpt.slice(0, 300) : "",
         thumb: thumbBlob,
       },
     };

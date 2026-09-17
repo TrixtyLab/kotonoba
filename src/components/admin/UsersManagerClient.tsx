@@ -398,10 +398,10 @@ export function UsersManagerClient({
             <thead className="bg-surface-hover/40 border-b border-border text-text-muted uppercase text-[10px] tracking-wider font-semibold">
               <tr>
                 <th className="py-3 px-4">{t("displayName")}</th>
-                <th className="py-3 px-4">{t("role")}</th>
-                <th className="py-3 px-4">{t("assignedSite")}</th>
-                <th className="py-3 px-4 text-center">{t("postsCount")}</th>
-                <th className="py-3 px-4">{t("created")}</th>
+                <th className="py-3 px-4 hidden sm:table-cell">{t("role")}</th>
+                <th className="py-3 px-4 hidden md:table-cell">{t("assignedSite")}</th>
+                <th className="py-3 px-4 text-center hidden md:table-cell">{t("postsCount")}</th>
+                <th className="py-3 px-4 hidden lg:table-cell">{t("created")}</th>
                 <th className="py-3 px-4 text-right">{tc("actions")}</th>
               </tr>
             </thead>
@@ -453,15 +453,25 @@ export function UsersManagerClient({
                             <span className="text-[11px] text-text-muted block truncate font-mono">
                               {user.email}
                             </span>
+
+                            {/* Mobile metadata sub-line */}
+                            <div className="flex items-center gap-1.5 mt-1 sm:hidden flex-wrap">
+                              {getRoleBadge(user.role)}
+                              {user.siteName && (
+                                <span className="text-[10px] text-text-muted flex items-center gap-1">
+                                  <Globe className="w-3 h-3" /> {user.siteName}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap">
+                      <td className="py-3.5 px-4 whitespace-nowrap hidden sm:table-cell">
                         {getRoleBadge(user.role)}
                       </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap">
+                      <td className="py-3.5 px-4 whitespace-nowrap hidden md:table-cell">
                         {user.siteName ? (
                           <span className="inline-flex items-center gap-1.5 text-text text-xs font-medium">
                             <Globe className="w-3.5 h-3.5 text-text-muted" />
@@ -474,14 +484,14 @@ export function UsersManagerClient({
                         )}
                       </td>
 
-                      <td className="py-3.5 px-4 text-center font-mono text-xs">
+                      <td className="py-3.5 px-4 text-center font-mono text-xs hidden md:table-cell">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-hover border border-border text-text-muted">
                           <FileText className="w-3 h-3" />
                           <span>{user.postCount}</span>
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-text-muted text-[11px] font-mono">
+                      <td className="py-3.5 px-4 whitespace-nowrap text-text-muted text-[11px] font-mono hidden lg:table-cell">
                         {formatDate(new Date(user.createdAt), locale)}
                       </td>
 
@@ -493,7 +503,7 @@ export function UsersManagerClient({
                             onClick={() => openEditModal(user)}
                             disabled={!canManage}
                             title={tc("edit")}
-                            className="h-7 w-7 p-0 text-text-muted hover:text-text"
+                            className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-text"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </Button>
@@ -504,7 +514,7 @@ export function UsersManagerClient({
                             onClick={() => setUserToDelete(user)}
                             disabled={!canManage || isSelf}
                             title={tc("delete")}
-                            className="h-7 w-7 p-0 text-text-muted hover:text-rose-500 disabled:opacity-30"
+                            className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-rose-500 disabled:opacity-30"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>

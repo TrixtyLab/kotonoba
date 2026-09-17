@@ -133,7 +133,7 @@ export function TagsManagerClient({
               <button
                 type="button"
                 onClick={() => setTagToDelete(tItem.id)}
-                className="text-text-muted hover:text-rose-500 ml-1 p-0.5 rounded transition-colors"
+                className="text-text-muted hover:text-rose-500 ml-1 p-1 -mr-1 rounded min-w-[28px] min-h-[28px] flex items-center justify-center transition-colors"
                 title={tc("delete")}
               >
                 ✕

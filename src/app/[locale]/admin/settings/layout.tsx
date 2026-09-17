@@ -16,16 +16,23 @@ import {
 } from "lucide-react";
 
 /**
+ * Properties for the SettingsLayout component.
+ */
+export interface SettingsLayoutProps {
+  /** Nested settings view content. */
+  children: React.ReactNode;
+}
+
+/**
  * Layout shell for administrative settings providing categorical navigation tabs for general, branding, navigation, banners, storage, SEO, integrations, AI, and backups.
+ * Renders as a horizontally scrollable strip on mobile devices and a sticky sidebar on desktop screens.
  *
- * @param props - Object containing children elements.
- * @returns React JSX settings navigation shell.
+ * @param {SettingsLayoutProps} props - Component properties containing children.
+ * @returns {React.JSX.Element} React JSX settings navigation shell.
  */
 export default function SettingsLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: SettingsLayoutProps): React.JSX.Element {
   const t = useTranslations("settings");
   const pathname = usePathname();
 
@@ -45,8 +52,8 @@ export default function SettingsLayout({
     <div className="space-y-6">
       {/* Settings Header */}
       <div>
-        <h1 className="text-2xl font-bold text-text tracking-tight flex items-center gap-2.5">
-          <Settings className="w-6 h-6 text-accent" />
+        <h1 className="text-xl sm:text-2xl font-bold text-text tracking-tight flex items-center gap-2.5">
+          <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-accent" />
           <span>{t("title")}</span>
         </h1>
         <p className="text-xs text-text-muted mt-1 max-w-2xl">
@@ -54,10 +61,10 @@ export default function SettingsLayout({
         </p>
       </div>
 
-      {/* 2-Column Settings Layout */}
+      {/* 2-Column Settings Layout with responsive mobile scroll */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Navigation Sidebar */}
-        <div className="lg:col-span-3 space-y-1 bg-surface border border-border rounded-xl p-2 shadow-xs sticky top-20">
+        {/* Navigation Tabs (Horizontal on mobile/tablet, vertical sticky on desktop) */}
+        <div className="lg:col-span-3 flex lg:flex-col overflow-x-auto lg:overflow-visible gap-1.5 lg:gap-1 bg-surface border border-border rounded-xl p-1.5 sm:p-2 shadow-xs lg:sticky lg:top-20 no-scrollbar">
           {navTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = pathname === tab.href || (tab.href === "/admin/settings/general" && pathname === "/admin/settings");
@@ -66,21 +73,21 @@ export default function SettingsLayout({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-lg text-xs font-semibold shrink-0 transition-all ${
                   isActive
                     ? "bg-accent/10 text-accent border border-accent/20 shadow-xs"
                     : "text-text-muted hover:text-text hover:bg-surface-hover"
                 }`}
               >
                 <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-accent" : "text-text-muted"}`} />
-                <span className="truncate">{tab.label}</span>
+                <span className="whitespace-nowrap lg:whitespace-normal lg:truncate">{tab.label}</span>
               </Link>
             );
           })}
         </div>
 
         {/* Right Content Area */}
-        <div className="lg:col-span-9 bg-surface border border-border rounded-xl p-6 sm:p-8 shadow-xs">
+        <div className="lg:col-span-9 bg-surface border border-border rounded-xl p-4 sm:p-6 lg:p-8 shadow-xs">
           {children}
         </div>
       </div>

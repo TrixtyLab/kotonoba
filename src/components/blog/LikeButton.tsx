@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Heart } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { useTranslations } from "next-intl";
 
 /**
  * Properties configuring the LikeButton reaction component.
@@ -23,6 +24,7 @@ export interface LikeButtonProps {
  * @returns React JSX button reaction element.
  */
 export function LikeButton({ postId, initialLikes = 0, size = "sm" }: LikeButtonProps) {
+  const t = useTranslations("blog");
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(initialLikes);
   const toast = useToast();
@@ -44,7 +46,7 @@ export function LikeButton({ postId, initialLikes = 0, size = "sm" }: LikeButton
       setLiked(true);
       setLikesCount((prev) => prev + 1);
       localStorage.setItem(`liked_${postId}`, "true");
-      toast.success("¡Gracias por tu reacción!");
+      toast.success(t("likeThanks"));
     }
   }
 
@@ -58,8 +60,8 @@ export function LikeButton({ postId, initialLikes = 0, size = "sm" }: LikeButton
           ? "text-rose-500 font-semibold"
           : "text-text-muted hover:text-rose-500"
       } ${isSmall ? "text-xs py-0.5" : "text-sm py-1"}`}
-      title={liked ? "Ya no me gusta" : "Me gusta"}
-      aria-label="Reaccionar con me gusta"
+      title={liked ? t("unlike") : t("like")}
+      aria-label={t("likeAria")}
     >
       <Heart
         className={`transition-transform duration-200 ${liked ? "fill-rose-500 scale-110" : "scale-100"} ${

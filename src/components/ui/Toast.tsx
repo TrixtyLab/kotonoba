@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /** Notification severity tier. */
 export type ToastType = "success" | "error" | "info";
@@ -30,6 +31,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
  * @returns React JSX provider wrapping children with floating toast container.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const tc = useTranslations("common");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const addToast = useCallback((type: ToastType, message: string) => {
@@ -78,7 +80,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => removeToast(t.id)}
               className="shrink-0 text-text-muted hover:text-text p-0.5 rounded transition-colors"
-              aria-label="Close notification"
+              aria-label={tc("closeNotification")}
             >
               <X className="w-3.5 h-3.5" />
             </button>

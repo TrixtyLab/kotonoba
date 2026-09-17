@@ -1,6 +1,7 @@
 import React from "react";
 import { normalizeMediaUrl } from "@/lib/utils/media";
 import { Link } from "@/i18n/routing";
+import { useTranslations } from "next-intl";
 
 /**
  * Properties configuring the HeaderBanner component.
@@ -19,15 +20,18 @@ export interface HeaderBannerProps {
 /**
  * Full-width top banner displayed above the blog navigation header with optional hyperlink action.
  *
- * @param props - HeaderBannerProps configuring banner image source, target link, and dimensions.
- * @returns React JSX header banner container or null if no image is configured.
+ * @param {HeaderBannerProps} props - HeaderBannerProps configuring banner image source, target link, and dimensions.
+ * @returns {React.JSX.Element | null} React JSX header banner container or null if no image is configured.
  */
 export function HeaderBanner({
   imageUrl,
   linkUrl,
   target = "_blank",
-  alt = "Header Banner",
+  alt,
 }: HeaderBannerProps) {
+  const t = useTranslations("blog");
+  const bannerLabel = alt || t("headerBanner");
+
   if (!imageUrl || !imageUrl.trim()) return null;
 
   const resolvedUrl = normalizeMediaUrl(imageUrl);
@@ -36,7 +40,7 @@ export function HeaderBanner({
   const imageElement = (
     <img
       src={resolvedUrl}
-      alt={alt}
+      alt={bannerLabel}
       className="w-full h-[160px] sm:h-[220px] md:h-[302px] object-cover"
     />
   );
@@ -47,7 +51,7 @@ export function HeaderBanner({
 
     if (isExternal) {
       return (
-        <aside aria-label="Header Banner" className="w-full overflow-hidden bg-surface-hover/20">
+        <aside aria-label={bannerLabel} className="w-full overflow-hidden bg-surface-hover/20">
           <a
             href={cleanLink}
             target={target}
@@ -61,7 +65,7 @@ export function HeaderBanner({
     }
 
     return (
-      <aside aria-label="Header Banner" className="w-full overflow-hidden bg-surface-hover/20">
+      <aside aria-label={bannerLabel} className="w-full overflow-hidden bg-surface-hover/20">
         <Link
           href={cleanLink}
           className="block w-full h-[160px] sm:h-[220px] md:h-[302px] hover:opacity-95 transition-opacity"
@@ -73,7 +77,7 @@ export function HeaderBanner({
   }
 
   return (
-    <aside aria-label="Header Banner" className="w-full overflow-hidden bg-surface-hover/20">
+    <aside aria-label={bannerLabel} className="w-full overflow-hidden bg-surface-hover/20">
       <div className="w-full h-[160px] sm:h-[220px] md:h-[302px]">
         {imageElement}
       </div>

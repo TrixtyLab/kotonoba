@@ -1,12 +1,12 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { posts, postCategories, postTags, users, sites } from "@/lib/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { posts, postCategories, postTags, users, sites, analytics } from "@/lib/db/schema";
+import { eq, desc, sql, or, and, like } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import { generateId, generateSlug } from "@/lib/utils/slug";
 import { postSchema, validate, type PostInput } from "@/lib/security/validate";
-import { isDubConfigured, createDubLink } from "@/lib/dub";
+import { isDubConfigured, createDubLink, deleteDubLink } from "@/lib/dub";
 import { normalizeMediaUrl, normalizeHtmlMediaUrls } from "@/lib/storage";
 import { sendDiscordPostNotification } from "@/lib/discord";
 import { sendBlueskyPostNotification } from "@/lib/bluesky";
@@ -326,16 +326,52 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
 }
 
 /**
- * Permanently deletes a blog article and cascades removal to junction records.
+ * Permanently deletes a blog article, removes its associated Dub.co short link,
+ * purges generated visitor analytics records, and cascades removal to junction records.
  *
- * @param postId - Unique database identifier of the article to delete.
- * @returns A Promise resolving to an object indicating success.
+ * @param {string} postId - Unique database identifier of the article to delete.
+ * @returns {Promise<{ success: true }>} A Promise resolving to an object indicating operation success.
  * @throws {Error} When the caller lacks an authorized administrative or editorial role.
  */
 export async function deletePost(postId: string): Promise<{ success: true }> {
   await requireAuth(["super_admin", "admin", "editor"]);
   const db = getDb();
-  db.delete(posts).where(eq(posts.id, postId)).run();
+
+  const existing = db
+    .select({
+      id: posts.id,
+      siteId: posts.siteId,
+      slug: posts.slug,
+      dubLinkId: posts.dubLinkId,
+    })
+    .from(posts)
+    .where(eq(posts.id, postId))
+    .get();
+
+  if (existing) {
+    if (existing.dubLinkId && isDubConfigured()) {
+      try {
+        await deleteDubLink(existing.dubLinkId);
+      } catch {
+        // Non-blocking on external API communication issues
+      }
+    }
+
+    db.delete(analytics)
+      .where(
+        or(
+          eq(analytics.postId, postId),
+          and(
+            eq(analytics.siteId, existing.siteId),
+            like(analytics.path, `%${existing.slug}%`)
+          )
+        )
+      )
+      .run();
+
+    db.delete(posts).where(eq(posts.id, postId)).run();
+  }
+
   revalidatePath("/", "layout");
   return { success: true };
 }

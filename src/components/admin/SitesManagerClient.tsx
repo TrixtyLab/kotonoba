@@ -78,6 +78,7 @@ export function SitesManagerClient({
   const t = useTranslations("admin");
   const ts = useTranslations("settings");
   const tc = useTranslations("common");
+  const tSites = useTranslations("sites");
   const router = useRouter();
   const toast = useToast();
   const [sites, setSites] = useState(initialSites);
@@ -317,19 +318,19 @@ export function SitesManagerClient({
         <div className="space-y-3 text-xs">
           <Input
             label={ts("siteName")}
-            placeholder="ej. Blog de Tecnología"
+            placeholder={tSites("siteNamePlaceholder")}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <Input
             label={t("domain")}
-            placeholder="ej. blog.midominio.com"
+            placeholder={tSites("domainPlaceholder")}
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
           />
           <Input
             label={ts("siteSubtitle")}
-            placeholder="Tutoriales, artículos y tecnología"
+            placeholder={tSites("siteSubtitlePlaceholder")}
             value={subtitle}
             onChange={(e) => setSubtitle(e.target.value)}
           />

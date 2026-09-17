@@ -302,7 +302,7 @@ export default async function PostEntryPage({
         </div>
 
         {/* Prev / Next article navigation */}
-        <nav aria-label="Article navigation" className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-6 border-t border-border/40">
+        <nav aria-label={t("articleNavigation")} className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-6 border-t border-border/40">
           {prevPost ? (
             <Link
               href={`/entry/${prevPost.slug}`}

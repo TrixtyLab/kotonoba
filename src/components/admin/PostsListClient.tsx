@@ -37,12 +37,21 @@ export interface PostItem {
 }
 
 /**
- * Administrative posts management table with real-time text search, status filters, and confirmation modal deletion flows.
- *
- * @param props - Object containing the initial array of PostItem records.
- * @returns React JSX posts list view.
+ * Properties configuring the administrative posts list view.
  */
-export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) {
+export interface PostsListClientProps {
+  /** Initial array of PostItem records loaded from the server. */
+  initialPosts: PostItem[];
+}
+
+/**
+ * Administrative posts management table with real-time text search, status filters, and confirmation modal deletion flows.
+ * Provides responsive column collapsing and mobile metadata chips for compact handheld displays.
+ *
+ * @param {PostsListClientProps} props - Component properties containing initial post catalog.
+ * @returns {React.JSX.Element} React JSX posts list view.
+ */
+export function PostsListClient({ initialPosts }: PostsListClientProps): React.JSX.Element {
   const t = useTranslations("admin");
   const tc = useTranslations("common");
   const ta = useTranslations("analytics");
@@ -61,7 +70,7 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
     });
   }, [posts, search, statusFilter]);
 
-  async function handleConfirmDelete() {
+  async function handleConfirmDelete(): Promise<void> {
     if (!postToDelete) return;
     const id = postToDelete;
     startTransition(async () => {
@@ -115,13 +124,13 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
           />
         </div>
 
-        <div className="flex items-center gap-1 bg-surface-hover/60 p-1 rounded-lg w-full sm:w-auto border border-border/50">
+        <div className="flex items-center gap-1 bg-surface-hover/60 p-1 rounded-lg w-full sm:w-auto border border-border/50 overflow-x-auto no-scrollbar">
           {statusOptions.map((st) => (
             <button
               key={st.key}
               type="button"
               onClick={() => setStatusFilter(st.key)}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all shrink-0 whitespace-nowrap ${
                 statusFilter === st.key
                   ? "bg-surface text-text shadow-2xs border border-border"
                   : "text-text-muted hover:text-text"
@@ -141,10 +150,10 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
             <thead className="bg-surface-hover/50 text-text-muted border-b border-border font-semibold uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="p-3.5">{tc("title")}</th>
-                <th className="p-3.5">{tc("status")}</th>
-                <th className="p-3.5">{tc("language")}</th>
-                <th className="p-3.5">{tc("views")}</th>
-                <th className="p-3.5">{tc("date")}</th>
+                <th className="p-3.5 hidden sm:table-cell">{tc("status")}</th>
+                <th className="p-3.5 hidden md:table-cell">{tc("language")}</th>
+                <th className="p-3.5 hidden sm:table-cell">{tc("views")}</th>
+                <th className="p-3.5 hidden md:table-cell">{tc("date")}</th>
                 <th className="p-3.5 text-right">{tc("actions")}</th>
               </tr>
             </thead>
@@ -164,16 +173,49 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                     <span className="text-[10px] text-text-muted font-mono block truncate mt-0.5">
                       /entry/{post.slug}
                     </span>
+
+                    {/* Mobile metadata badge sub-line */}
+                    <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
+                      <Badge
+                        variant={
+                          post.status === "published"
+                            ? "success"
+                            : post.status === "scheduled"
+                            ? "primary"
+                            : post.status === "archived"
+                            ? "secondary"
+                            : "warning"
+                        }
+                        className="text-[9px] py-0 px-1.5"
+                      >
+                        {post.status === "published"
+                          ? t("statusPublished")
+                          : post.status === "scheduled"
+                          ? t("statusScheduled")
+                          : post.status === "archived"
+                          ? t("statusArchived")
+                          : t("statusDraft")}
+                      </Badge>
+                      <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
+                        {post.locale}
+                      </span>
+                      <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
+                        <Eye className="w-2.5 h-2.5" /> {post.views}
+                      </span>
+                      <span className="text-[10px] text-text-muted">
+                        {post.publishedAtFormatted || post.createdAtFormatted}
+                      </span>
+                    </div>
                   </td>
-                  <td className="p-3.5">
+                  <td className="p-3.5 hidden sm:table-cell">
                     <Badge variant={post.status === "published" ? "success" : post.status === "scheduled" ? "primary" : post.status === "archived" ? "secondary" : "warning"}>
                       {post.status === "published" ? t("statusPublished") : post.status === "scheduled" ? t("statusScheduled") : post.status === "archived" ? t("statusArchived") : t("statusDraft")}
                     </Badge>
                   </td>
-                  <td className="p-3.5 uppercase font-mono text-[10px] text-text-muted font-semibold">
+                  <td className="p-3.5 uppercase font-mono text-[10px] text-text-muted font-semibold hidden md:table-cell">
                     {post.locale}
                   </td>
-                  <td className="p-3.5 font-mono text-xs">
+                  <td className="p-3.5 font-mono text-xs hidden sm:table-cell">
                     <Link
                       href={`/admin/analytics/${post.id}`}
                       className="inline-flex items-center gap-1 text-text-muted hover:text-accent font-semibold transition-colors"
@@ -183,14 +225,14 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                       <span>{post.views}</span>
                     </Link>
                   </td>
-                  <td className="p-3.5 text-text-muted text-xs whitespace-nowrap">
+                  <td className="p-3.5 text-text-muted text-xs whitespace-nowrap hidden md:table-cell">
                     {post.publishedAtFormatted || post.createdAtFormatted}
                   </td>
                   <td className="p-3.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1">
                       <Link
                         href={`/admin/analytics/${post.id}`}
-                        className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={ta("viewDetailedAnalytics")}
                       >
                         <BarChart3 className="w-3.5 h-3.5" />
@@ -199,7 +241,7 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                         <Link
                           href={`/entry/${post.slug}`}
                           target="_blank"
-                          className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
+                          className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                           title={tc("view")}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
@@ -207,7 +249,7 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                       )}
                       <Link
                         href={`/admin/posts/${post.id}`}
-                        className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={tc("edit")}
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -215,7 +257,7 @@ export function PostsListClient({ initialPosts }: { initialPosts: PostItem[] }) 
                       <button
                         type="button"
                         onClick={() => setPostToDelete(post.id)}
-                        className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
+                        className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                         title={tc("delete")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />

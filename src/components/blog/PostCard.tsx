@@ -3,6 +3,7 @@ import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
 import { LikeButton } from "@/components/blog/LikeButton";
 import { Pin, Eye } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Properties configuring the PostCard feed article component.
@@ -38,6 +39,7 @@ export interface PostCardProps {
  * @returns React JSX article entry element.
  */
 export function PostCard({ post, locale = "en" }: PostCardProps) {
+  const t = useTranslations("blog");
   const postUrl = `/entry/${post.slug}`;
 
   return (
@@ -57,7 +59,7 @@ export function PostCard({ post, locale = "en" }: PostCardProps) {
         {post.pinned && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent uppercase tracking-wider">
             <Pin className="w-3 h-3 rotate-45" />
-            <span>Featured</span>
+            <span>{t("featured")}</span>
             <span className="text-text-muted/40">•</span>
           </span>
         )}

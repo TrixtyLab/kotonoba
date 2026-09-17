@@ -6,9 +6,12 @@ import {
   categories,
   tags,
   posts,
+  pages,
   postCategories,
   postTags,
   users,
+  analytics,
+  analyticsSegments,
 } from "@/lib/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import path from "path";
@@ -37,9 +40,12 @@ export interface BackupManifest {
   /** Summary of bundled entity record counts. */
   counts: {
     posts: number;
+    pages: number;
     categories: number;
     tags: number;
     settings: number;
+    analyticsSegments: number;
+    analytics: number;
     media: number;
   };
 }
@@ -47,7 +53,7 @@ export interface BackupManifest {
 /**
  * Resolves the absolute directory path where local media uploads are stored.
  *
- * @returns Absolute filesystem path string.
+ * @returns {string} Absolute filesystem path string.
  */
 export function getUploadDir(): string {
   if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR;
@@ -56,11 +62,45 @@ export function getUploadDir(): string {
 }
 
 /**
- * Compiles and generates a self-contained ZIP backup archive for a specific tenant site.
- * Packages relational database records (posts, categories, tags, settings, author details) and media upload assets.
+ * Recursively scans a directory tree collecting all files with normalized relative paths.
  *
- * @param siteId - Unique identifier of the site to export.
- * @returns A Promise resolving to an object containing the ZIP buffer, default filename, and manifest details.
+ * @param {string} dir - Directory path to scan recursively.
+ * @param {string} [baseDir=dir] - Root directory against which relative paths are computed.
+ * @returns {Promise<Array<{ relativePath: string; absolutePath: string }>>} Array of discovered files.
+ */
+async function collectMediaFiles(
+  dir: string,
+  baseDir: string = dir
+): Promise<Array<{ relativePath: string; absolutePath: string }>> {
+  const results: Array<{ relativePath: string; absolutePath: string }> = [];
+  if (!existsSync(/*turbopackIgnore: true*/ dir)) return results;
+
+  try {
+    const entries = await fs.readdir(/*turbopackIgnore: true*/ dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const subResults = await collectMediaFiles(fullPath, baseDir);
+        results.push(...subResults);
+      } else if (entry.isFile() && !entry.name.startsWith(".")) {
+        const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
+        results.push({ relativePath, absolutePath: fullPath });
+      }
+    }
+  } catch {
+    // Return partial results if an unreadable directory occurs
+  }
+
+  return results;
+}
+
+/**
+ * Compiles and generates a comprehensive, self-contained ZIP backup archive for a specific tenant site.
+ * Packages relational database records (posts, pages, categories, tags, settings, analytics, segments,
+ * authors, site branding) and all associated media upload assets.
+ *
+ * @param {string} siteId - Unique identifier of the site to export.
+ * @returns {Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }>} A Promise resolving to an object containing the ZIP buffer, default filename, and manifest details.
  * @throws {Error} When the target site ID does not exist in the database.
  */
 export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }> {
@@ -75,6 +115,9 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
   const categoriesList = db.select().from(categories).where(eq(categories.siteId, siteId)).all();
   const tagsList = db.select().from(tags).where(eq(tags.siteId, siteId)).all();
   const postsList = db.select().from(posts).where(eq(posts.siteId, siteId)).all();
+  const pagesList = db.select().from(pages).where(eq(pages.siteId, siteId)).all();
+  const analyticsSegmentsList = db.select().from(analyticsSegments).where(eq(analyticsSegments.siteId, siteId)).all();
+  const analyticsList = db.select().from(analytics).where(eq(analytics.siteId, siteId)).all();
 
   const postIds = postsList.map((p) => p.id);
   const postCategoriesList = postIds.length > 0
@@ -84,7 +127,11 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     ? db.select().from(postTags).where(inArray(postTags.postId, postIds)).all()
     : [];
 
-  const authorIds = Array.from(new Set(postsList.map((p) => p.authorId)));
+  const authorIds = Array.from(new Set([
+    ...postsList.map((p) => p.authorId),
+    ...pagesList.map((p) => p.authorId),
+  ].filter(Boolean)));
+
   const authorsList = authorIds.length > 0
     ? db.select({
         id: users.id,
@@ -101,19 +148,15 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
   let mediaCount = 0;
 
   if (uploadsFolder && existsSync(/*turbopackIgnore: true*/ uploadDir)) {
-    try {
-      const files = await fs.readdir(/*turbopackIgnore: true*/ uploadDir);
-      for (const file of files) {
-        const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, file);
-        const stat = await fs.stat(/*turbopackIgnore: true*/ filePath);
-        if (stat.isFile()) {
-          const fileData = await fs.readFile(/*turbopackIgnore: true*/ filePath);
-          uploadsFolder.file(file, fileData);
-          mediaCount++;
-        }
+    const mediaFiles = await collectMediaFiles(uploadDir);
+    for (const file of mediaFiles) {
+      try {
+        const fileData = await fs.readFile(/*turbopackIgnore: true*/ file.absolutePath);
+        uploadsFolder.file(file.relativePath, fileData);
+        mediaCount++;
+      } catch {
+        // Skip unreadable files
       }
-    } catch {
-      // Continue if upload folder is inaccessible
     }
   }
 
@@ -121,7 +164,7 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
 
   const manifest: BackupManifest = {
     version: appVersion,
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     format: "kotonoba-backup",
     exportedAt: new Date().toISOString(),
     site: {
@@ -131,9 +174,12 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     },
     counts: {
       posts: postsList.length,
+      pages: pagesList.length,
       categories: categoriesList.length,
       tags: tagsList.length,
       settings: settingsList.length,
+      analyticsSegments: analyticsSegmentsList.length,
+      analytics: analyticsList.length,
       media: mediaCount,
     },
   };
@@ -144,8 +190,11 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     categories: categoriesList,
     tags: tagsList,
     posts: postsList,
+    pages: pagesList,
     postCategories: postCategoriesList,
     postTags: postTagsList,
+    analyticsSegments: analyticsSegmentsList,
+    analytics: analyticsList,
     authors: authorsList,
   };
 
@@ -164,3 +213,4 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
 
   return { buffer, filename, manifest };
 }
+

@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Properties configuring the dialog Modal component.
@@ -21,11 +22,13 @@ export interface ModalProps {
 
 /**
  * Accessible dialog modal overlay with keyboard Escape handling, body scroll locking, and backdrop blur.
+ * Features responsive max-height constraints and internal scrolling for mobile ergonomics.
  *
- * @param props - ModalProps configuring visibility, header title, width, and dismissal callback.
- * @returns React JSX dialog portal or null when closed.
+ * @param {ModalProps} props - Configuration properties specifying visibility, title, child components, and max width.
+ * @returns {React.JSX.Element | null} React JSX dialog portal or null when closed.
  */
-export function Modal({ isOpen, onClose, title, children, maxWidth = "md" }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = "md" }: ModalProps): React.JSX.Element | null {
+  const t = useTranslations("common");
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -50,22 +53,22 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "md" }: Mod
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
       <div
-        className={`relative w-full ${maxW[maxWidth]} glass-strong rounded-xl shadow-2xl border border-border p-6 z-10 animate-slide-up`}
+        className={`relative w-full ${maxW[maxWidth]} glass-strong rounded-2xl shadow-2xl border border-border p-4 sm:p-6 z-10 animate-slide-up max-h-[90dvh] flex flex-col`}
       >
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-border/50">
-          <h2 className="text-lg font-semibold text-text">{title}</h2>
+        <div className="flex items-center justify-between pb-3 sm:pb-4 mb-3 sm:mb-4 border-b border-border/50 shrink-0">
+          <h2 className="text-base sm:text-lg font-semibold text-text truncate pr-2">{title}</h2>
           <button
             onClick={onClose}
-            aria-label="Close modal"
-            className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            aria-label={t("closeModal")}
+            className="p-2 -mr-1 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
-        <div>{children}</div>
+        <div className="overflow-y-auto flex-1 pr-0.5">{children}</div>
       </div>
     </div>
   );

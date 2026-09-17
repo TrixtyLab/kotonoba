@@ -170,7 +170,7 @@ export function CategoriesManagerClient({
               <button
                 type="button"
                 onClick={() => openEditModal(cat)}
-                className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
+                className="p-2 sm:p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-accent transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                 title={tc("edit")}
               >
                 <Edit3 className="w-3.5 h-3.5" />
@@ -178,7 +178,7 @@ export function CategoriesManagerClient({
               <button
                 type="button"
                 onClick={() => setCategoryToDelete(cat.id)}
-                className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
+                className="p-2 sm:p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                 title={tc("delete")}
               >
                 <Trash2 className="w-3.5 h-3.5" />

@@ -5,8 +5,8 @@ import { restoreSiteBackupZip } from "@/lib/backup/import";
 /**
  * HTTP POST endpoint accepting multipart upload of a backup ZIP archive to restore database entities and media files.
  *
- * @param req - The incoming NextRequest containing the multipart ZIP payload.
- * @returns JSON response summarizing restoration entity counts.
+ * @param {NextRequest} req - The incoming NextRequest containing the multipart ZIP payload.
+ * @returns {Promise<NextResponse>} JSON response summarizing restoration entity counts.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const file = (formData.get("backup") || formData.get("file")) as File | null;
     const siteId = formData.get("siteId") as string | null;
     const mode = (formData.get("mode") as "merge" | "replace") || "merge";
 
