@@ -56,6 +56,33 @@ export function AdminClientLayout({
     }
   }, []);
 
+  useEffect(() => {
+    const handleDeploymentSkew = (event: PromiseRejectionEvent | ErrorEvent) => {
+      const error = "reason" in event ? event.reason : event.error;
+      const msg = error?.message || (typeof error === "string" ? error : "");
+
+      const isMismatch =
+        msg.includes("Failed to find Server Action") ||
+        msg.includes("Server Reference ID") ||
+        (typeof error === "object" &&
+          error !== null &&
+          "__NEXT_ERROR_CODE" in error &&
+          (error as Record<string, unknown>).__NEXT_ERROR_CODE === "E975");
+
+      if (isMismatch) {
+        console.warn("[Deployment Skew] Server action mismatch detected. Reloading to sync assets...");
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener("unhandledrejection", handleDeploymentSkew);
+    window.addEventListener("error", handleDeploymentSkew);
+    return () => {
+      window.removeEventListener("unhandledrejection", handleDeploymentSkew);
+      window.removeEventListener("error", handleDeploymentSkew);
+    };
+  }, []);
+
   /**
    * Toggles the collapsed state of the desktop navigation sidebar and persists the user preference in local storage.
    */

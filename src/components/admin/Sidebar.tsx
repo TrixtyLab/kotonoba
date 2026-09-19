@@ -7,7 +7,7 @@ import {
   Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users, ArrowUpCircle
 } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
-import { checkForUpdates, type UpdateInfo } from "@/actions/updates";
+import type { UpdateInfo } from "@/actions/updates";
 import { useRouter } from "@/i18n/routing";
 import { SiteSwitcher, type SiteOption } from "@/components/admin/SiteSwitcher";
 import { useTranslations } from "next-intl";
@@ -88,13 +88,7 @@ export function Sidebar({
         }
       })
       .catch(() => {
-        checkForUpdates()
-          .then((info) => {
-            if (mounted) {
-              setUpdateInfo(info);
-            }
-          })
-          .catch(() => {});
+        // Silently ignore network failures to prevent triggering unwanted server action mismatch errors
       });
     return () => {
       mounted = false;

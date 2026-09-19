@@ -77,6 +77,9 @@ export function proxy(request: NextRequest): NextResponse {
       loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
     }
+    intlResponse.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    intlResponse.headers.set("Pragma", "no-cache");
+    intlResponse.headers.set("Expires", "0");
   }
 
   applySecurityHeaders(intlResponse.headers);
