@@ -1,6 +1,6 @@
 import { getActiveSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
-import { getRealtimeFeedAction } from "@/actions/analytics";
+import { getRealtimeFeedData, type RealtimeDataResponse } from "@/lib/analytics/realtime";
 import { RealtimeFeedClient } from "@/components/admin/analytics/RealtimeFeedClient";
 
 /**
@@ -12,10 +12,12 @@ export default async function AnalyticsRealtimePage(): Promise<React.JSX.Element
   const site = await getActiveSite();
   if (!site) notFound();
 
-  const feedResponse = await getRealtimeFeedAction(site.id);
-  const initialData = feedResponse.success && feedResponse.data
-    ? feedResponse.data
-    : { activeVisitorsNow: 0, recentHits: [], activePages: [] };
+  let initialData: RealtimeDataResponse = { activeVisitorsNow: 0, recentHits: [], activePages: [] };
+  try {
+    initialData = await getRealtimeFeedData(site.id);
+  } catch {
+    // Graceful fallback if database query fails during prerender
+  }
 
   return <RealtimeFeedClient siteId={site.id} initialData={initialData} />;
 }

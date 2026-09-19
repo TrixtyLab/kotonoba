@@ -114,22 +114,8 @@ export async function deleteSegmentAction(segmentId: string): Promise<AnalyticsM
   }
 }
 
-export interface RealtimeFeedItem {
-  id: number;
-  path: string;
-  country: string | null;
-  device: string | null;
-  browser: string | null;
-  os: string | null;
-  referrer: string | null;
-  createdAt: number;
-}
-
-export interface RealtimeDataResponse {
-  activeVisitorsNow: number;
-  recentHits: RealtimeFeedItem[];
-  activePages: { path: string; count: number }[];
-}
+export { type RealtimeFeedItem, type RealtimeDataResponse } from "@/lib/analytics/realtime";
+import { getRealtimeFeedData, type RealtimeDataResponse } from "@/lib/analytics/realtime";
 
 /**
  * Retrieves the latest stream of pageviews and concurrent visitors active within the preceding 5 minutes.
@@ -145,62 +131,10 @@ export async function getRealtimeFeedAction(siteId: string): Promise<AnalyticsMu
   }
 
   try {
-    const db = getDb();
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-
-    const activeVisitors = db
-      .select({ count: sql<number>`count(distinct coalesce(nullif(session_id, ''), ip_hash))` })
-      .from(analytics)
-      .where(and(eq(analytics.siteId, siteId), gte(analytics.createdAt, fiveMinutesAgo)))
-      .get()?.count || 0;
-
-    const activePages = db
-      .select({
-        path: analytics.path,
-        count: sql<number>`count(*)`,
-      })
-      .from(analytics)
-      .where(and(eq(analytics.siteId, siteId), gte(analytics.createdAt, fiveMinutesAgo)))
-      .groupBy(analytics.path)
-      .orderBy(desc(sql`count(*)`))
-      .limit(10)
-      .all();
-
-    const recentRecords = db
-      .select({
-        id: analytics.id,
-        path: analytics.path,
-        country: analytics.country,
-        device: analytics.device,
-        browser: analytics.browser,
-        os: analytics.os,
-        referrer: analytics.referrer,
-        createdAt: analytics.createdAt,
-      })
-      .from(analytics)
-      .where(eq(analytics.siteId, siteId))
-      .orderBy(desc(analytics.createdAt))
-      .limit(30)
-      .all();
-
-    const recentHits: RealtimeFeedItem[] = recentRecords.map((r) => ({
-      id: r.id,
-      path: r.path,
-      country: r.country,
-      device: r.device,
-      browser: r.browser,
-      os: r.os,
-      referrer: r.referrer,
-      createdAt: r.createdAt instanceof Date ? r.createdAt.getTime() : Number(r.createdAt),
-    }));
-
+    const data = await getRealtimeFeedData(siteId);
     return {
       success: true,
-      data: {
-        activeVisitorsNow: activeVisitors,
-        recentHits,
-        activePages,
-      },
+      data,
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to fetch realtime feed";

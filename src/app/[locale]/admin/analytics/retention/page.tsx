@@ -37,7 +37,6 @@ export default async function AnalyticsRetentionPage({
 
   const db = getDb();
 
-  // 1. Identify all visitors by ipHash, their earliest visit, and total distinct visit days
   const visitorVisits = db
     .select({
       ipHash: analytics.ipHash,
@@ -69,11 +68,9 @@ export default async function AnalyticsRetentionPage({
     },
   ];
 
-  // 2. Weekly Cohort Calculation (last 4 cohorts)
   const now = Date.now();
   const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-  // Fetch all hits to map visitor re-engagement by week offset
   const allHits = db
     .select({
       ipHash: analytics.ipHash,
@@ -153,7 +150,7 @@ export default async function AnalyticsRetentionPage({
 
   return (
     <div className="space-y-6">
-      {/* 3 Retention KPIs */}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <MetricCard
           title={t("retentionRate")}

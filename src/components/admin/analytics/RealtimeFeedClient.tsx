@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Radio, Users, Eye, Globe, Monitor, Clock } from "lucide-react";
-import { getRealtimeFeedAction, RealtimeDataResponse } from "@/actions/analytics";
+import type { RealtimeDataResponse } from "@/lib/analytics/realtime";
 import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
 
 interface RealtimeFeedClientProps {
@@ -33,6 +33,7 @@ function formatRelativeTime(
 
 /**
  * Interactive client-side live activity feed polling every 10 seconds for real-time visitor pulses.
+ * Polls the REST route handler /api/analytics/realtime with fixed URLs to prevent Server Action ID mismatch errors.
  *
  * @param {RealtimeFeedClientProps} props - Initial telemetry snapshot and target site identifier.
  * @returns {React.JSX.Element} Auto-refreshing realtime dashboard stream.
@@ -44,21 +45,33 @@ export function RealtimeFeedClient({ siteId, initialData }: RealtimeFeedClientPr
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   useEffect(() => {
+    let active = true;
+
     const interval = setInterval(async () => {
       try {
         setIsRefreshing(true);
-        const res = await getRealtimeFeedAction(siteId);
-        if (res.success && res.data) {
-          setData(res.data);
+        const res = await fetch(`/api/analytics/realtime?siteId=${encodeURIComponent(siteId)}`, {
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (active && json.success && json.data) {
+            setData(json.data);
+          }
         }
       } catch {
-        // Silently catch polling failures
+        // Silently catch polling failures on transient connection drops
       } finally {
-        setIsRefreshing(false);
+        if (active) {
+          setIsRefreshing(false);
+        }
       }
     }, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [siteId]);
 
   return (
