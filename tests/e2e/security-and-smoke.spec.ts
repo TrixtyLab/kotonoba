@@ -81,7 +81,9 @@ test.describe.serial("Kotonoba End-to-End Security, Setup Lockout & Publishing F
     await editorArea.click();
     await page.keyboard.type('Clean body text <img src=x onerror="window.__xss=1">');
     await page.getByRole("button", { name: /^Publish$/i }).click();
-    await expect(page).toHaveURL(/\/(?:en\/)?admin\/posts\/[a-zA-Z0-9_-]+/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/(?:en\/)?admin\/posts\/(?!new$)[a-zA-Z0-9_-]+$/, {
+      timeout: 15_000,
+    });
 
     // 8. Visit public blog home and published article
     await page.goto("/en");
@@ -251,7 +253,9 @@ test.describe.serial("Kotonoba End-to-End Security, Setup Lockout & Publishing F
     await page.getByRole("button", { name: /Scheduled \(Automatic publish\)/i }).click();
     await page.locator('input[type="datetime-local"]').fill("2099-01-01T00:00");
     await page.getByRole("button", { name: /Schedule Publication/i }).click();
-    await expect(page).toHaveURL(/\/(?:en\/)?admin\/posts\/[a-zA-Z0-9_-]+/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/(?:en\/)?admin\/posts\/(?!new$)[a-zA-Z0-9_-]+$/, {
+      timeout: 15_000,
+    });
 
     const futureScheduledRes = await request.get("/en/entry/e2e-scheduled-post");
     expect(futureScheduledRes.status()).toBe(404);
@@ -267,8 +271,15 @@ test.describe.serial("Kotonoba End-to-End Security, Setup Lockout & Publishing F
 
     // Backdate scheduled date so the post becomes due, then publish once via cron
     await page.locator('input[type="datetime-local"]').fill("2020-01-01T00:00");
-    await page.getByRole("button", { name: /Schedule Publication/i }).click();
-    await page.waitForTimeout(500);
+    await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.request().method() === "POST" &&
+          /\/admin\/posts\/(?!new$)[a-zA-Z0-9_-]+$/.test(new URL(res.url()).pathname) &&
+          res.status() === 200
+      ),
+      page.getByRole("button", { name: /Schedule Publication/i }).click(),
+    ]);
 
     const authCronRes = await request.post("/api/cron/publish", {
       headers: { Authorization: "Bearer e2e-cron-secret-key-123456" },
