@@ -1,4 +1,5 @@
 import { z, type ZodSchema } from "zod";
+import { LOCALES } from "@/i18n/locales";
 
 /**
  * Represents the discriminated union result of a Zod schema validation pass.
@@ -33,6 +34,15 @@ export function validate<T, I = Partial<T> | Record<string, string | number | bo
   return { success: false, errors };
 }
 
+/** Schema enforcing strong password policy for new accounts and password changes. */
+export const strongPasswordSchema = z
+  .string()
+  .min(10, "Password must be at least 10 characters long.")
+  .max(128)
+  .regex(/[A-Z]/, "Password must include at least one uppercase letter.")
+  .regex(/[a-z]/, "Password must include at least one lowercase letter.")
+  .regex(/[0-9]/, "Password must include at least one number.");
+
 /** Schema validating user authentication credentials for sign in. */
 export const loginSchema = z.object({
   email: z.string().email().max(255),
@@ -40,25 +50,18 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
-/** Schema validating administrator user account creation payload. */
-export const registerSchema = z.object({
-  email: z.string().email().max(255),
-  password: z.string().min(8).max(128),
-  displayName: z.string().min(1).max(100),
-});
-export type RegisterInput = z.infer<typeof registerSchema>;
-
 /** Schema validating blog post creation and update operations. */
 export const postSchema = z.object({
   title: z.string().min(1).max(500),
   slug: z.string().min(1).max(500).optional(),
   contentMd: z.string().max(500000).default(""),
   contentHtml: z.string().max(1000000).default(""),
+  contentFormat: z.enum(["html", "markdown"]).optional(),
   excerpt: z.string().max(1000).default(""),
   coverImage: z.string().max(2000).optional().nullable(),
   status: z.enum(["draft", "published", "scheduled", "archived"]).default("draft"),
   publishedAt: z.string().or(z.date()).optional().nullable(),
-  locale: z.string().min(2).max(10).default("en"),
+  locale: z.enum(LOCALES).default("en"),
   categoryIds: z.array(z.string()).default([]),
   tagIds: z.array(z.string()).default([]),
   pinned: z.boolean().default(false),
@@ -73,11 +76,12 @@ export const pageSchema = z.object({
   slug: z.string().min(1).max(500).optional(),
   contentMd: z.string().max(500000).default(""),
   contentHtml: z.string().max(1000000).default(""),
+  contentFormat: z.enum(["html", "markdown"]).optional(),
   excerpt: z.string().max(1000).default(""),
   coverImage: z.string().max(2000).optional().nullable(),
   status: z.enum(["draft", "published", "scheduled", "archived"]).default("draft"),
   publishedAt: z.string().or(z.date()).optional().nullable(),
-  locale: z.string().min(2).max(10).default("en"),
+  locale: z.enum(LOCALES).default("en"),
 });
 export type PageInput = z.infer<typeof pageSchema>;
 
@@ -106,8 +110,9 @@ export const siteSchema = z.object({
   description: z.string().max(5000).default(""),
   logoUrl: z.string().max(2000).optional().nullable(),
   faviconUrl: z.string().max(2000).optional().nullable(),
-  locale: z.string().min(2).max(10).default("en"),
+  locale: z.enum(LOCALES).default("en"),
   theme: z.enum(["dark", "light"]).default("dark"),
+  customCss: z.string().max(50000).optional().nullable(),
   primaryColor: z.string().max(7).default("#6366f1"),
   fontFamily: z.string().max(100).default("Inter"),
   navLinks: z.string().default("[]"),
@@ -116,28 +121,11 @@ export const siteSchema = z.object({
 });
 export type SiteInput = z.infer<typeof siteSchema>;
 
-/** Schema validating arbitrary key-value configuration pairs. */
-export const settingsSchema = z.object({
-  key: z.string().min(1).max(100),
-  value: z.string().max(10000),
-});
-export type SettingsInput = z.infer<typeof settingsSchema>;
-
-/** Schema validating custom OpenAI-compatible AI assistant connection configuration. */
-export const aiConfigSchema = z.object({
-  apiUrl: z.string().url().max(500).default("https://api.openai.com/v1"),
-  apiKey: z.string().min(1).max(500),
-  model: z.string().min(1).max(100).default("gpt-4o"),
-  temperature: z.number().min(0).max(2).default(0.7),
-  enabled: z.boolean().default(true),
-});
-export type AiConfigInput = z.infer<typeof aiConfigSchema>;
-
 /** Schema validating user creation payload by administrators. */
 export const createUserSchema = z.object({
   email: z.string().email().max(255),
   displayName: z.string().min(1).max(100),
-  password: z.string().min(8).max(128),
+  password: strongPasswordSchema,
   role: z.enum(["super_admin", "admin", "editor", "author"]).default("author"),
   siteId: z.string().optional().nullable(),
   avatarUrl: z.string().max(2000).optional().nullable(),
@@ -148,7 +136,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z.object({
   email: z.string().email().max(255).optional(),
   displayName: z.string().min(1).max(100).optional(),
-  password: z.string().min(8).max(128).optional().or(z.literal("")),
+  password: strongPasswordSchema.optional().or(z.literal("")),
   role: z.enum(["super_admin", "admin", "editor", "author"]).optional(),
   siteId: z.string().optional().nullable(),
   avatarUrl: z.string().max(2000).optional().nullable(),

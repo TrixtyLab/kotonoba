@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { posts, sites } from "@/lib/db/schema";
+import { getDubEnvConfig } from "@/lib/config/env";
 import { eq } from "drizzle-orm";
 
 /**
@@ -106,8 +107,7 @@ export interface DubAnalyticsSummary {
  * @returns {boolean} True if DUB_API_KEY is present and non-empty, false otherwise.
  */
 export function isDubConfigured(): boolean {
-  const key = process.env.DUB_API_KEY;
-  return Boolean(key && key.trim().length > 0);
+  return Boolean(getDubEnvConfig().apiKey);
 }
 
 /**
@@ -117,12 +117,12 @@ export function isDubConfigured(): boolean {
  * @returns {Promise<DubLinkResult | null>} A Promise resolving to the created DubLinkResult, or null if disabled/error.
  */
 export async function createDubLink(options: DubCreateLinkOptions): Promise<DubLinkResult | null> {
-  const apiKey = process.env.DUB_API_KEY?.trim();
+  const { apiKey, domain: defaultDomain } = getDubEnvConfig();
   if (!apiKey) {
     return null;
   }
 
-  const domain = options.domain || process.env.DUB_DOMAIN || "dub.sh";
+  const domain = options.domain || defaultDomain;
 
   const payload: Record<string, unknown> = {
     url: options.url,
@@ -180,7 +180,7 @@ export async function createDubLink(options: DubCreateLinkOptions): Promise<DubL
  * @returns {Promise<DubLinkItem[]>} A Promise resolving to an array of DubLinkItem records created in this blog.
  */
 export async function getDubLinks(options?: string | GetDubLinksOptions): Promise<DubLinkItem[]> {
-  const apiKey = process.env.DUB_API_KEY?.trim();
+  const { apiKey, domain: defaultDomain } = getDubEnvConfig();
   if (!apiKey) return [];
 
   const opts: GetDubLinksOptions =
@@ -190,7 +190,7 @@ export async function getDubLinks(options?: string | GetDubLinksOptions): Promis
         : { customDomain: options }
       : options || {};
 
-  const domain = opts.customDomain || process.env.DUB_DOMAIN || "dub.sh";
+  const domain = opts.customDomain || defaultDomain;
 
   try {
     const url = new URL("https://api.dub.co/links");
@@ -267,7 +267,28 @@ export async function getDubLinks(options?: string | GetDubLinksOptions): Promis
       // Non-blocking DB fallback
     }
 
-    const filtered = data.filter((item: any) => {
+    interface DubTagEntry {
+      name?: string;
+      slug?: string;
+    }
+
+    interface DubApiLinkItem {
+      id?: string;
+      domain?: string;
+      key?: string;
+      url?: string;
+      shortLink?: string;
+      comments?: string | null;
+      tags?: Array<string | DubTagEntry>;
+      clicks?: number;
+      leads?: number;
+      sales?: number;
+      qrCode?: string;
+      createdAt?: string;
+      lastClicked?: string | null;
+    }
+
+    const filtered = (data as DubApiLinkItem[]).filter((item) => {
       const id = String(item.id || "");
       const shortUrl = (item.shortLink || `https://${item.domain}/${item.key}`).toLowerCase();
       const targetUrl = String(item.url || "").toLowerCase();
@@ -275,7 +296,7 @@ export async function getDubLinks(options?: string | GetDubLinksOptions): Promis
 
       const rawTags: string[] = Array.isArray(item.tags)
         ? item.tags
-            .map((t: any) => (typeof t === "string" ? t : t?.name || t?.slug || ""))
+            .map((t) => (typeof t === "string" ? t : t?.name || t?.slug || ""))
             .filter(Boolean)
         : [];
 
@@ -304,7 +325,7 @@ export async function getDubLinks(options?: string | GetDubLinksOptions): Promis
       return false;
     });
 
-    return filtered.map((item: any) => {
+    return filtered.map((item) => {
       const shortUrl = item.shortLink || `https://${item.domain}/${item.key}`;
       return {
         id: String(item.id || ""),
@@ -343,7 +364,7 @@ export async function getDubAnalyticsSummary(
         : { customDomain: options }
       : options || {};
 
-  const domain = opts.customDomain || process.env.DUB_DOMAIN || "dub.sh";
+  const domain = opts.customDomain || getDubEnvConfig().domain;
 
   if (!isConfigured) {
     return {
@@ -378,7 +399,7 @@ export async function getDubAnalyticsSummary(
  * @returns {Promise<DubLinkItem | null>} A Promise resolving to a DubLinkItem or null.
  */
 export async function getDubLinkInfo(linkId: string): Promise<DubLinkItem | null> {
-  const apiKey = process.env.DUB_API_KEY?.trim();
+  const { apiKey } = getDubEnvConfig();
   if (!apiKey || !linkId) return null;
 
   try {
@@ -420,7 +441,7 @@ export async function getDubLinkInfo(linkId: string): Promise<DubLinkItem | null
  * @returns {Promise<boolean>} A Promise resolving to true if deleted successfully or already non-existent, false on failure.
  */
 export async function deleteDubLink(linkId: string): Promise<boolean> {
-  const apiKey = process.env.DUB_API_KEY?.trim();
+  const { apiKey } = getDubEnvConfig();
   if (!apiKey || !linkId) return false;
 
   try {
@@ -445,4 +466,13 @@ export async function deleteDubLink(linkId: string): Promise<boolean> {
     console.error("Error deleting Dub.co link:", error);
     return false;
   }
+}
+
+/** Saves the generated Dub.co short URL and link ID onto a persisted post record. */
+export function bindPostDubShortLink(postId: string, shortUrl: string, dubLinkId: string): void {
+  getDb()
+    .update(posts)
+    .set({ shortUrl, dubLinkId })
+    .where(eq(posts.id, postId))
+    .run();
 }

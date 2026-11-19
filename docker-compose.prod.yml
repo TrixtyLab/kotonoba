@@ -1,0 +1,93 @@
+services:
+  app-blue:
+    image: ${KOTONOBA_IMAGE:-ghcr.io/trixtylab/kotonoba}:${IMAGE_TAG:-latest}
+    container_name: blog-app-blue
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      DB_PATH: /app/data/kotonoba.db
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - kotonoba_data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - kotonoba_net
+    mem_limit: 512m
+    cpus: 1.0
+
+  app-green:
+    image: ${KOTONOBA_IMAGE:-ghcr.io/trixtylab/kotonoba}:${IMAGE_TAG:-latest}
+    container_name: blog-app-green
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      DB_PATH: /app/data/kotonoba.db
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - kotonoba_data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - kotonoba_net
+    mem_limit: 512m
+    cpus: 1.0
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: blog-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - app-blue
+    networks:
+      - kotonoba_net
+    mem_limit: 128m
+    cpus: 0.5
+
+  scheduler:
+    image: alpine:3.21
+    container_name: blog-scheduler
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: >
+      sh -c 'while true; do
+        if [ -n "$$CRON_SECRET" ]; then
+          wget -qO- --header="Authorization: Bearer $$CRON_SECRET" --post-data="" http://nginx/api/cron/publish >/dev/null 2>&1 || true;
+        fi;
+        sleep 60;
+      done'
+    depends_on:
+      - nginx
+    networks:
+      - kotonoba_net
+    mem_limit: 64m
+    cpus: 0.25
+
+volumes:
+  kotonoba_data:
+
+networks:
+  kotonoba_net:
+    driver: bridge

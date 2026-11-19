@@ -44,10 +44,11 @@ const NAV_ITEMS: NavItem[] = [
 export function AnalyticsNav(): React.JSX.Element {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const query = searchParams ?? new URLSearchParams();
   const router = useRouter();
   const t = useTranslations("analytics");
 
-  const queryString = searchParams.toString();
+  const queryString = query.toString();
   const suffix = queryString ? `?${queryString}` : "";
 
   return (

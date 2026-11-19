@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Copy, Check, QrCode, Tag, Sparkles } from "lucide-react";
+import { Copy, Check, Tag } from "lucide-react";
 
 interface PixelGeneratorCardProps {
   siteId: string;

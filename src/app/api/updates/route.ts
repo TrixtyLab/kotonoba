@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { checkForUpdates, getCurrentVersion } from "@/actions/updates";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Public/Admin endpoint returning application update status and version metrics.
  *

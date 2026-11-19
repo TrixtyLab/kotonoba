@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { MediaDialogs } from "@/components/admin/MediaDialogs";
+import { MediaLibraryGrid } from "@/components/admin/MediaLibraryGrid";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 import {
-  Upload, Image as ImageIcon, Trash2, Copy, Search, RefreshCw,
-  HardDrive, Cloud, ExternalLink, Eye, Folder, FolderPlus,
-  ChevronRight, ArrowLeft, FolderInput, Home
+  Upload, Trash2, RefreshCw,
+  HardDrive, Cloud, FolderPlus,
+  ChevronRight, ArrowLeft, Home
 } from "lucide-react";
 
 /**
@@ -45,6 +46,8 @@ export interface MediaFolderItem {
  * Configuration properties for the MediaManagerClient interface.
  */
 export interface MediaManagerClientProps {
+  /** Domain configured for the active site used to format shareable full media URLs. */
+  siteDomain?: string | null;
   /** Initial array of media files. */
   initialFiles?: MediaFileItem[];
   /** Underlying storage backend configuration details. */
@@ -53,6 +56,8 @@ export interface MediaManagerClientProps {
     bucketName?: string;
     uploadDir?: string;
     publicUrl?: string;
+    usedBytes?: number;
+    quotaBytes?: number;
   };
 }
 
@@ -63,6 +68,7 @@ export interface MediaManagerClientProps {
  * @returns React JSX media manager workspace.
  */
 export function MediaManagerClient({
+  siteDomain,
   storageInfo,
 }: MediaManagerClientProps) {
   const t = useTranslations("media");
@@ -86,30 +92,55 @@ export function MediaManagerClient({
   const [moveTargetFile, setMoveTargetFile] = useState<MediaFileItem | null>(null);
   const [targetDestinationFolder, setTargetDestinationFolder] = useState<string>("");
   const [isMoving, setIsMoving] = useState(false);
+  const [isCleaningOrphans, setIsCleaningOrphans] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    fetchMedia(currentFolder);
-  }, [currentFolder]);
-
-  async function fetchMedia(folder = currentFolder) {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/media?folder=${encodeURIComponent(folder)}`);
-      const data = await res.json();
-      if (data.success) {
-        setFolders(data.folders || []);
-        setFiles(data.files || []);
-        setParentFolder(data.parentFolder);
-        setCurrentStorage(data.storage);
+  const fetchMedia = useCallback(
+    async (folder = currentFolder) => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/media?folder=${encodeURIComponent(folder)}`);
+        const data = await res.json();
+        if (data.success) {
+          setFolders(data.folders || []);
+          setFiles(data.files || []);
+          setParentFolder(data.parentFolder);
+          setCurrentStorage(data.storage);
+        }
+      } catch {
+        toast.error(t("loadingMedia"));
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      toast.error(t("loadingMedia"));
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    },
+    [currentFolder, t, toast]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/media?folder=${encodeURIComponent(currentFolder)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!controller.signal.aborted && data.success) {
+          setFolders(data.folders || []);
+          setFiles(data.files || []);
+          setParentFolder(data.parentFolder);
+          setCurrentStorage(data.storage);
+        }
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted && err?.name !== "AbortError") {
+          toast.error(t("loadingMedia"));
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [currentFolder, t, toast]);
 
   async function handleUploadFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -246,9 +277,50 @@ export function MediaManagerClient({
     }
   }
 
+  function getFullMediaUrl(rawUrl: string): string {
+    const baseUrl = siteDomain
+      ? buildSiteBaseUrl(siteDomain)
+      : typeof window !== "undefined"
+      ? window.location.origin
+      : "";
+    if (!baseUrl) return rawUrl;
+    return resolveAbsoluteUrl(rawUrl, baseUrl) || rawUrl;
+  }
+
   function copyToClipboard(url: string) {
-    navigator.clipboard.writeText(url);
-    toast.success("URL copiada al portapapeles");
+    navigator.clipboard.writeText(getFullMediaUrl(url));
+    toast.success(t("urlCopied"));
+  }
+
+  async function handleCleanupOrphans() {
+    setIsCleaningOrphans(true);
+    try {
+      const res = await fetch("/api/media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cleanupOrphans" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.deletedCount > 0) {
+          toast.success(
+            t("cleanupOrphansSuccess", {
+              count: data.deletedCount,
+              bytes: formatBytes(data.freedBytes || 0),
+            })
+          );
+          fetchMedia(currentFolder);
+        } else {
+          toast.info(t("cleanupOrphansEmpty"));
+        }
+      } else {
+        toast.error(data.error || t("cleanupOrphansError"));
+      }
+    } catch {
+      toast.error(t("cleanupOrphansError"));
+    } finally {
+      setIsCleaningOrphans(false);
+    }
   }
 
   function formatBytes(bytes: number): string {
@@ -314,7 +386,25 @@ export function MediaManagerClient({
                 <span className="text-text">{t("localFolder")}</span>
               </>
             )}
+            {typeof currentStorage?.usedBytes === "number" && (currentStorage?.quotaBytes ?? 0) > 0 && (
+              <span className="text-[11px] font-mono text-text-muted bg-surface-hover px-1.5 py-0.5 rounded">
+                {t("storageQuota", {
+                  used: formatBytes(currentStorage.usedBytes),
+                  quota: formatBytes(currentStorage.quotaBytes!),
+                })}
+              </span>
+            )}
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCleanupOrphans}
+            loading={isCleaningOrphans}
+            icon={<Trash2 className="w-3.5 h-3.5 text-text-muted" />}
+          >
+            {t("cleanupOrphans")}
+          </Button>
 
           <Button
             variant="outline"
@@ -438,257 +528,46 @@ export function MediaManagerClient({
         </div>
       </div>
 
-      {/* Folders & Files Grid */}
-      <div className="space-y-4">
-        {/* Folders Section */}
-        {filteredFolders.length > 0 && (
-          <div className="space-y-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">
-              {t("foldersCount", { count: filteredFolders.length })}
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {filteredFolders.map((f) => (
-                <div
-                  key={f.path}
-                  className="group relative p-3 rounded-xl border border-border bg-surface hover:border-accent hover:shadow-xs transition-all flex items-center justify-between"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setCurrentFolder(f.path)}
-                    className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
-                  >
-                    <Folder className="w-5 h-5 text-accent shrink-0 group-hover:scale-105 transition-transform" />
-                    <span className="text-xs font-semibold text-text truncate">{f.name}</span>
-                  </button>
+      <MediaLibraryGrid
+        currentFolder={currentFolder}
+        filteredFolders={filteredFolders}
+        filteredFiles={filteredFiles}
+        isLoading={isLoading}
+        totalFilesCount={files.length}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        onOpenFolder={setCurrentFolder}
+        onPreviewFile={setPreviewFile}
+        onStartMoveFile={(file) => {
+          setMoveTargetFile(file);
+          setTargetDestinationFolder(currentFolder);
+        }}
+        onCopyUrl={copyToClipboard}
+        onRequestDelete={setDeleteTarget}
+        formatBytes={formatBytes}
+      />
 
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget({ path: f.path, name: f.name, isFolder: true })}
-                    className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded hover:bg-rose-500/10 text-rose-500 transition-opacity ml-1 shrink-0"
-                    title={t("deleteFolder")}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Files Section */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">
-              {t("filesCount", { count: filteredFiles.length })}
-            </h2>
-            <div className="relative w-48 sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t("filterFiles")}
-                className="w-full pl-7 pr-2.5 py-1 text-xs rounded-lg border border-border bg-surface-hover/30 text-text focus:outline-hidden focus:border-accent"
-              />
-            </div>
-          </div>
-
-          {isLoading && files.length === 0 ? (
-            <div className="p-12 text-center text-xs text-text-muted">
-              {t("loadingMedia")}
-            </div>
-          ) : filteredFiles.length === 0 && filteredFolders.length === 0 ? (
-            <div className="p-12 text-center text-text-muted space-y-1.5 border border-border rounded-xl bg-surface">
-              <ImageIcon className="w-8 h-8 opacity-30 mx-auto" />
-              <p className="text-xs font-semibold text-text">{t("emptyFolder")}</p>
-              <p className="text-[11px]">{t("emptyFolderDesc")}</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-              {filteredFiles.map((file) => (
-                <div
-                  key={file.path}
-                  className="group relative rounded-xl border border-border overflow-hidden bg-surface hover:border-accent hover:shadow-md transition-all flex flex-col"
-                >
-                  <div className="relative aspect-square bg-surface-hover/40 overflow-hidden flex items-center justify-center">
-                    <img
-                      src={file.url}
-                      alt={file.filename}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      loading="lazy"
-                    />
-
-                    {/* Quick actions overlay: permanent semi-transparent controls on mobile touch screens, hover-revealed on desktop */}
-                    <div className="absolute inset-0 bg-black/40 lg:bg-black/60 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 sm:gap-1.5 p-1.5 sm:p-2">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewFile(file)}
-                        className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                        title={t("preview")}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMoveTargetFile(file);
-                          setTargetDestinationFolder(currentFolder);
-                        }}
-                        className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                        title={t("moveFile")}
-                      >
-                        <FolderInput className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(file.url)}
-                        className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                        title={t("copyUrl")}
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget({ path: file.path, name: file.filename, isFolder: false })}
-                        className="p-2 sm:p-1.5 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                        title={tc("delete")}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 space-y-0.5 text-left border-t border-border">
-                    <p className="text-xs font-semibold text-text truncate" title={file.filename}>
-                      {file.filename}
-                    </p>
-                    <p className="text-[10px] text-text-muted">
-                      {formatBytes(file.size)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* New Folder Modal */}
-      <Modal
-        isOpen={newFolderModalOpen}
-        onClose={() => setNewFolderModalOpen(false)}
-        title={t("newFolder")}
-      >
-        <div className="space-y-3 text-xs">
-          <Input
-            label={t("folderName")}
-            placeholder={t("folderNamePlaceholder")}
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            helperText={`/${currentFolder || t("root")}`}
-            autoFocus
-          />
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)}>
-              {tc("cancel")}
-            </Button>
-            <Button variant="primary" size="sm" onClick={handleCreateFolder}>
-              {t("createFolder")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Move File Modal */}
-      {moveTargetFile && (
-        <Modal
-          isOpen={Boolean(moveTargetFile)}
-          onClose={() => setMoveTargetFile(null)}
-          title={`${t("moveFile")}: "${moveTargetFile.filename}"`}
-        >
-          <div className="space-y-3 text-xs">
-            <Input
-              label={t("destinationFolder")}
-              placeholder={t("destinationFolderPlaceholder")}
-              value={targetDestinationFolder}
-              onChange={(e) => setTargetDestinationFolder(e.target.value)}
-            />
-            <div className="flex justify-end gap-2 pt-2 border-t border-border">
-              <Button variant="outline" size="sm" onClick={() => setMoveTargetFile(null)}>
-                {tc("cancel")}
-              </Button>
-              <Button variant="primary" size="sm" onClick={handleMoveFile} loading={isMoving}>
-                {t("moveFile")}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Image Preview Modal */}
-      {previewFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-xl bg-surface border border-border rounded-xl p-5 shadow-xl space-y-3 animate-slide-up">
-            <div className="flex items-center justify-between pb-2 border-b border-border">
-              <h4 className="text-xs font-bold text-text truncate max-w-[80%]">
-                {previewFile.filename}
-              </h4>
-              <button
-                type="button"
-                onClick={() => setPreviewFile(null)}
-                className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="max-h-[50vh] overflow-hidden rounded-lg bg-black/40 flex items-center justify-center p-2">
-              <img
-                src={previewFile.url}
-                alt={previewFile.filename}
-                className="max-h-[45vh] object-contain rounded"
-              />
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
-              <span className="font-mono text-text-muted truncate max-w-xs text-[11px]">
-                {previewFile.url}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyToClipboard(previewFile.url)}
-                  icon={<Copy className="w-3.5 h-3.5" />}
-                >
-                  {t("copyUrl")}
-                </Button>
-                <a
-                  href={previewFile.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-text hover:bg-surface-hover text-xs font-semibold transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  {tc("view")}
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      <ConfirmModal
-        isOpen={Boolean(deleteTarget)}
-        title={deleteTarget?.isFolder ? t("deleteFolder") : t("deleteFile")}
-        message={deleteTarget?.isFolder ? t("confirmDeleteFolder") : t("confirmDeleteFile")}
-        confirmText={tc("delete")}
-        cancelText={tc("cancel")}
-        variant="danger"
-        isLoading={isDeleting}
-        onConfirm={confirmDelete}
-        onClose={() => setDeleteTarget(null)}
+      <MediaDialogs
+        currentFolder={currentFolder}
+        newFolderModalOpen={newFolderModalOpen}
+        onCloseNewFolderModal={() => setNewFolderModalOpen(false)}
+        newFolderName={newFolderName}
+        onChangeNewFolderName={setNewFolderName}
+        onCreateFolder={handleCreateFolder}
+        moveTargetFile={moveTargetFile}
+        onCloseMoveModal={() => setMoveTargetFile(null)}
+        targetDestinationFolder={targetDestinationFolder}
+        onChangeTargetDestinationFolder={setTargetDestinationFolder}
+        isMoving={isMoving}
+        onMoveFile={handleMoveFile}
+        previewFile={previewFile}
+        previewDisplayUrl={previewFile ? getFullMediaUrl(previewFile.url) : undefined}
+        onClosePreviewModal={() => setPreviewFile(null)}
+        onCopyUrl={copyToClipboard}
+        deleteTarget={deleteTarget}
+        onCloseDeleteModal={() => setDeleteTarget(null)}
+        isDeleting={isDeleting}
+        onConfirmDelete={confirmDelete}
       />
     </div>
   );

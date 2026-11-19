@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -47,14 +47,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const toast = {
-    success: (msg: string) => addToast("success", msg),
-    error: (msg: string) => addToast("error", msg),
-    info: (msg: string) => addToast("info", msg),
-  };
+  const toast = useMemo(
+    () => ({
+      success: (msg: string) => addToast("success", msg),
+      error: (msg: string) => addToast("error", msg),
+      info: (msg: string) => addToast("info", msg),
+    }),
+    [addToast]
+  );
+
+  const contextValue = useMemo(() => ({ toast }), [toast]);
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       <div
         aria-live="polite"

@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getPages } from "@/actions/pages";
 import { formatDate } from "@/lib/utils/date";
 import { PagesListClient } from "@/components/admin/PagesListClient";
@@ -16,7 +16,7 @@ export default async function AdminPagesPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   const rawPages = site ? await getPages(site.id) : [];
 
   const pageList = rawPages.map((p) => ({

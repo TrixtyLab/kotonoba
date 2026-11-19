@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { hasAdminUser } from "@/lib/tenant";
 import { LoginClient } from "@/components/auth/LoginClient";
 
@@ -21,6 +22,7 @@ export const metadata: Metadata = {
  * @returns React JSX login view.
  */
 export default async function LoginPage() {
+  await connection();
   const showSetupLink = !hasAdminUser();
 
   return <LoginClient showSetupLink={showSetupLink} />;

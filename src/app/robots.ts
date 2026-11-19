@@ -2,7 +2,9 @@ import { MetadataRoute } from "next";
 import { getDb } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
+import { getPublicSite, getCanonicalBaseUrl } from "@/lib/tenant";
+
+export const dynamic = "force-dynamic";
 
 const AI_BOTS = [
   "GPTBot",
@@ -27,7 +29,7 @@ const AI_BOTS = [
  * @returns MetadataRoute Robots definition object.
  */
 export default async function robots(): Promise<MetadataRoute.Robots> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const baseUrl = await getCanonicalBaseUrl(site);
 
   const db = getDb();

@@ -38,20 +38,6 @@ export function getCountryName(countryCode?: string | null, locale = "en"): stri
   }
 }
 
-/**
- * Returns a Unicode regional indicator emoji flag representation for modern platforms.
- *
- * @param countryCode - 2-letter ISO country code.
- * @returns Emoji flag string.
- */
-export function getCountryEmoji(countryCode?: string | null): string {
-  if (!countryCode || countryCode.length !== 2) return "🌐";
-  const upper = countryCode.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(upper)) return "🌐";
-  const codePoints = upper.split("").map((c) => 127397 + c.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
-}
-
 const SIZE_STYLES = {
   xs: "w-3.5 h-2.5",
   sm: "w-4.5 h-3",

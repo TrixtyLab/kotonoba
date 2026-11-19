@@ -1,5 +1,6 @@
 import React from "react";
 import { normalizeMediaUrl } from "@/lib/utils/media";
+import { sanitizeUrl, isExternalHttpUrl } from "@/lib/security/urls";
 import { Link } from "@/i18n/routing";
 import { useTranslations } from "next-intl";
 
@@ -34,7 +35,7 @@ export function HeaderBanner({
 
   if (!imageUrl || !imageUrl.trim()) return null;
 
-  const resolvedUrl = normalizeMediaUrl(imageUrl);
+  const resolvedUrl = sanitizeUrl(normalizeMediaUrl(imageUrl), { allowRelative: true });
   if (!resolvedUrl) return null;
 
   const imageElement = (
@@ -45,15 +46,15 @@ export function HeaderBanner({
     />
   );
 
-  if (linkUrl && linkUrl.trim()) {
-    const cleanLink = linkUrl.trim();
-    const isExternal = cleanLink.startsWith("http://") || cleanLink.startsWith("https://") || cleanLink.startsWith("//");
+  const safeLink = sanitizeUrl(linkUrl, { allowRelative: true });
+  if (safeLink) {
+    const isExternal = isExternalHttpUrl(safeLink);
 
     if (isExternal) {
       return (
         <aside aria-label={bannerLabel} className="w-full overflow-hidden bg-surface-hover/20">
           <a
-            href={cleanLink}
+            href={safeLink}
             target={target}
             rel={target === "_blank" ? "noopener noreferrer" : undefined}
             className="block w-full h-[160px] sm:h-[220px] md:h-[302px] hover:opacity-95 transition-opacity"
@@ -67,7 +68,7 @@ export function HeaderBanner({
     return (
       <aside aria-label={bannerLabel} className="w-full overflow-hidden bg-surface-hover/20">
         <Link
-          href={cleanLink}
+          href={safeLink}
           className="block w-full h-[160px] sm:h-[220px] md:h-[302px] hover:opacity-95 transition-opacity"
         >
           {imageElement}

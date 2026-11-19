@@ -1,9 +1,7 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
+import { getAdminSite } from "@/lib/tenant";
+import { getSiteRetentionSummary } from "@/lib/analytics/retention";
 import { notFound } from "next/navigation";
-import { sql, desc, eq, and } from "drizzle-orm";
 import { RotateCcw, Users, UserCheck, UserPlus, Layers } from "lucide-react";
 import { MetricCard } from "@/components/admin/analytics/MetricCard";
 import { BarChart, BarChartItem } from "@/components/admin/analytics/BarChart";
@@ -32,26 +30,11 @@ export default async function AnalyticsRetentionPage({
 }: PageProps): Promise<React.JSX.Element> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
-  const db = getDb();
-
-  const visitorVisits = db
-    .select({
-      ipHash: analytics.ipHash,
-      distinctDays: sql<number>`count(distinct strftime('%Y-%m-%d', datetime(created_at, 'unixepoch')))`,
-      firstVisitEpoch: sql<number>`min(created_at)`,
-    })
-    .from(analytics)
-    .where(eq(analytics.siteId, site.id))
-    .groupBy(analytics.ipHash)
-    .all();
-
-  const totalVisitors = visitorVisits.length;
-  const returningVisitors = visitorVisits.filter((v) => v.distinctDays > 1).length;
-  const newVisitors = totalVisitors - returningVisitors;
-  const retentionRate = totalVisitors > 0 ? Math.round((returningVisitors / totalVisitors) * 100) : 0;
+  const summary = getSiteRetentionSummary(site.id);
+  const { totalVisitors, returningVisitors, newVisitors, retentionRate } = summary;
 
   const ratioItems: BarChartItem[] = [
     {
@@ -68,77 +51,15 @@ export default async function AnalyticsRetentionPage({
     },
   ];
 
-  const now = Date.now();
-  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-  const allHits = db
-    .select({
-      ipHash: analytics.ipHash,
-      createdEpoch: sql<number>`created_at`,
-    })
-    .from(analytics)
-    .where(eq(analytics.siteId, site.id))
-    .all();
-
-  const visitorFirstSeenMap = new Map<string, number>();
-  for (const v of visitorVisits) {
-    visitorFirstSeenMap.set(v.ipHash, v.firstVisitEpoch);
-  }
-
-  // Group into weekly cohorts
-  const cohortMap = new Map<number, Set<string>>(); // cohortIndex -> set of ipHashes
-  for (const v of visitorVisits) {
-    const ageWeeks = Math.floor((now - v.firstVisitEpoch) / ONE_WEEK_MS);
-    if (ageWeeks >= 0 && ageWeeks < 4) {
-      if (!cohortMap.has(ageWeeks)) {
-        cohortMap.set(ageWeeks, new Set());
-      }
-      cohortMap.get(ageWeeks)!.add(v.ipHash);
-    }
-  }
-
-  const cohorts: CohortRow[] = [];
-  for (let c = 3; c >= 0; c--) {
-    const visitorsInCohort = cohortMap.get(c) || new Set();
-    const size = visitorsInCohort.size;
-
-    let w1Hits = 0;
-    let w2Hits = 0;
-    let w3Hits = 0;
-
-    if (size > 0) {
-      for (const ip of visitorsInCohort) {
-        const firstEpoch = visitorFirstSeenMap.get(ip) || 0;
-        const userHits = allHits.filter((h) => h.ipHash === ip);
-
-        const hasW1 = userHits.some((h) => {
-          const diff = h.createdEpoch - firstEpoch;
-          return diff >= ONE_WEEK_MS && diff < 2 * ONE_WEEK_MS;
-        });
-        const hasW2 = userHits.some((h) => {
-          const diff = h.createdEpoch - firstEpoch;
-          return diff >= 2 * ONE_WEEK_MS && diff < 3 * ONE_WEEK_MS;
-        });
-        const hasW3 = userHits.some((h) => {
-          const diff = h.createdEpoch - firstEpoch;
-          return diff >= 3 * ONE_WEEK_MS && diff < 4 * ONE_WEEK_MS;
-        });
-
-        if (hasW1) w1Hits++;
-        if (hasW2) w2Hits++;
-        if (hasW3) w3Hits++;
-      }
-    }
-
-    cohorts.push({
-      cohortLabel: c === 0 ? t("currentWeek") : t("weeksAgo", { count: c }),
-      size,
-      w0: size > 0 ? 100 : 0,
-      w1: size > 0 ? Math.round((w1Hits / size) * 100) : 0,
-      w2: size > 0 ? Math.round((w2Hits / size) * 100) : 0,
-      w3: size > 0 ? Math.round((w3Hits / size) * 100) : 0,
-    });
-  }
+  const cohorts: CohortRow[] = summary.cohorts.map((row) => ({
+    cohortLabel:
+      row.cohortIndex === 0 ? t("currentWeek") : t("weeksAgo", { count: row.cohortIndex }),
+    size: row.size,
+    w0: row.w0,
+    w1: row.w1,
+    w2: row.w2,
+    w3: row.w3,
+  }));
 
   const getHeatmapColor = (pct: number): string => {
     if (pct === 0) return "bg-surface-hover/30 text-text-muted";

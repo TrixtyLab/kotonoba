@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Search, X, FileText, ArrowRight, CornerDownLeft } from "lucide-react";
+import { Search, X, FileText, CornerDownLeft } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { useTranslations } from "next-intl";
 
@@ -35,19 +35,58 @@ export function SearchModal({
   const t = useTranslations("blog");
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [remoteResults, setRemoteResults] = useState<SearchPostItem[] | null>(null);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  useEffect(() => {
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
       setSelectedIndex(0);
     } else {
       setQuery("");
+      setRemoteResults(null);
     }
+  }
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, [isOpen]);
 
-  const filtered = posts.filter((p) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { items?: SearchPostItem[] };
+          if (Array.isArray(data.items)) {
+            setRemoteResults(data.items);
+          }
+        }
+      } catch {
+        // Ignore aborts and transient network issues
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isOpen, query]);
+
+  const localFiltered = posts.filter((p) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
     return (
@@ -56,6 +95,8 @@ export function SearchModal({
       (p.categoryName && p.categoryName.toLowerCase().includes(q))
     );
   });
+
+  const filtered = query.trim().length >= 2 && remoteResults !== null ? remoteResults : localFiltered;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {

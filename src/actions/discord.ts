@@ -1,30 +1,28 @@
 "use server";
 
-import { requireAuth } from "@/lib/auth/session";
+import { ROLE_PUBLISHERS } from "@/lib/auth/roles";
+import { requireSiteAccess } from "@/lib/auth/site-access";
 import { sendDiscordTestNotification } from "@/lib/discord";
-import { getDb } from "@/lib/db";
-import { sites } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { getDecryptedSiteSecret } from "@/lib/services/settings";
+import { getSiteById } from "@/lib/services/sites";
 import { getLocalizedText } from "@/lib/utils/localization";
 
 /**
- * Server action testing Discord Webhook integration from the settings dashboard.
- *
- * @param siteId - Unique database identifier of the target site.
- * @param webhookUrl - Target Discord Webhook URL.
- * @returns Promise resolving to operation outcome status.
- * @throws {Error} When user is not authenticated as administrator or editor.
+ * Tests Discord webhook connectivity using the candidate URL or stored encrypted secret.
  */
 export async function testDiscordWebhookAction(
   siteId: string,
-  webhookUrl: string
+  webhookUrl?: string
 ): Promise<{ success: boolean; error?: string }> {
-  await requireAuth(["super_admin", "admin", "editor"]);
+  await requireSiteAccess(siteId, ROLE_PUBLISHERS);
 
-  const db = getDb();
-  const site = db.select().from(sites).where(eq(sites.id, siteId)).get();
+  const effectiveWebhook = webhookUrl?.trim() || getDecryptedSiteSecret(siteId, "discord_webhook_url");
+  if (!effectiveWebhook) {
+    return { success: false, error: "Discord Webhook URL is required to run the test." };
+  }
 
-  return await sendDiscordTestNotification(webhookUrl, {
+  const site = getSiteById(siteId);
+  return await sendDiscordTestNotification(effectiveWebhook, {
     name: getLocalizedText(site?.name, site?.locale || "en"),
     logoUrl: site?.logoUrl || site?.faviconUrl || undefined,
     primaryColor: site?.primaryColor || undefined,

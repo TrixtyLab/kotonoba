@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { hasAdminUser } from "@/lib/tenant";
 import { redirect } from "@/i18n/routing";
 import { SetupWizardClient } from "@/components/setup/SetupWizardClient";
@@ -27,6 +28,7 @@ export default async function SetupWizardPage({
 }: {
   params: Promise<{ locale: string }>;
 }) {
+  await connection();
   const { locale } = await params;
 
   if (hasAdminUser()) {

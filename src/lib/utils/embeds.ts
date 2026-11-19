@@ -1,3 +1,6 @@
+import { escapeHtml } from "@/lib/security/sanitize";
+import { sanitizeUrl } from "@/lib/security/urls";
+
 /**
  * Metadata and rendered HTML markup for an external embedded media asset.
  */
@@ -14,7 +17,7 @@ export interface EmbedInfo {
  * @param {string} url - The YouTube URL string to parse.
  * @returns {string | null} The extracted YouTube video ID, or null if the URL is not recognized as a YouTube link.
  */
-export function extractYouTubeId(url: string): string | null {
+function extractYouTubeId(url: string): string | null {
   const match = url.match(
     /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i
   );
@@ -27,7 +30,7 @@ export function extractYouTubeId(url: string): string | null {
  * @param {string} url - The Vimeo URL string to parse.
  * @returns {string | null} The extracted Vimeo video ID string, or null if not a valid Vimeo link.
  */
-export function extractVimeoId(url: string): string | null {
+function extractVimeoId(url: string): string | null {
   const match = url.match(/(?:vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^\/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|)(\d+))/i);
   return match ? match[1] : null;
 }
@@ -38,7 +41,7 @@ export function extractVimeoId(url: string): string | null {
  * @param {string} url - The X/Twitter URL string to parse.
  * @returns {{ username: string; tweetId: string } | null} An object with the username and tweetId, or null if invalid.
  */
-export function extractTwitterInfo(url: string): { username: string; tweetId: string } | null {
+function extractTwitterInfo(url: string): { username: string; tweetId: string } | null {
   const match = url.match(/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/status\/(\d+)/i);
   if (!match) return null;
   return { username: match[1], tweetId: match[2] };
@@ -50,7 +53,7 @@ export function extractTwitterInfo(url: string): { username: string; tweetId: st
  * @param {string} url - The Bluesky URL string to parse.
  * @returns {{ handle: string; postId: string } | null} An object containing handle and postId, or null if invalid.
  */
-export function extractBlueskyInfo(url: string): { handle: string; postId: string } | null {
+function extractBlueskyInfo(url: string): { handle: string; postId: string } | null {
   const match = url.match(/bsky\.app\/profile\/([a-zA-Z0-9_.:-]+)\/post\/([a-zA-Z0-9]+)/i);
   if (!match) return null;
   return { handle: match[1], postId: match[2] };
@@ -165,7 +168,7 @@ export function parseEmbedDirective(type: string, target: string, options?: Embe
     if (ytId) {
       return {
         type: "youtube",
-        html: `<div class="my-6 rounded-2xl overflow-hidden w-full" style="aspect-ratio: 16 / 9;">
+        html: `<div class="my-6 rounded-2xl overflow-hidden w-full aspect-video">
   <iframe src="https://www.youtube-nocookie.com/embed/${ytId}" title="YouTube video player" class="w-full h-full border-0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
 </div>`,
       };
@@ -177,7 +180,7 @@ export function parseEmbedDirective(type: string, target: string, options?: Embe
     if (vimeoId) {
       return {
         type: "vimeo",
-        html: `<div class="my-6 rounded-2xl overflow-hidden w-full" style="aspect-ratio: 16 / 9;">
+        html: `<div class="my-6 rounded-2xl overflow-hidden w-full aspect-video">
   <iframe src="https://player.vimeo.com/video/${vimeoId}" class="w-full h-full border-0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>
 </div>`,
       };
@@ -193,7 +196,6 @@ export function parseEmbedDirective(type: string, target: string, options?: Embe
   <blockquote class="twitter-tweet" data-dnt="true">
     <a href="https://x.com/${tweet.username}/status/${tweet.tweetId}">Ver publicación en X (@${tweet.username})</a>
   </blockquote>
-  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </div>`,
       };
     }
@@ -208,17 +210,18 @@ export function parseEmbedDirective(type: string, target: string, options?: Embe
   <blockquote class="bluesky-embed" data-bluesky-uri="at://${bsky.handle}/app.bsky.feed.post/${bsky.postId}">
     <a href="https://bsky.app/profile/${bsky.handle}/post/${bsky.postId}" target="_blank" rel="noopener noreferrer">Ver publicación en Bluesky (@${bsky.handle})</a>
   </blockquote>
-  <script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>
 </div>`,
       };
     }
   }
 
   if (provider === "video") {
+    const safeVideoUrl = sanitizeUrl(effectiveTarget, { allowRelative: true });
+    if (!safeVideoUrl) return null;
     return {
       type: "video",
-      html: `<div class="my-6 rounded-2xl overflow-hidden w-full flex items-center justify-center" style="aspect-ratio: 16 / 9;">
-  <video src="${effectiveTarget}" controls class="w-full h-full object-contain"></video>
+      html: `<div class="my-6 rounded-2xl overflow-hidden w-full flex items-center justify-center aspect-video">
+  <video src="${escapeHtml(safeVideoUrl)}" controls class="w-full h-full object-contain"></video>
 </div>`,
     };
   }
@@ -268,7 +271,7 @@ export function parseEmbedUrl(rawUrl: string, options?: EmbedOptions): EmbedInfo
   if (ytId) {
     return {
       type: "youtube",
-      html: `<div class="my-6 rounded-2xl overflow-hidden w-full" style="aspect-ratio: 16 / 9;">
+      html: `<div class="my-6 rounded-2xl overflow-hidden w-full aspect-video">
   <iframe src="https://www.youtube-nocookie.com/embed/${ytId}" title="YouTube video player" class="w-full h-full border-0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
 </div>`,
     };
@@ -278,7 +281,7 @@ export function parseEmbedUrl(rawUrl: string, options?: EmbedOptions): EmbedInfo
   if (vimeoId) {
     return {
       type: "vimeo",
-      html: `<div class="my-6 rounded-2xl overflow-hidden w-full" style="aspect-ratio: 16 / 9;">
+      html: `<div class="my-6 rounded-2xl overflow-hidden w-full aspect-video">
   <iframe src="https://player.vimeo.com/video/${vimeoId}" class="w-full h-full border-0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>
 </div>`,
     };
@@ -292,7 +295,6 @@ export function parseEmbedUrl(rawUrl: string, options?: EmbedOptions): EmbedInfo
   <blockquote class="twitter-tweet" data-dnt="true">
     <a href="https://x.com/${tweet.username}/status/${tweet.tweetId}">Ver publicación en X (@${tweet.username})</a>
   </blockquote>
-  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </div>`,
     };
   }
@@ -305,16 +307,17 @@ export function parseEmbedUrl(rawUrl: string, options?: EmbedOptions): EmbedInfo
   <blockquote class="bluesky-embed" data-bluesky-uri="at://${bsky.handle}/app.bsky.feed.post/${bsky.postId}">
     <a href="https://bsky.app/profile/${bsky.handle}/post/${bsky.postId}" target="_blank" rel="noopener noreferrer">Ver publicación en Bluesky (@${bsky.handle})</a>
   </blockquote>
-  <script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>
 </div>`,
     };
   }
 
   if (/\.(mp4|webm|ogg|mov)($|\?)/i.test(url)) {
+    const safeVideoUrl = sanitizeUrl(url, { allowRelative: true });
+    if (!safeVideoUrl) return null;
     return {
       type: "video",
-      html: `<div class="my-6 rounded-2xl overflow-hidden w-full flex items-center justify-center" style="aspect-ratio: 16 / 9;">
-  <video src="${url}" controls class="w-full h-full object-contain"></video>
+      html: `<div class="my-6 rounded-2xl overflow-hidden w-full flex items-center justify-center aspect-video">
+  <video src="${escapeHtml(safeVideoUrl)}" controls class="w-full h-full object-contain"></video>
 </div>`,
     };
   }

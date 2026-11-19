@@ -1,8 +1,11 @@
 import { getDb } from "@/lib/db";
 import { sites, settings } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { normalizeMediaUrl, resolveAbsoluteUrl } from "@/lib/storage";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { decryptSecretOrLegacyPlaintext } from "@/lib/security/crypto";
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/security/ssrf";
+import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 
 /**
  * Payload structure for a Discord webhook message containing rich embeds.
@@ -57,7 +60,7 @@ export interface DiscordEmbed {
  * @param hex - Hexadecimal color code (e.g. '#3b82f6' or 'ff4081').
  * @returns Integer decimal color value.
  */
-export function hexToDecimalColor(hex?: string): number {
+function hexToDecimalColor(hex?: string): number {
   if (!hex) return 3900150;
   const clean = hex.replace("#", "").trim();
   const parsed = parseInt(clean, 16);
@@ -107,9 +110,16 @@ export async function sendDiscordPostNotification(
     }
 
     const enabled = configMap.discord_notifications_enabled === "true";
-    const webhookUrl = configMap.discord_webhook_url;
+    const webhookUrl = decryptSecretOrLegacyPlaintext(configMap.discord_webhook_url).trim();
 
     if (!enabled || !webhookUrl) {
+      return false;
+    }
+
+    const webhookCheck = await validateOutboundUrl(webhookUrl, {
+      allowedDomains: ["discord.com", "discordapp.com"],
+    });
+    if (!webhookCheck.valid || !webhookCheck.url.pathname.startsWith("/api/webhooks/")) {
       return false;
     }
 
@@ -117,9 +127,7 @@ export async function sendDiscordPostNotification(
     const postLocale = post.locale || site?.locale || "en";
     const siteName = getLocalizedText(site?.name, postLocale) || "Kotonoba Blog";
     const siteDomain = site?.domain || "localhost:3000";
-    const baseUrl = siteDomain.includes("localhost")
-      ? `http://${siteDomain}`
-      : `https://${siteDomain}`;
+    const baseUrl = buildSiteBaseUrl(siteDomain);
 
     const canonicalPostUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
     const postUrl = post.shortUrl || canonicalPostUrl;
@@ -153,11 +161,15 @@ export async function sendDiscordPostNotification(
       ],
     };
 
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const res = await safeOutboundFetch(
+      webhookUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { allowedDomains: ["discord.com", "discordapp.com"], timeoutMs: 10_000 }
+    );
 
     return res.ok;
   } catch {
@@ -181,7 +193,10 @@ export async function sendDiscordTestNotification(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!webhookUrl || !webhookUrl.startsWith("https://discord.com/api/webhooks/")) {
+    const check = await validateOutboundUrl(webhookUrl, {
+      allowedDomains: ["discord.com", "discordapp.com"],
+    });
+    if (!check.valid || !check.url.pathname.startsWith("/api/webhooks/")) {
       return { success: false, error: "Invalid Discord Webhook URL format." };
     }
 
@@ -209,11 +224,15 @@ export async function sendDiscordTestNotification(
       ],
     };
 
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const res = await safeOutboundFetch(
+      webhookUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { allowedDomains: ["discord.com", "discordapp.com"], timeoutMs: 10_000 }
+    );
 
     if (res.ok) {
       return { success: true };

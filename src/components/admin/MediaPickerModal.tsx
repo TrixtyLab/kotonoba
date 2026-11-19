@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
 import {
   X, Upload, Image as ImageIcon, Check, Loader2,
-  RefreshCw, HardDrive, Cloud, Search, Folder,
-  ChevronRight, ArrowLeft, Home, FolderPlus
+  HardDrive, Cloud, Search, Folder,
+  ChevronRight, Home, FolderPlus
 } from "lucide-react";
 
 /**
@@ -69,7 +69,6 @@ export function MediaPickerModal({
   const toast = useToast();
   const modalTitle = title || t("selectImage");
   const [currentFolder, setCurrentFolder] = useState<string>("");
-  const [parentFolder, setParentFolder] = useState<string | null>(null);
   const [folders, setFolders] = useState<MediaFolderItem[]>([]);
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
   const [storageInfo, setStorageInfo] = useState<{
@@ -85,29 +84,50 @@ export function MediaPickerModal({
   const [newFolderName, setNewFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchMedia(currentFolder);
-    }
-  }, [isOpen, currentFolder]);
-
-  async function fetchMedia(folder = currentFolder) {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/media?folder=${encodeURIComponent(folder)}`);
-      const data = await res.json();
-      if (data.success) {
-        setFolders(data.folders || []);
-        setMediaList(data.files || []);
-        setParentFolder(data.parentFolder);
-        setStorageInfo(data.storage);
+  const fetchMedia = useCallback(
+    async (folder = currentFolder) => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/media?folder=${encodeURIComponent(folder)}`);
+        const data = await res.json();
+        if (data.success) {
+          setFolders(data.folders || []);
+          setMediaList(data.files || []);
+          setStorageInfo(data.storage);
+        }
+      } catch {
+        toast.error(t("loadingMedia"));
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      toast.error(t("loadingMedia"));
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    },
+    [currentFolder, t, toast]
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const controller = new AbortController();
+    fetch(`/api/media?folder=${encodeURIComponent(currentFolder)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!controller.signal.aborted && data.success) {
+          setFolders(data.folders || []);
+          setMediaList(data.files || []);
+          setStorageInfo(data.storage);
+        }
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted && err?.name !== "AbortError") {
+          toast.error(t("loadingMedia"));
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [isOpen, currentFolder, t, toast]);
 
   async function handleFileUpload(files: FileList | null) {
     if (!files || files.length === 0) return;

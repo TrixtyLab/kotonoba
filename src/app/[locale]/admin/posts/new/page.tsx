@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getCategories } from "@/actions/categories";
 import { getTags } from "@/actions/tags";
 import { PostEditor } from "@/components/admin/PostEditor";
@@ -11,7 +11,7 @@ import { notFound } from "next/navigation";
  * @returns React JSX new post editor workspace.
  */
 export default async function NewPostPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const categories = await getCategories(site.id);

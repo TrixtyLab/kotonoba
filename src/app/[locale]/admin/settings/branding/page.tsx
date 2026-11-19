@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { BrandingSettingsClient } from "@/components/admin/settings/BrandingSettingsClient";
 
@@ -8,7 +8,7 @@ import { BrandingSettingsClient } from "@/components/admin/settings/BrandingSett
  * @returns React JSX branding settings view.
  */
 export default async function BrandingSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   return <BrandingSettingsClient site={site} />;

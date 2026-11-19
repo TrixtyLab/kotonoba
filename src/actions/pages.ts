@@ -1,295 +1,78 @@
 "use server";
 
-import { getDb } from "@/lib/db";
-import { pages, users, analytics } from "@/lib/db/schema";
-import { eq, desc, and, or, like } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth/session";
-import { generateId, generateSlug } from "@/lib/utils/slug";
+import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
+import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
+import { revalidatePagePaths } from "@/lib/cache/revalidate";
 import { pageSchema, validate, type PageInput } from "@/lib/security/validate";
-import { normalizeMediaUrl, normalizeHtmlMediaUrls } from "@/lib/storage";
-import { revalidatePath } from "next/cache";
+import {
+  createPageService,
+  deletePageService,
+  getPageRowById,
+  listAdminPages,
+  listPublishedPages,
+  updatePageService,
+  type AdminPageRecord,
+  type PageMutationResponse,
+} from "@/lib/services/pages";
 
-/**
- * Result payload returned from custom page creation or update operations.
- */
-export type PageMutationResponse =
-  | { success: true; pageId: string }
-  | { success: false; error?: string; errors?: Record<string, string[]> };
+export type { AdminPageRecord, PageMutationResponse };
 
-/**
- * Overview page structure formatted for administration listings.
- */
-export interface AdminPageRecord {
-  id: string;
-  title: string;
-  slug: string;
-  status: "draft" | "published" | "scheduled" | "archived";
-  locale: string;
-  views: number;
-  publishedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  authorName: string | null;
-}
-
-/**
- * Creates a new custom page associated with the authenticated user and active site.
- *
- * @param {string} siteId - Unique database identifier of the target site.
- * @param {Partial<PageInput>} inputData - Page attributes including title, markdown/html content, and publication status.
- * @returns {Promise<PageMutationResponse>} A Promise resolving to a PageMutationResponse with the created page ID or validation errors.
- * @throws {Error} Thrown if the requesting user session is unauthenticated or lacks author permissions.
- */
+/** Creates a custom static page within an authorized tenant site. */
 export async function createPage(siteId: string, inputData: Partial<PageInput>): Promise<PageMutationResponse> {
-  const user = await requireAuth(["super_admin", "admin", "editor", "author"]);
+  const actor = await requireSiteAccess(siteId, ROLE_ALL);
   const validation = validate(pageSchema, inputData);
-
   if (!validation.success) {
     return { success: false, errors: validation.errors };
   }
 
-  const {
-    title,
-    slug,
-    contentMd,
-    contentHtml,
-    excerpt,
-    coverImage,
-    status,
-    publishedAt,
-    locale,
-  } = validation.data;
-
-  const db = getDb();
-  const pageId = generateId();
-  const pageSlug = slug ? generateSlug(slug) : generateSlug(title);
-  const now = new Date();
-
-  let targetPublishedAt: Date | null = null;
-  if (status === "published" || status === "scheduled") {
-    if (publishedAt) {
-      const parsed = new Date(publishedAt);
-      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : now;
-    } else {
-      targetPublishedAt = now;
-    }
+  const { result, pageSlug } = createPageService(actor, siteId, validation.data);
+  if (result.success) {
+    revalidatePagePaths(pageSlug);
   }
-
-  db.insert(pages).values({
-    id: pageId,
-    siteId,
-    authorId: user.userId,
-    title,
-    slug: pageSlug,
-    contentMd: normalizeHtmlMediaUrls(contentMd || ""),
-    contentHtml: normalizeHtmlMediaUrls(contentHtml || ""),
-    excerpt: excerpt || "",
-    coverImage: normalizeMediaUrl(coverImage) || null,
-    status,
-    locale: locale || "en",
-    publishedAt: targetPublishedAt,
-    createdAt: now,
-    updatedAt: now,
-    views: 0,
-  }).run();
-
-  revalidatePath("/[locale]/admin/pages", "page");
-  revalidatePath(`/[locale]/p/${pageSlug}`, "page");
-  revalidatePath("/sitemap.xml", "page");
-
-  return { success: true, pageId };
+  return result;
 }
 
-/**
- * Updates an existing custom page entity.
- *
- * @param {string} pageId - Database identifier of the target page.
- * @param {Partial<PageInput>} inputData - Updated page attributes including title, content, excerpt, or status.
- * @returns {Promise<PageMutationResponse>} A Promise resolving to a PageMutationResponse indicating success or validation errors.
- * @throws {Error} Thrown if the requesting user session is unauthenticated or lacks editor permissions.
- */
+/** Updates an existing custom page within its owning tenant. */
 export async function updatePage(pageId: string, inputData: Partial<PageInput>): Promise<PageMutationResponse> {
-  await requireAuth(["super_admin", "admin", "editor", "author"]);
   const validation = validate(pageSchema, inputData);
-
   if (!validation.success) {
     return { success: false, errors: validation.errors };
   }
 
-  const {
-    title,
-    slug,
-    contentMd,
-    contentHtml,
-    excerpt,
-    coverImage,
-    status,
-    publishedAt,
-    locale,
-  } = validation.data;
-
-  const db = getDb();
-  const existing = db.select().from(pages).where(eq(pages.id, pageId)).get();
+  const existing = getPageRowById(pageId);
   if (!existing) {
     return { success: false, error: "Page not found" };
   }
 
-  const now = new Date();
-  const pageSlug = slug ? generateSlug(slug) : existing.slug;
-
-  let targetPublishedAt: Date | null = null;
-  if (status === "published" || status === "scheduled") {
-    if (publishedAt) {
-      const parsed = new Date(publishedAt);
-      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : (existing.publishedAt || now);
-    } else {
-      targetPublishedAt = existing.publishedAt || now;
-    }
-  } else if (status === "draft") {
-    targetPublishedAt = null;
-  } else {
-    targetPublishedAt = existing.publishedAt;
+  const actor = await requireSiteAccess(existing.siteId, ROLE_ALL);
+  const { result, pageSlug } = updatePageService(actor, existing, validation.data);
+  if (result.success) {
+    revalidatePagePaths(pageSlug, existing.slug);
   }
-
-  db.update(pages).set({
-    title,
-    slug: pageSlug,
-    contentMd: normalizeHtmlMediaUrls(contentMd || ""),
-    contentHtml: normalizeHtmlMediaUrls(contentHtml || ""),
-    excerpt: excerpt || "",
-    coverImage: coverImage !== undefined ? normalizeMediaUrl(coverImage) || null : existing.coverImage,
-    status,
-    locale: locale || existing.locale,
-    publishedAt: targetPublishedAt,
-    updatedAt: now,
-  }).where(eq(pages.id, pageId)).run();
-
-  revalidatePath("/[locale]/admin/pages", "page");
-  revalidatePath(`/[locale]/p/${pageSlug}`, "page");
-  revalidatePath("/sitemap.xml", "page");
-
-  return { success: true, pageId };
+  return result;
 }
 
-/**
- * Deletes a custom page by its database identifier and purges associated analytics records.
- *
- * @param {string} pageId - Database identifier of the page to delete.
- * @returns {Promise<{ success: boolean; error?: string }>} A Promise resolving to an object indicating operation success.
- * @throws {Error} Thrown if the requesting user is unauthenticated or lacks deletion permissions.
- */
+/** Deletes a custom static page and cascades analytics removal. */
 export async function deletePage(pageId: string): Promise<{ success: boolean; error?: string }> {
-  await requireAuth(["super_admin", "admin", "editor"]);
-  const db = getDb();
-
-  const existing = db.select().from(pages).where(eq(pages.id, pageId)).get();
-  if (!existing) {
-    return { success: false, error: "Page not found" };
+  const { user } = await requireResourceAccess("page", pageId, ROLE_PUBLISHERS);
+  const res = deletePageService(user, pageId);
+  if (!res.success) {
+    return { success: false, error: res.error };
   }
-
-  db.delete(analytics)
-    .where(
-      or(
-        eq(analytics.pageId, pageId),
-        and(
-          eq(analytics.siteId, existing.siteId),
-          like(analytics.path, `%${existing.slug}%`)
-        )
-      )
-    )
-    .run();
-
-  db.delete(pages).where(eq(pages.id, pageId)).run();
-
-  revalidatePath("/[locale]/admin/pages", "page");
-  revalidatePath(`/[locale]/p/${existing.slug}`, "page");
-  revalidatePath("/sitemap.xml", "page");
-
+  revalidatePagePaths(res.slug);
   return { success: true };
 }
 
-/**
- * Retrieves all custom pages for the given site for the admin panel.
- *
- * @param {string} siteId - Identifier of the active site.
- * @returns {Promise<AdminPageRecord[]>} A Promise resolving to an array of AdminPageRecord objects.
- * @throws {Error} Thrown if the requesting user is unauthenticated.
- */
+/** Lists all custom pages belonging to an admin site workspace. */
 export async function getPages(siteId: string): Promise<AdminPageRecord[]> {
-  await requireAuth(["super_admin", "admin", "editor", "author"]);
-  const db = getDb();
-
-  const rows = db
-    .select({
-      id: pages.id,
-      title: pages.title,
-      slug: pages.slug,
-      status: pages.status,
-      locale: pages.locale,
-      views: pages.views,
-      publishedAt: pages.publishedAt,
-      createdAt: pages.createdAt,
-      updatedAt: pages.updatedAt,
-      authorName: users.displayName,
-    })
-    .from(pages)
-    .leftJoin(users, eq(pages.authorId, users.id))
-    .where(eq(pages.siteId, siteId))
-    .orderBy(desc(pages.createdAt))
-    .all();
-
-  return rows;
+  await requireSiteAccess(siteId, ROLE_ALL);
+  return listAdminPages(siteId);
 }
 
-/**
- * Retrieves published custom pages for navigation selectors and link pickers.
- *
- * @param {string} siteId - Identifier of the active site.
- * @returns {Promise<Array<{ id: string; title: string; slug: string; locale: string }>>} A Promise resolving to an array of simplified page descriptor objects.
- */
-export async function getPublishedPages(siteId: string): Promise<Array<{ id: string; title: string; slug: string; locale: string }>> {
-  const db = getDb();
-
-  const rows = db
-    .select({
-      id: pages.id,
-      title: pages.title,
-      slug: pages.slug,
-      locale: pages.locale,
-    })
-    .from(pages)
-    .where(and(eq(pages.siteId, siteId), eq(pages.status, "published")))
-    .orderBy(desc(pages.createdAt))
-    .all();
-
-  return rows;
-}
-
-/**
- * Retrieves a full custom page by ID for editing.
- *
- * @param {string} pageId - Identifier of the target page.
- * @returns {Promise<typeof pages.$inferSelect | null>} A Promise resolving to the page record or null if not found.
- * @throws {Error} Thrown if the requesting user is unauthenticated.
- */
-export async function getPageById(pageId: string) {
-  await requireAuth(["super_admin", "admin", "editor", "author"]);
-  const db = getDb();
-  return db.select().from(pages).where(eq(pages.id, pageId)).get() || null;
-}
-
-/**
- * Retrieves a published custom page by its site and slug for public display.
- *
- * @param {string} siteId - Identifier of the target site.
- * @param {string} slug - Page URL slug.
- * @returns {Promise<typeof pages.$inferSelect | null>} A Promise resolving to the published page record or null if not found.
- */
-export async function getPageBySlug(siteId: string, slug: string) {
-  const db = getDb();
-  return db
-    .select()
-    .from(pages)
-    .where(and(eq(pages.siteId, siteId), eq(pages.slug, slug), eq(pages.status, "published")))
-    .get() || null;
+/** Lists published static pages for admin navigation selectors. */
+export async function getPublishedPages(
+  siteId: string
+): Promise<Array<{ id: string; title: string; slug: string; locale: string }>> {
+  await requireSiteAccess(siteId, ROLE_ALL);
+  return listPublishedPages(siteId);
 }

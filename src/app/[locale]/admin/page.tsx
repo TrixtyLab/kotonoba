@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { posts, pages, categories, tags, analytics, users } from "@/lib/db/schema";
+import { posts, pages, categories, analytics, users } from "@/lib/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
@@ -11,8 +11,8 @@ import { getStorageStatus } from "@/lib/storage";
 import { getLocalizedText } from "@/lib/utils/localization";
 import {
   FileText, CheckCircle2, Clock, Eye, Plus,
-  FolderTree, Settings, Sparkles, TrendingUp, ArrowRight,
-  Image as ImageIcon, HardDrive, Cloud, Compass, Globe, Files
+  FolderTree, TrendingUp, ArrowRight,
+  Image as ImageIcon, HardDrive, Cloud, Compass
 } from "lucide-react";
 
 /**
@@ -30,7 +30,7 @@ export default async function AdminDashboardPage({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "admin" });
   const tc = await getTranslations({ locale, namespace: "common" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   const db = getDb();
 
   const siteId = site?.id || "default";

@@ -85,16 +85,16 @@ export function getLocalizedMap(rawText: string | null | undefined, defaultLocal
 export function packLocalizedMap(map: Record<string, string>, defaultLocale: string = "en"): string {
   const cleanEntries = Object.entries(map)
     .map(([k, v]) => [k, v.trim()] as const)
-    .filter(([_, v]) => v.length > 0);
+    .filter(([, v]) => v.length > 0);
 
   if (cleanEntries.length === 0) return "";
   if (cleanEntries.length === 1) {
     return cleanEntries[0][1];
   }
 
-  const values = new Set(cleanEntries.map(([_, v]) => v));
+  const values = new Set(cleanEntries.map(([, v]) => v));
   if (values.size === 1) {
-    return cleanEntries[0][1];
+    return map[defaultLocale]?.trim() || cleanEntries[0][1];
   }
 
   const result: Record<string, string> = {};

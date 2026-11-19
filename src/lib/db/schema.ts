@@ -36,6 +36,7 @@ export const users = sqliteTable("users", {
   avatarUrl: text("avatar_url"),
   role: text("role", { enum: ["super_admin", "admin", "editor", "author"] }).notNull().default("author"),
   siteId: text("site_id").references(() => sites.id, { onDelete: "cascade" }),
+  tokenVersion: integer("token_version").default(1).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
@@ -52,6 +53,7 @@ export const posts = sqliteTable("posts", {
   slug: text("slug").notNull(),
   contentMd: text("content_md").default(""),
   contentHtml: text("content_html").default(""),
+  contentFormat: text("content_format", { enum: ["html", "markdown"] }).default("html").notNull(),
   excerpt: text("excerpt").default(""),
   coverImage: text("cover_image"),
   status: text("status", { enum: ["draft", "published", "scheduled", "archived"] }).notNull().default("draft"),
@@ -64,7 +66,7 @@ export const posts = sqliteTable("posts", {
   shortUrl: text("short_url"),
   dubLinkId: text("dub_link_id"),
 }, (table) => [
-  index("posts_site_slug_idx").on(table.siteId, table.slug),
+  uniqueIndex("posts_site_slug_idx").on(table.siteId, table.slug),
   index("posts_site_status_idx").on(table.siteId, table.status),
   index("posts_published_at_idx").on(table.publishedAt),
 ]);
@@ -80,6 +82,7 @@ export const pages = sqliteTable("pages", {
   slug: text("slug").notNull(),
   contentMd: text("content_md").default(""),
   contentHtml: text("content_html").default(""),
+  contentFormat: text("content_format", { enum: ["html", "markdown"] }).default("html").notNull(),
   excerpt: text("excerpt").default(""),
   coverImage: text("cover_image"),
   status: text("status", { enum: ["draft", "published", "scheduled", "archived"] }).notNull().default("draft"),
@@ -89,7 +92,7 @@ export const pages = sqliteTable("pages", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   views: integer("views").default(0).notNull(),
 }, (table) => [
-  index("pages_site_slug_idx").on(table.siteId, table.slug),
+  uniqueIndex("pages_site_slug_idx").on(table.siteId, table.slug),
   index("pages_site_status_idx").on(table.siteId, table.status),
 ]);
 
@@ -105,7 +108,7 @@ export const categories = sqliteTable("categories", {
   parentId: text("parent_id"),
   sortOrder: integer("sort_order").default(0).notNull(),
 }, (table) => [
-  index("categories_site_slug_idx").on(table.siteId, table.slug),
+  uniqueIndex("categories_site_slug_idx").on(table.siteId, table.slug),
 ]);
 
 /**
@@ -117,7 +120,7 @@ export const tags = sqliteTable("tags", {
   name: text("name").notNull(),
   slug: text("slug").notNull(),
 }, (table) => [
-  index("tags_site_slug_idx").on(table.siteId, table.slug),
+  uniqueIndex("tags_site_slug_idx").on(table.siteId, table.slug),
 ]);
 
 /**
@@ -129,6 +132,7 @@ export const postCategories = sqliteTable("post_categories", {
 }, (table) => [
   index("pc_post_idx").on(table.postId),
   index("pc_category_idx").on(table.categoryId),
+  uniqueIndex("pc_post_category_idx").on(table.postId, table.categoryId),
 ]);
 
 /**
@@ -140,6 +144,7 @@ export const postTags = sqliteTable("post_tags", {
 }, (table) => [
   index("pt_post_idx").on(table.postId),
   index("pt_tag_idx").on(table.tagId),
+  uniqueIndex("pt_post_tag_idx").on(table.postId, table.tagId),
 ]);
 
 /**
@@ -176,8 +181,26 @@ export const analytics = sqliteTable("analytics", {
   index("analytics_post_idx").on(table.postId),
   index("analytics_page_idx").on(table.pageId),
   index("analytics_created_idx").on(table.createdAt),
+  index("analytics_site_created_idx").on(table.siteId, table.createdAt),
   index("analytics_session_idx").on(table.sessionId),
   index("analytics_language_idx").on(table.language),
+]);
+
+/**
+ * Daily pre-aggregated analytics rollups preserving historical traffic metrics after raw hit pruning.
+ */
+export const analyticsDaily = sqliteTable("analytics_daily", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  path: text("path").notNull(),
+  country: text("country").default("").notNull(),
+  device: text("device").default("desktop").notNull(),
+  views: integer("views").default(0).notNull(),
+  uniqueVisitors: integer("unique_visitors").default(0).notNull(),
+}, (table) => [
+  uniqueIndex("analytics_daily_dim_idx").on(table.siteId, table.date, table.path, table.country, table.device),
+  index("analytics_daily_site_date_idx").on(table.siteId, table.date),
 ]);
 
 /**
@@ -189,7 +212,7 @@ export const settings = sqliteTable("settings", {
   key: text("key").notNull(),
   value: text("value").notNull(),
 }, (table) => [
-  index("settings_site_key_idx").on(table.siteId, table.key),
+  uniqueIndex("settings_site_key_idx").on(table.siteId, table.key),
 ]);
 
 /**
@@ -203,5 +226,47 @@ export const analyticsSegments = sqliteTable("analytics_segments", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("analytics_segments_site_idx").on(table.siteId),
+]);
+
+/**
+ * Security audit log recording privileged administrative and tenant operations.
+ */
+export const auditLogs = sqliteTable("audit_logs", {
+  id: text("id").primaryKey(),
+  actorId: text("actor_id"),
+  actorEmail: text("actor_email"),
+  actorRole: text("actor_role"),
+  siteId: text("site_id"),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id"),
+  status: text("status", { enum: ["success", "failure", "denied"] }).notNull().default("success"),
+  ipAddress: text("ip_address"),
+  metadata: text("metadata").notNull().default("{}"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("audit_logs_site_idx").on(table.siteId),
+  index("audit_logs_actor_idx").on(table.actorId),
+  index("audit_logs_action_idx").on(table.action),
+  index("audit_logs_created_idx").on(table.createdAt),
+]);
+
+/**
+ * Persistent notification delivery outbox for idempotent retries when publishing scheduled posts.
+ */
+export const notificationOutbox = sqliteTable("notification_outbox", {
+  id: text("id").primaryKey(),
+  siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  postId: text("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  channel: text("channel", { enum: ["discord", "bluesky"] }).notNull(),
+  status: text("status", { enum: ["pending", "sent", "failed"] }).notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  nextAttemptAt: integer("next_attempt_at", { mode: "timestamp" }),
+  sentAt: integer("sent_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("notif_outbox_post_channel_idx").on(table.postId, table.channel),
+  index("notif_outbox_status_idx").on(table.status, table.nextAttemptAt),
 ]);
 

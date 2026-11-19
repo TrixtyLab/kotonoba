@@ -2,6 +2,59 @@ import { getDb } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { decryptSecret } from "@/lib/security/crypto";
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/security/ssrf";
+
+/**
+ * Built-in allowlist of official OpenAI-compatible SaaS API hosts permitted for tenant admins.
+ * Custom self-hosted endpoints are restricted to super administrators.
+ */
+const ALLOWED_AI_PROVIDER_DOMAINS = [
+  "api.openai.com",
+  "api.anthropic.com",
+  "generativelanguage.googleapis.com",
+  "openrouter.ai",
+  "api.groq.com",
+  "api.mistral.ai",
+  "api.deepseek.com",
+];
+
+/**
+ * Normalizes a base AI endpoint URL into a concrete `/chat/completions` URL string.
+ *
+ * @param rawInput - Base or full chat-completions endpoint URL.
+ * @returns Normalized HTTPS endpoint URL string.
+ */
+export function resolveAiChatEndpoint(rawInput?: string | null): string {
+  let rawUrl = (rawInput || "https://api.openai.com/v1").trim();
+  if (!/^https?:\/\//i.test(rawUrl)) {
+    rawUrl = `https://${rawUrl}`;
+  }
+  let endpoint = rawUrl.replace(/\/+$/, "");
+  if (!endpoint.endsWith("/chat/completions")) {
+    if (endpoint === "https://api.openai.com" || endpoint === "http://api.openai.com") {
+      endpoint = `${endpoint}/v1/chat/completions`;
+    } else {
+      endpoint = `${endpoint}/chat/completions`;
+    }
+  }
+  return endpoint;
+}
+
+/**
+ * Checks whether a candidate AI endpoint URL targets a permitted built-in provider domain.
+ *
+ * @param endpointUrl - Normalized endpoint URL.
+ * @returns `true` if hostname matches `ALLOWED_AI_PROVIDER_DOMAINS`.
+ */
+export function isBuiltInAiProviderUrl(endpointUrl: string): boolean {
+  try {
+    const parsed = new URL(endpointUrl);
+    const host = parsed.hostname.toLowerCase();
+    return ALLOWED_AI_PROVIDER_DOMAINS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Decrypted AI assistant connection configuration parameters.
@@ -25,7 +78,7 @@ export interface AiConfig {
  * @param siteId - Unique identifier of the tenant site.
  * @returns A Promise resolving to the resolved and decrypted AiConfig object.
  */
-export async function getAiConfig(siteId: string): Promise<AiConfig> {
+async function getAiConfig(siteId: string): Promise<AiConfig> {
   const db = getDb();
   const rows = db
     .select()
@@ -158,35 +211,31 @@ export async function callAiChat(
     throw new Error("No API key configured for OpenAI-compatible endpoint.");
   }
 
-  let rawUrl = (config.apiUrl || "https://api.openai.com/v1").trim();
-  if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
-    rawUrl = `https://${rawUrl}`;
+  const endpoint = resolveAiChatEndpoint(config.apiUrl);
+  const urlCheck = await validateOutboundUrl(endpoint);
+  if (!urlCheck.valid) {
+    throw new Error(`Invalid AI endpoint URL: ${urlCheck.error}`);
   }
 
-  let endpoint = rawUrl.replace(/\/+$/, "");
-  if (!endpoint.endsWith("/chat/completions")) {
-    if (endpoint === "https://api.openai.com" || endpoint === "http://api.openai.com") {
-      endpoint = `${endpoint}/v1/chat/completions`;
-    } else {
-      endpoint = `${endpoint}/chat/completions`;
-    }
-  }
-
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey.trim()}`,
-      "HTTP-Referer": "https://kotonoba.cms",
-      "X-Title": "Kotonoba CMS",
+  const res = await safeOutboundFetch(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey.trim()}`,
+        "HTTP-Referer": "https://kotonoba.cms",
+        "X-Title": "Kotonoba CMS",
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        temperature: config.temperature,
+        stream: false,
+      }),
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      temperature: config.temperature,
-      stream: false,
-    }),
-  });
+    { timeoutMs: 25_000 }
+  );
 
   const responseText = await res.text();
 

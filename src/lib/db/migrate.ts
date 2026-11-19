@@ -66,6 +66,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     avatar_url TEXT,
     role TEXT NOT NULL DEFAULT 'author',
     site_id TEXT REFERENCES sites(id) ON DELETE CASCADE,
+    token_version INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL
   )`);
 
@@ -74,6 +75,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     sql`ALTER TABLE users ADD COLUMN avatar_url TEXT`,
     sql`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'author'`,
     sql`ALTER TABLE users ADD COLUMN site_id TEXT REFERENCES sites(id) ON DELETE CASCADE`,
+    sql`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1`,
   ];
   for (const query of usersColumns) {
     try {
@@ -89,6 +91,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     slug TEXT NOT NULL,
     content_md TEXT DEFAULT '',
     content_html TEXT DEFAULT '',
+    content_format TEXT NOT NULL DEFAULT 'html',
     excerpt TEXT DEFAULT '',
     cover_image TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
@@ -105,6 +108,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
   const postsColumns = [
     sql`ALTER TABLE posts ADD COLUMN content_md TEXT DEFAULT ''`,
     sql`ALTER TABLE posts ADD COLUMN content_html TEXT DEFAULT ''`,
+    sql`ALTER TABLE posts ADD COLUMN content_format TEXT NOT NULL DEFAULT 'html'`,
     sql`ALTER TABLE posts ADD COLUMN excerpt TEXT DEFAULT ''`,
     sql`ALTER TABLE posts ADD COLUMN cover_image TEXT`,
     sql`ALTER TABLE posts ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'`,
@@ -128,6 +132,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     slug TEXT NOT NULL,
     content_md TEXT DEFAULT '',
     content_html TEXT DEFAULT '',
+    content_format TEXT NOT NULL DEFAULT 'html',
     excerpt TEXT DEFAULT '',
     cover_image TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
@@ -141,6 +146,7 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
   const pagesColumns = [
     sql`ALTER TABLE pages ADD COLUMN content_md TEXT DEFAULT ''`,
     sql`ALTER TABLE pages ADD COLUMN content_html TEXT DEFAULT ''`,
+    sql`ALTER TABLE pages ADD COLUMN content_format TEXT NOT NULL DEFAULT 'html'`,
     sql`ALTER TABLE pages ADD COLUMN excerpt TEXT DEFAULT ''`,
     sql`ALTER TABLE pages ADD COLUMN cover_image TEXT`,
     sql`ALTER TABLE pages ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'`,
@@ -242,6 +248,17 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     db.run(sql`CREATE INDEX IF NOT EXISTS analytics_session_idx ON analytics (session_id)`);
     db.run(sql`CREATE INDEX IF NOT EXISTS analytics_language_idx ON analytics (language)`);
   } catch { }
+
+  db.run(sql`CREATE TABLE IF NOT EXISTS analytics_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    path TEXT NOT NULL,
+    country TEXT NOT NULL DEFAULT '',
+    device TEXT NOT NULL DEFAULT 'desktop',
+    views INTEGER NOT NULL DEFAULT 0,
+    unique_visitors INTEGER NOT NULL DEFAULT 0
+  )`);
 
   db.run(sql`CREATE TABLE IF NOT EXISTS analytics_segments (
     id TEXT PRIMARY KEY,
@@ -354,26 +371,140 @@ export function runMigrations(dbInstance: DatabaseInstance): void {
     value TEXT NOT NULL
   )`);
 
+  db.run(sql`CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_id TEXT,
+    actor_email TEXT,
+    actor_role TEXT,
+    site_id TEXT,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    status TEXT NOT NULL DEFAULT 'success',
+    ip_address TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL
+  )`);
+
+  db.run(sql`CREATE TABLE IF NOT EXISTS notification_outbox (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    next_attempt_at INTEGER,
+    sent_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`);
+
+  // Normalize legacy millisecond analytics timestamps (> 1e12) into canonical unix seconds
+  try {
+    db.run(sql`UPDATE analytics SET created_at = CAST(created_at / 1000 AS INTEGER) WHERE created_at >= 1000000000000`);
+  } catch {}
+
+  // Deduplicate existing rows before enforcing tenant-scoped unique indexes
+  try {
+    const duplicatePosts = db.all<{ id: string; slug: string }>(sql`
+      SELECT p.id, p.slug FROM posts p
+      WHERE EXISTS (
+        SELECT 1 FROM posts p2
+        WHERE p2.site_id = p.site_id AND p2.slug = p.slug
+          AND (p2.created_at < p.created_at OR (p2.created_at = p.created_at AND p2.rowid < p.rowid))
+      )
+    `);
+    for (const dup of duplicatePosts) {
+      db.run(sql`UPDATE posts SET slug = ${`${dup.slug}-${dup.id.slice(0, 6)}`} WHERE id = ${dup.id}`);
+    }
+
+    const duplicatePages = db.all<{ id: string; slug: string }>(sql`
+      SELECT p.id, p.slug FROM pages p
+      WHERE EXISTS (
+        SELECT 1 FROM pages p2
+        WHERE p2.site_id = p.site_id AND p2.slug = p.slug
+          AND (p2.created_at < p.created_at OR (p2.created_at = p.created_at AND p2.rowid < p.rowid))
+      )
+    `);
+    for (const dup of duplicatePages) {
+      db.run(sql`UPDATE pages SET slug = ${`${dup.slug}-${dup.id.slice(0, 6)}`} WHERE id = ${dup.id}`);
+    }
+
+    const duplicateCategories = db.all<{ id: string; slug: string }>(sql`
+      SELECT c.id, c.slug FROM categories c
+      WHERE EXISTS (
+        SELECT 1 FROM categories c2
+        WHERE c2.site_id = c.site_id AND c2.slug = c.slug AND c2.rowid < c.rowid
+      )
+    `);
+    for (const dup of duplicateCategories) {
+      db.run(sql`UPDATE categories SET slug = ${`${dup.slug}-${dup.id.slice(0, 6)}`} WHERE id = ${dup.id}`);
+    }
+
+    const duplicateTags = db.all<{ id: string; slug: string }>(sql`
+      SELECT t.id, t.slug FROM tags t
+      WHERE EXISTS (
+        SELECT 1 FROM tags t2
+        WHERE t2.site_id = t.site_id AND t2.slug = t.slug AND t2.rowid < t.rowid
+      )
+    `);
+    for (const dup of duplicateTags) {
+      db.run(sql`UPDATE tags SET slug = ${`${dup.slug}-${dup.id.slice(0, 6)}`} WHERE id = ${dup.id}`);
+    }
+
+    db.run(sql`DELETE FROM post_categories WHERE rowid NOT IN (SELECT MIN(rowid) FROM post_categories GROUP BY post_id, category_id)`);
+    db.run(sql`DELETE FROM post_tags WHERE rowid NOT IN (SELECT MIN(rowid) FROM post_tags GROUP BY post_id, tag_id)`);
+    db.run(sql`DELETE FROM settings WHERE id NOT IN (SELECT MAX(id) FROM settings GROUP BY site_id, key)`);
+  } catch {}
+
+  const nonUniqueToUpgrade = [
+    "posts_site_slug_idx",
+    "pages_site_slug_idx",
+    "categories_site_slug_idx",
+    "tags_site_slug_idx",
+    "settings_site_key_idx",
+  ];
+  for (const idxName of nonUniqueToUpgrade) {
+    try {
+      const existingIdx = db.get<{ sql: string | null }>(
+        sql`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ${idxName}`
+      );
+      if (existingIdx?.sql && !existingIdx.sql.toUpperCase().includes("UNIQUE")) {
+        db.run(sql.raw(`DROP INDEX IF EXISTS ${idxName}`));
+      }
+    } catch {}
+  }
 
   const indexes = [
     sql`CREATE INDEX IF NOT EXISTS sites_domain_idx ON sites(domain)`,
     sql`CREATE INDEX IF NOT EXISTS users_email_idx ON users(email)`,
-    sql`CREATE INDEX IF NOT EXISTS posts_site_slug_idx ON posts(site_id, slug)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS posts_site_slug_idx ON posts(site_id, slug)`,
     sql`CREATE INDEX IF NOT EXISTS posts_site_status_idx ON posts(site_id, status)`,
     sql`CREATE INDEX IF NOT EXISTS posts_published_at_idx ON posts(published_at)`,
-    sql`CREATE INDEX IF NOT EXISTS pages_site_slug_idx ON pages(site_id, slug)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS pages_site_slug_idx ON pages(site_id, slug)`,
     sql`CREATE INDEX IF NOT EXISTS pages_site_status_idx ON pages(site_id, status)`,
-    sql`CREATE INDEX IF NOT EXISTS categories_site_slug_idx ON categories(site_id, slug)`,
-    sql`CREATE INDEX IF NOT EXISTS tags_site_slug_idx ON tags(site_id, slug)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS categories_site_slug_idx ON categories(site_id, slug)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS tags_site_slug_idx ON tags(site_id, slug)`,
     sql`CREATE INDEX IF NOT EXISTS pc_post_idx ON post_categories(post_id)`,
     sql`CREATE INDEX IF NOT EXISTS pc_category_idx ON post_categories(category_id)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS pc_post_category_idx ON post_categories(post_id, category_id)`,
     sql`CREATE INDEX IF NOT EXISTS pt_post_idx ON post_tags(post_id)`,
     sql`CREATE INDEX IF NOT EXISTS pt_tag_idx ON post_tags(tag_id)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS pt_post_tag_idx ON post_tags(post_id, tag_id)`,
     sql`CREATE INDEX IF NOT EXISTS analytics_site_idx ON analytics(site_id)`,
     sql`CREATE INDEX IF NOT EXISTS analytics_post_idx ON analytics(post_id)`,
     sql`CREATE INDEX IF NOT EXISTS analytics_page_idx ON analytics(page_id)`,
     sql`CREATE INDEX IF NOT EXISTS analytics_created_idx ON analytics(created_at)`,
-    sql`CREATE INDEX IF NOT EXISTS settings_site_key_idx ON settings(site_id, key)`,
+    sql`CREATE INDEX IF NOT EXISTS analytics_site_created_idx ON analytics(site_id, created_at)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS analytics_daily_dim_idx ON analytics_daily(site_id, date, path, country, device)`,
+    sql`CREATE INDEX IF NOT EXISTS analytics_daily_site_date_idx ON analytics_daily(site_id, date)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS settings_site_key_idx ON settings(site_id, key)`,
+    sql`CREATE INDEX IF NOT EXISTS audit_logs_site_idx ON audit_logs(site_id)`,
+    sql`CREATE INDEX IF NOT EXISTS audit_logs_actor_idx ON audit_logs(actor_id)`,
+    sql`CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON audit_logs(action)`,
+    sql`CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON audit_logs(created_at)`,
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS notif_outbox_post_channel_idx ON notification_outbox(post_id, channel)`,
+    sql`CREATE INDEX IF NOT EXISTS notif_outbox_status_idx ON notification_outbox(status, next_attempt_at)`,
   ];
 
   for (const idxQuery of indexes) {

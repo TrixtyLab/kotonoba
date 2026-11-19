@@ -1,26 +1,40 @@
 import { parseEmbedUrl, parseEmbedDirective, type EmbedOptions } from "./embeds";
-import { normalizeHtmlMediaUrls } from "@/lib/storage";
+import { normalizeHtmlMediaUrls } from "@/lib/utils/media";
+import { sanitizeRichHtml, sanitizeUrl } from "@/lib/security/sanitize";
 
 /**
  * Configuration options for rendering content with custom tracking and UTM parameters.
  */
-export interface RenderContentOptions extends EmbedOptions {}
+export interface RenderContentOptions extends EmbedOptions {
+  /** Explicit stored format (`"html"` or `"markdown"`). Falls back to tag detection when omitted. */
+  format?: "html" | "markdown";
+}
+
+function renderSafeFallbackLink(rawUrl: string): string {
+  const safeHref = sanitizeUrl(rawUrl, { allowRelative: true });
+  const label = escapeHtml(rawUrl);
+  if (!safeHref) {
+    return label;
+  }
+  return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="text-accent underline">${label}</a>`;
+}
 
 /**
  * Universal content parser that converts raw markdown or rich-text HTML into sanitized, embed-resolved HTML for blog posts.
  * Automatically delegates to appropriate HTML embed or Markdown rendering pipelines.
  *
  * @param {string} rawContent - The post body content, either as HTML markup or raw Markdown.
- * @param {RenderContentOptions} [options] - Optional configuration including UTM parameters for embeds.
+ * @param {RenderContentOptions} [options] - Optional configuration including format and UTM parameters for embeds.
  * @returns {string} Fully rendered and sanitized HTML string with embedded media components.
  */
 export function renderPostContent(rawContent: string, options?: RenderContentOptions): string {
   if (!rawContent) return "";
 
   const normalized = normalizeHtmlMediaUrls(rawContent.trim());
+  const looksLikeHtml = options?.format === "html" || (options?.format !== "markdown" && /^<[a-z!/]/i.test(normalized));
 
-  if (normalized.startsWith("<") && (normalized.startsWith("<p>") || normalized.startsWith("<h") || normalized.startsWith("<div") || normalized.startsWith("<ul") || normalized.startsWith("<ol") || normalized.startsWith("<iframe"))) {
-    return processHtmlEmbeds(normalized, options);
+  if (looksLikeHtml) {
+    return sanitizeRichHtml(processHtmlEmbeds(normalized, options));
   }
 
   return renderMarkdownToHtml(normalized, options);
@@ -36,12 +50,12 @@ export function renderPostContent(rawContent: string, options?: RenderContentOpt
 function processHtmlEmbeds(html: string, options?: RenderContentOptions): string {
   let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, type, url) => {
     const embed = parseEmbedDirective(type, url.trim(), options);
-    return embed ? embed.html : `<p><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a></p>`;
+    return embed ? embed.html : `<p>${renderSafeFallbackLink(url.trim())}</p>`;
   });
 
   result = result.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, type, url) => {
     const embed = parseEmbedDirective(type, url.trim(), options);
-    return embed ? embed.html : `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a>`;
+    return embed ? embed.html : renderSafeFallbackLink(url.trim());
   });
 
   result = result.replace(/<p>\s*(<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>)\s*<\/p>/gi, (_m, rawIframe) => {
@@ -118,7 +132,7 @@ export function renderMarkdownToHtml(markdown: string, options?: RenderContentOp
       embedBlocks.push(embed.html);
       return placeholder;
     }
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a>`;
+    return renderSafeFallbackLink(url.trim());
   });
 
   const lines = src.split(/\r?\n/);
@@ -234,7 +248,7 @@ export function renderMarkdownToHtml(markdown: string, options?: RenderContentOp
     html = html.replace(`__INLINE_CODE_${idx}__`, code);
   });
 
-  return html;
+  return sanitizeRichHtml(html);
 }
 
 /**

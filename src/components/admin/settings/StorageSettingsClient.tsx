@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
-import { HardDrive, Save, Cloud, CheckCircle2, Info } from "lucide-react";
+import { HardDrive, Save, CheckCircle2, Info } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 
 /**
@@ -62,26 +62,33 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
   const [s3Region, setS3Region] = useState(initialSettings.s3_region || "auto");
   const [s3Endpoint, setS3Endpoint] = useState(initialSettings.s3_endpoint || "");
   const [s3AccessKey, setS3AccessKey] = useState(initialSettings.s3_access_key || "");
-  const [s3SecretKey, setS3SecretKey] = useState(initialSettings.s3_secret_key || "");
+  const [s3SecretKey, setS3SecretKey] = useState("");
+  const hasSavedSecretKey =
+    initialSettings.has_s3_secret_key === "true" || Boolean(initialSettings.s3_secret_key_masked);
   const [s3PublicUrl, setS3PublicUrl] = useState(initialSettings.s3_public_url || "");
 
   async function handleSave() {
     startTransition(async () => {
-      const res = await saveSiteSettings(siteId, {
+      const payload: Record<string, string> = {
         storage_provider: provider,
         s3_bucket: s3Bucket,
         s3_region: s3Region,
         s3_endpoint: s3Endpoint,
         s3_access_key: s3AccessKey,
-        s3_secret_key: s3SecretKey,
         s3_public_url: s3PublicUrl,
-      });
+      };
+      if (s3SecretKey.trim()) {
+        payload.s3_secret_key = s3SecretKey.trim();
+      }
+
+      const res = await saveSiteSettings(siteId, payload);
 
       if (res.success) {
+        setS3SecretKey("");
         toast.success(t("saveSuccess"));
         router.refresh();
       } else {
-        toast.error(t("saveError"));
+        toast.error(res.error || t("saveError"));
       }
     });
   }
@@ -231,12 +238,15 @@ export function StorageSettingsClient({ siteId, initialSettings, envStorageInfo 
               <Input
                 label={t("s3SecretKey")}
                 type="password"
+                autoComplete="off"
                 value={s3SecretKey}
                 onChange={(e) => setS3SecretKey(e.target.value)}
                 placeholder={
-                  isR2EnvActive || isS3EnvActive
-                    ? `•••••••••••••••• (${t("inheritedFromEnv")})`
-                    : "••••••••••••••••"
+                  hasSavedSecretKey
+                    ? `${initialSettings.s3_secret_key_masked || "••••••••"} (saved)`
+                    : isR2EnvActive || isS3EnvActive
+                      ? `•••••••••••••••• (${t("inheritedFromEnv")})`
+                      : "••••••••••••••••"
                 }
               />
             </div>

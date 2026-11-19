@@ -1,10 +1,10 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { analytics, posts, pages } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
-import { sql, desc, eq, and } from "drizzle-orm";
-import { Files, LogIn, LogOut, ArrowRight, ExternalLink, FileText, Globe } from "lucide-react";
+import { sql, desc, eq } from "drizzle-orm";
+import { Files, LogIn, LogOut, ArrowRight } from "lucide-react";
 import { Link } from "@/i18n/routing";
 import {
   getDateRangeBounds,
@@ -49,7 +49,7 @@ export default async function AnalyticsPagesPage({
   const sp = searchParams ? await searchParams : {};
   const activeType = sp.type || "all";
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const bounds = getDateRangeBounds(sp.range);

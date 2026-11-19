@@ -4,11 +4,11 @@ import React, { useState, useTransition, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { updateSite } from "@/actions/sites";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
 import { MediaPickerModal } from "@/components/admin/MediaPickerModal";
 import { Palette, Image as ImageIcon, Upload, X, Loader2, Save } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
+import { normalizeLocale } from "@/i18n/routing";
 
 const PRESET_COLORS = [
   "#3b82f6", // Blue
@@ -123,7 +123,7 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
         description: site.description || undefined,
         logoUrl: logoUrl || null,
         faviconUrl: faviconUrl || null,
-        locale: site.locale,
+        locale: normalizeLocale(site.locale),
         theme,
         primaryColor,
         fontFamily: site.fontFamily || "Inter",

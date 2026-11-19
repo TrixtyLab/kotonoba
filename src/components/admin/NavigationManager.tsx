@@ -3,27 +3,12 @@
 import React, { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Checkbox } from "@/components/ui/Checkbox";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
-import { NavIcon, AVAILABLE_NAV_ICONS } from "@/components/blog/NavIcon";
-import {
-  ArrowUp,
-  ArrowDown,
-  Plus,
-  Trash2,
-  Edit2,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  ExternalLink,
-  Languages,
-  Files,
-  Link2,
-  Globe,
-  Home,
-} from "lucide-react";
+import { NavItemFormModal } from "@/components/admin/NavItemFormModal";
+import { NavLinksList } from "@/components/admin/NavLinksList";
+import { AVAILABLE_NAV_ICONS } from "@/components/blog/NavIcon";
+import { Plus, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 
 /**
  * Configuration structure for a custom navigation link item.
@@ -92,7 +77,10 @@ export function NavigationManager({
             .filter((i) => i.id !== "home" && i.url !== "/" && !i.isFixed)
             .map((i) => {
               if (i.isSocial) {
-                const { label_es, label_en, labels, ...rest } = i;
+                const rest = { ...i };
+                delete rest.label_es;
+                delete rest.label_en;
+                delete rest.labels;
                 return rest;
               }
               return i;
@@ -426,324 +414,39 @@ export function NavigationManager({
           </Button>
         </div>
 
-        {/* Links List */}
-        <div className="space-y-2">
-          {items.map((item, idx) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between p-3 rounded-lg border border-border bg-surface hover:border-border-hover transition-colors gap-3"
-            >
-              {/* Left: Reorder + Icon + Label + URL */}
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex flex-col gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, "up")}
-                    disabled={idx <= 1 || item.isFixed}
-                    className="p-0.5 rounded hover:bg-surface-hover text-text-muted disabled:opacity-20"
-                    title={tc("previous")}
-                  >
-                    <ArrowUp className="w-3 h-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, "down")}
-                    disabled={idx === items.length - 1 || item.isFixed}
-                    className="p-0.5 rounded hover:bg-surface-hover text-text-muted disabled:opacity-20"
-                    title={tc("next")}
-                  >
-                    <ArrowDown className="w-3 h-3" />
-                  </button>
-                </div>
-
-                <div className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center text-accent shrink-0">
-                  {item.isSocial ? (
-                    <NavIcon name={item.icon || "link"} className="w-3.5 h-3.5" />
-                  ) : item.isFixed ? (
-                    <Home className="w-3.5 h-3.5 text-accent" />
-                  ) : item.url.startsWith("/p/") ? (
-                    <Files className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Link2 className="w-3.5 h-3.5 text-blue-400" />
-                  )}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-xs text-text truncate">
-                      {item.isFixed ? tc("home").toUpperCase() : item.label}
-                    </span>
-                    {item.isFixed ? (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/10 text-accent uppercase">
-                        {tc("home")} ({t("general")})
-                      </span>
-                    ) : !item.isSocial && item.labels ? (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface-hover text-text-muted flex items-center gap-1">
-                        <Languages className="w-2.5 h-2.5" />
-                        <span>ES: {item.labels.es || item.label} / EN: {item.labels.en || item.label}</span>
-                      </span>
-                    ) : null}
-                    {item.isSocial ? (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase">
-                        {t("navSocialBadge")}
-                      </span>
-                    ) : !item.isFixed && item.url.startsWith("/p/") ? (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-                        {t("navPageBadge")}
-                      </span>
-                    ) : !item.isFixed && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase">
-                        {t("navLinkBadge")}
-                      </span>
-                    )}
-                    {item.target === "_blank" && (
-                      <span className="text-[10px] text-text-muted flex items-center gap-0.5" title={t("navNewTab")}>
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-text-muted font-mono truncate block">
-                    {item.url}
-                  </span>
-                </div>
-              </div>
-
-              {/* Right: Actions */}
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openEditModal(item)}
-                  className="text-xs p-1.5 h-8 w-8 text-text-muted hover:text-text"
-                  title={tc("edit")}
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </Button>
-                {!item.isFixed && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(item.id)}
-                    className="text-xs p-1.5 h-8 w-8 text-text-muted hover:text-danger"
-                    title={tc("delete")}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        <NavLinksList
+          items={items}
+          onMoveItem={moveItem}
+          onEditItem={openEditModal}
+          onDeleteItem={handleDelete}
+        />
       </div>
 
-      {/* Edit/Add Modal */}
-      {isEditing && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-surface border border-border rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
-            <h4 className="text-sm font-bold text-text">
-              {editingId ? tc("edit") : tc("add")}
-            </h4>
-
-            <div className="space-y-3.5 text-xs">
-              {/* Type Switcher Segmented Control */}
-              {(!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
-                <div className="grid grid-cols-3 gap-1 p-1 bg-surface-hover/60 border border-border rounded-xl text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLinkMode("custom");
-                      setItemIsSocial(false);
-                    }}
-                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      linkMode === "custom"
-                        ? "bg-surface text-blue-400 shadow-xs border border-border/80 font-bold"
-                        : "text-text-muted hover:text-text"
-                    }`}
-                  >
-                    <Link2 className="w-3.5 h-3.5" />
-                    <span className="truncate">{t("linkTypeCustom")}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLinkMode("page");
-                      setItemIsSocial(false);
-                      if (availablePages.length > 0 && !selectedPageId) {
-                        const firstPage = availablePages[0];
-                        setSelectedPageId(firstPage.id);
-                        setItemUrl(`/p/${firstPage.slug}`);
-                        if (!itemLabelEs) setItemLabelEs(firstPage.title);
-                        if (!itemLabelEn) setItemLabelEn(firstPage.title);
-                      }
-                    }}
-                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      linkMode === "page"
-                        ? "bg-surface text-emerald-400 shadow-xs border border-border/80 font-bold"
-                        : "text-text-muted hover:text-text"
-                    }`}
-                  >
-                    <Files className="w-3.5 h-3.5" />
-                    <span className="truncate">{t("linkTypePage")}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLinkMode("social");
-                      setItemIsSocial(true);
-                      setItemLabelEs("");
-                      setItemLabelEn("");
-                      if (itemTarget === "_self") setItemTarget("_blank");
-                      if (itemIcon === "none") setItemIcon("twitter");
-                    }}
-                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      linkMode === "social"
-                        ? "bg-surface text-purple-400 shadow-xs border border-border/80 font-bold"
-                        : "text-text-muted hover:text-text"
-                    }`}
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                    <span className="truncate">{t("linkTypeSocial")}</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Page Selector (When Page mode is active) */}
-              {linkMode === "page" && !itemIsSocial && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-text">{t("selectPage")}</label>
-                  {availablePages.length > 0 ? (
-                    <select
-                      value={selectedPageId}
-                      onChange={(e) => {
-                        const pageId = e.target.value;
-                        setSelectedPageId(pageId);
-                        const p = availablePages.find((pg) => pg.id === pageId);
-                        if (p) {
-                          setItemUrl(`/p/${p.slug}`);
-                          setItemLabelEs(p.title);
-                          setItemLabelEn(p.title);
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-input border border-border rounded-lg text-xs text-text focus:outline-hidden focus:border-accent"
-                    >
-                      <option value="">{t("choosePage")}</option>
-                      {availablePages.map((pg) => (
-                        <option key={pg.id} value={pg.id}>
-                          {pg.title} (/p/{pg.slug})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-[11px] text-text-muted bg-surface-hover/40 p-2.5 rounded-lg border border-border">
-                      {t("noPagesAvailable")}
-                    </p>
-                  )}
-
-                  {selectedPageId && itemUrl && (
-                    <div className="flex items-center gap-1.5 text-[11px] font-mono text-text-muted bg-surface-hover/50 px-2.5 py-1.5 rounded-lg border border-border/60">
-                      <span className="text-emerald-400 font-semibold">URL:</span>
-                      <span>{itemUrl}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Text Label Inputs (Only for manual custom links) */}
-              {linkMode === "custom" && !itemIsSocial && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label={t("navLabelEs")}
-                    value={itemLabelEs}
-                    onChange={(e) => setItemLabelEs(e.target.value)}
-                    placeholder={t("navLabelEsPlaceholder")}
-                    autoFocus
-                  />
-                  <Input
-                    label={t("navLabelEn")}
-                    value={itemLabelEn}
-                    onChange={(e) => setItemLabelEn(e.target.value)}
-                    placeholder={t("navLabelEnPlaceholder")}
-                  />
-                </div>
-              )}
-
-              {itemIsSocial && (
-                <div className="p-2.5 rounded-lg bg-surface-hover/40 border border-border/70 flex items-center justify-between text-xs">
-                  <span className="text-text-muted">
-                    {t("navSocialBadge")}:
-                  </span>
-                  <span className="font-semibold text-accent flex items-center gap-1.5">
-                    {itemIcon !== "none" && <NavIcon name={itemIcon} className="w-3.5 h-3.5" />}
-                    <span>{AVAILABLE_NAV_ICONS.find((i) => i.id === itemIcon)?.label || (itemIcon !== "none" ? itemIcon : t("navNoIcon"))}</span>
-                  </span>
-                </div>
-              )}
-
-              {/* Destination URL Input (Only for manual links and social links, never for custom pages) */}
-              {linkMode !== "page" && (!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
-                <Input
-                  label={t("navUrl")}
-                  value={itemUrl}
-                  onChange={(e) => setItemUrl(e.target.value)}
-                  placeholder={
-                    itemIsSocial
-                      ? t("navSocialUrlPlaceholder")
-                      : t("navUrlPlaceholder")
-                  }
-                  autoFocus={itemIsSocial}
-                />
-              )}
-
-              {itemIsSocial && (
-                <div>
-                  <label className="block text-xs font-semibold text-text mb-1">
-                    {t("navIcon")} *
-                  </label>
-                  <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-1.5 border border-border rounded-lg bg-surface-hover/30">
-                    {AVAILABLE_NAV_ICONS.map((ico) => (
-                      <button
-                        key={ico.id}
-                        type="button"
-                        onClick={() => setItemIcon(ico.id)}
-                        className={`p-1.5 rounded-md border text-center flex flex-col items-center gap-1 transition-all cursor-pointer ${
-                          itemIcon === ico.id
-                            ? "border-accent bg-accent/10 text-accent font-semibold shadow-2xs"
-                            : "border-border/50 text-text-muted hover:text-text hover:bg-surface"
-                        }`}
-                        title={ico.label}
-                      >
-                        <NavIcon name={ico.id} className="w-3.5 h-3.5" />
-                        <span className="text-[9px] truncate max-w-full">{ico.label.split(" ")[0]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {linkMode !== "page" && (!editingId || !items.find((i) => i.id === editingId)?.isFixed) && (
-                <div className="pt-1">
-                  <Checkbox
-                    checked={itemTarget === "_blank"}
-                    onChange={(checked) => setItemTarget(checked ? "_blank" : "_self")}
-                    label={`${t("navNewTab")} (target='_blank')`}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>
-                {tc("cancel")}
-              </Button>
-              <Button variant="primary" size="sm" onClick={handleSaveItem} loading={isSaving} disabled={isSaving}>
-                {tc("save")}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <NavItemFormModal
+        isOpen={isEditing}
+        isEditingExisting={Boolean(editingId)}
+        isEditingFixed={Boolean(editingId && items.find((i) => i.id === editingId)?.isFixed)}
+        isSaving={isSaving}
+        linkMode={linkMode}
+        onChangeLinkMode={setLinkMode}
+        availablePages={availablePages}
+        selectedPageId={selectedPageId}
+        onChangeSelectedPageId={setSelectedPageId}
+        itemLabelEs={itemLabelEs}
+        onChangeItemLabelEs={setItemLabelEs}
+        itemLabelEn={itemLabelEn}
+        onChangeItemLabelEn={setItemLabelEn}
+        itemUrl={itemUrl}
+        onChangeItemUrl={setItemUrl}
+        itemIcon={itemIcon}
+        onChangeItemIcon={setItemIcon}
+        itemTarget={itemTarget}
+        onChangeItemTarget={setItemTarget}
+        itemIsSocial={itemIsSocial}
+        onChangeItemIsSocial={setItemIsSocial}
+        onClose={() => setIsEditing(false)}
+        onSave={handleSaveItem}
+      />
 
       {/* Delete Modal */}
       <ConfirmModal

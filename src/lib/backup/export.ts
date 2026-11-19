@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import JSZip from "jszip";
 import { getDb } from "@/lib/db";
 import {
@@ -18,6 +19,8 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { getCurrentVersion } from "@/actions/updates";
+import { getRuntimeUploadDir } from "@/lib/config/env";
+import { encryptBackupArchive } from "./crypto";
 
 /**
  * Metadata manifest included within the exported site backup archive.
@@ -31,6 +34,8 @@ export interface BackupManifest {
   schemaVersion?: string;
   /** ISO 8601 timestamp when the backup was generated. */
   exportedAt: string;
+  /** SHA-256 hex digest of `data.json` used to detect corruption or tampering. */
+  checksum?: string;
   /** Core identity metadata of the exported site. */
   site: {
     id: string;
@@ -51,17 +56,6 @@ export interface BackupManifest {
 }
 
 /**
- * Resolves the absolute directory path where local media uploads are stored.
- *
- * @returns {string} Absolute filesystem path string.
- */
-export function getUploadDir(): string {
-  if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR;
-  if (process.env.NODE_ENV === "production") return "/app/data/uploads";
-  return path.join(process.cwd(), "data", "uploads");
-}
-
-/**
  * Recursively scans a directory tree collecting all files with normalized relative paths.
  *
  * @param {string} dir - Directory path to scan recursively.
@@ -78,6 +72,7 @@ async function collectMediaFiles(
   try {
     const entries = await fs.readdir(/*turbopackIgnore: true*/ dir, { withFileTypes: true });
     for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         const subResults = await collectMediaFiles(fullPath, baseDir);
@@ -95,12 +90,11 @@ async function collectMediaFiles(
 }
 
 /**
- * Compiles and generates a comprehensive, self-contained ZIP backup archive for a specific tenant site.
- * Packages relational database records (posts, pages, categories, tags, settings, analytics, segments,
- * authors, site branding) and all associated media upload assets.
+ * Compiles and generates a comprehensive, self-contained encrypted backup archive for a specific tenant site.
+ * Packages only the target site's relational database records and tenant-scoped media upload assets.
  *
  * @param {string} siteId - Unique identifier of the site to export.
- * @returns {Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }>} A Promise resolving to an object containing the ZIP buffer, default filename, and manifest details.
+ * @returns {Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }>} Encrypted backup buffer, filename, and manifest.
  * @throws {Error} When the target site ID does not exist in the database.
  */
 export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }> {
@@ -144,11 +138,12 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
 
   const zip = new JSZip();
   const uploadsFolder = zip.folder("uploads");
-  const uploadDir = getUploadDir();
+  const uploadDir = getRuntimeUploadDir();
+  const tenantUploadDir = path.join(/*turbopackIgnore: true*/ uploadDir, "sites", siteId);
   let mediaCount = 0;
 
-  if (uploadsFolder && existsSync(/*turbopackIgnore: true*/ uploadDir)) {
-    const mediaFiles = await collectMediaFiles(uploadDir);
+  if (uploadsFolder && existsSync(/*turbopackIgnore: true*/ tenantUploadDir)) {
+    const mediaFiles = await collectMediaFiles(tenantUploadDir, tenantUploadDir);
     for (const file of mediaFiles) {
       try {
         const fileData = await fs.readFile(/*turbopackIgnore: true*/ file.absolutePath);
@@ -160,13 +155,67 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     }
   }
 
+  // Also bundle legacy root uploads explicitly referenced by this tenant's own records.
+  if (uploadsFolder && existsSync(/*turbopackIgnore: true*/ uploadDir)) {
+    const referencedRelPaths = new Set<string>();
+    const serialized = JSON.stringify({
+      siteRecord,
+      settingsList,
+      postsList: postsList.map((p) => [p.coverImage, p.contentMd, p.contentHtml]),
+      pagesList: pagesList.map((p) => [p.coverImage, p.contentMd, p.contentHtml]),
+    });
+    const legacyUploadRegex = /\/api\/uploads\/([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*)/g;
+    let m: RegExpExecArray | null;
+    while ((m = legacyUploadRegex.exec(serialized)) !== null) {
+      const candidate = m[1];
+      if (!candidate.startsWith("sites/") && !candidate.includes("..")) {
+        referencedRelPaths.add(candidate);
+      }
+    }
+
+    const rootResolved = path.resolve(/*turbopackIgnore: true*/ uploadDir);
+    for (const rel of referencedRelPaths) {
+      try {
+        const abs = path.resolve(/*turbopackIgnore: true*/ rootResolved, rel);
+        if (abs.startsWith(rootResolved + path.sep) && existsSync(/*turbopackIgnore: true*/ abs)) {
+          const stat = await fs.stat(/*turbopackIgnore: true*/ abs);
+          if (stat.isFile()) {
+            const fileData = await fs.readFile(/*turbopackIgnore: true*/ abs);
+            uploadsFolder.file(rel, fileData);
+            mediaCount++;
+          }
+        }
+      } catch {
+        // Skip inaccessible legacy asset
+      }
+    }
+  }
+
   const appVersion = await getCurrentVersion();
+
+  const databaseDump = {
+    site: siteRecord,
+    settings: settingsList,
+    categories: categoriesList,
+    tags: tagsList,
+    posts: postsList,
+    pages: pagesList,
+    postCategories: postCategoriesList,
+    postTags: postTagsList,
+    analyticsSegments: analyticsSegmentsList,
+    analytics: analyticsList,
+    authors: authorsList,
+  };
+
+  const dataJson = JSON.stringify(databaseDump, null, 2);
+  const checksum = crypto.createHash("sha256").update(dataJson, "utf8").digest("hex");
 
   const manifest: BackupManifest = {
     version: appVersion,
-    schemaVersion: "1.1.0",
+    schemaVersion: "1.2.0",
     format: "kotonoba-backup",
     exportedAt: new Date().toISOString(),
+    checksum,
     site: {
       id: siteRecord.id,
       name: siteRecord.name,
@@ -184,33 +233,19 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     },
   };
 
-  const databaseDump = {
-    site: siteRecord,
-    settings: settingsList,
-    categories: categoriesList,
-    tags: tagsList,
-    posts: postsList,
-    pages: pagesList,
-    postCategories: postCategoriesList,
-    postTags: postTagsList,
-    analyticsSegments: analyticsSegmentsList,
-    analytics: analyticsList,
-    authors: authorsList,
-  };
-
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
-  zip.file("data.json", JSON.stringify(databaseDump, null, 2));
+  zip.file("data.json", dataJson);
 
-  const buffer = await zip.generateAsync({
+  const zipBuffer = await zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",
     compressionOptions: { level: 6 },
   });
+  const encrypted = encryptBackupArchive(zipBuffer);
 
   const dateSlug = new Date().toISOString().slice(0, 10);
   const safeSiteName = siteRecord.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const filename = `backup-${safeSiteName || "site"}-${dateSlug}.zip`;
+  const filename = `backup-${safeSiteName || "site"}-${dateSlug}.kotonoba-backup`;
 
-  return { buffer, filename, manifest };
+  return { buffer: encrypted.buffer, filename, manifest };
 }
-

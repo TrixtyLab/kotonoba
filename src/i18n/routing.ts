@@ -1,17 +1,8 @@
 import { defineRouting } from "next-intl/routing";
 import { createNavigation } from "next-intl/navigation";
+import { LOCALES, LOCALE_NAMES, normalizeLocale, type Locale } from "./locales";
 
-/** List of supported BCP 47 locale codes across the application. */
-export const LOCALES = ["en", "es"] as const;
-
-/** Type union of supported language codes. */
-export type Locale = (typeof LOCALES)[number];
-
-/** Human-readable language display names mapped by locale code. */
-export const LOCALE_NAMES: Record<Locale, string> = {
-  en: "English",
-  es: "Español",
-};
+export { LOCALES, LOCALE_NAMES, normalizeLocale, type Locale };
 
 /**
  * Global Next-Intl routing configuration defining default locale and prefix behaviors.
@@ -22,5 +13,5 @@ export const routing = defineRouting({
   localePrefix: "as-needed",
 });
 
-export const { Link, redirect, usePathname, useRouter, getPathname } =
+export const { Link, redirect, usePathname, useRouter } =
   createNavigation(routing);

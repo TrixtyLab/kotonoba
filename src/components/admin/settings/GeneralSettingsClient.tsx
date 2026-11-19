@@ -8,25 +8,18 @@ import { Input, Textarea } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
 import { Save, Settings, Plus, Trash2, Globe, CheckCircle2 } from "lucide-react";
-import { useRouter, LOCALES, LOCALE_NAMES, type Locale } from "@/i18n/routing";
+import { useRouter, LOCALES, LOCALE_NAMES, normalizeLocale, type Locale } from "@/i18n/routing";
 import { getLocalizedText, getLocalizedMap, packLocalizedMap } from "@/lib/utils/localization";
 
 const LOCALE_FLAGS: Record<string, string> = {
   en: "🇬🇧",
   es: "🇪🇸",
-  ja: "🇯🇵",
-  fr: "🇫🇷",
-  de: "🇩🇪",
-  pt: "🇵🇹",
-  it: "🇮🇹",
-  zh: "🇨🇳",
-  ko: "🇰🇷",
 };
 
 /**
  * List of site-supported languages dynamically derived from application routing.
  */
-export const AVAILABLE_LANGUAGES = LOCALES.map((code) => ({
+const AVAILABLE_LANGUAGES = LOCALES.map((code) => ({
   code,
   label: `${LOCALE_NAMES[code as Locale] || code} (${code.toUpperCase()})`,
   flag: LOCALE_FLAGS[code] || "🌐",
@@ -72,8 +65,8 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const initialDefaultLocale = site.locale || "en";
-  const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
+  const initialDefaultLocale = normalizeLocale(site.locale);
+  const [defaultLocale, setDefaultLocale] = useState<Locale>(initialDefaultLocale);
 
   const [defaultName, setDefaultName] = useState(() =>
     getLocalizedText(site.name, initialDefaultLocale)
@@ -431,9 +424,10 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
             label={t("defaultLocale")}
             value={defaultLocale}
             onChange={(val) => {
-              setDefaultLocale(val);
-              if (!selectedLocales.includes(val)) {
-                setSelectedLocales((prev) => [...prev, val]);
+              const normalized = normalizeLocale(val);
+              setDefaultLocale(normalized);
+              if (!selectedLocales.includes(normalized)) {
+                setSelectedLocales((prev) => [...prev, normalized]);
               }
             }}
             options={AVAILABLE_LANGUAGES.map((lang) => ({

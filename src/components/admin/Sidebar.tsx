@@ -4,12 +4,13 @@ import React, { useState, useEffect } from "react";
 import { usePathname, Link } from "@/i18n/routing";
 import {
   LayoutDashboard, FileText, Files, Image as ImageIcon, FolderTree, Tag, BarChart3,
-  Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users, ArrowUpCircle
+  Settings, LogOut, PanelLeftClose, PanelLeftOpen, ExternalLink, Users, ArrowUpCircle, ShieldCheck
 } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import type { UpdateInfo } from "@/actions/updates";
 import { useRouter } from "@/i18n/routing";
 import { SiteSwitcher, type SiteOption } from "@/components/admin/SiteSwitcher";
+import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 import { useTranslations } from "next-intl";
 
 /**
@@ -30,32 +31,8 @@ export interface SidebarProps {
   allSites: SiteOption[];
   /** Flag indicating whether the caller can manage and create sites (super_admin). */
   canManageSites?: boolean;
-}
-
-/**
- * Derives the canonical HTTP/HTTPS origin URL for a given domain string.
- *
- * @param {string | null | undefined} domain - Configured domain hostname or origin.
- * @returns {string} Normalized absolute website URL.
- */
-function getSitePublicUrl(domain?: string | null): string {
-  if (!domain) return "/";
-  const clean = domain
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")
-    .trim();
-  if (!clean) return "/";
-
-  const isLocal =
-    clean === "localhost" ||
-    clean === "127.0.0.1" ||
-    clean === "::1" ||
-    clean.endsWith(".localhost") ||
-    clean.startsWith("localhost:");
-
-  const protocol = isLocal ? "http" : "https";
-  return `${protocol}://${clean}`;
+  /** Flag indicating whether the caller can inspect security audit logs (`super_admin` / `admin`). */
+  canViewAudit?: boolean;
 }
 
 /**
@@ -72,6 +49,7 @@ export function Sidebar({
   currentSite,
   allSites,
   canManageSites = false,
+  canViewAudit = false,
 }: SidebarProps): React.JSX.Element {
   const t = useTranslations("common");
   const pathname = usePathname();
@@ -117,6 +95,7 @@ export function Sidebar({
       items: [
         { label: t("analytics"), href: "/admin/analytics", icon: BarChart3 },
         { label: t("users"), href: "/admin/users", icon: Users },
+        ...(canViewAudit ? [{ label: t("audit"), href: "/admin/audit", icon: ShieldCheck }] : []),
         { label: t("settings"), href: "/admin/settings", icon: Settings },
       ],
     },
@@ -127,7 +106,7 @@ export function Sidebar({
     router.push("/login");
   }
 
-  const blogPublicUrl = getSitePublicUrl(currentSite?.domain);
+  const blogPublicUrl = currentSite?.domain ? buildSiteBaseUrl(currentSite.domain) : "/";
 
   return (
     <aside

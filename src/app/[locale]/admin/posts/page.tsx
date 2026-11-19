@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getAdminPosts } from "@/actions/posts";
 import { formatDate } from "@/lib/utils/date";
 import { PostsListClient } from "@/components/admin/PostsListClient";
@@ -16,7 +16,7 @@ export default async function AdminPostsPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   const rawPosts = site ? await getAdminPosts(site.id) : [];
 
   const postList = rawPosts.map((p) => ({

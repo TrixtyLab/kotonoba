@@ -1,15 +1,16 @@
-import { getActiveSite, getSiteForHost } from "@/lib/tenant";
+import { getPublicSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { pages, posts, categories, users } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPageCondition, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicPageCondition, getPublicPostCondition } from "@/lib/db/scheduled";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/blog/ShareButtons";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/storage";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
 import { getSidebarBanners } from "@/lib/banners";
+import { SafeHtml } from "@/components/SafeHtml";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
@@ -26,7 +27,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const t = await getTranslations({ locale, namespace: "blog" });
   if (!site) return { title: t("noPosts") };
 
@@ -93,12 +94,10 @@ export default async function CustomPageEntry({
   params: Promise<{ slug: string; locale: string }>;
 }) {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const site = await getPublicSite();
   if (!site) notFound();
 
   const t = await getTranslations({ locale, namespace: "blog" });
-
-  await publishScheduledPosts(site.id);
   const db = getDb();
   const page = db
     .select({
@@ -107,6 +106,7 @@ export default async function CustomPageEntry({
       slug: pages.slug,
       contentMd: pages.contentMd,
       contentHtml: pages.contentHtml,
+      contentFormat: pages.contentFormat,
       excerpt: pages.excerpt,
       coverImage: pages.coverImage,
       publishedAt: pages.publishedAt,
@@ -131,6 +131,7 @@ export default async function CustomPageEntry({
 
   const postContent = page.contentMd || page.contentHtml || "";
   const renderedHtml = renderPostContent(postContent, {
+    format: page.contentFormat,
     utmSource:
       site?.domain && !site.domain.includes("localhost")
         ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
@@ -158,10 +159,7 @@ export default async function CustomPageEntry({
         )}
 
         {/* Content */}
-        <div
-          className="prose-blog pt-2"
-          dangerouslySetInnerHTML={{ __html: renderedHtml }}
-        />
+        <SafeHtml className="prose-blog pt-2" html={renderedHtml} />
 
         {/* Bottom Share Bar */}
         <div className="pt-4 flex items-center justify-between border-t border-border/40 text-xs text-text-muted">

@@ -1,35 +1,32 @@
 "use client";
 
-import React, { useState, useTransition, useMemo, useRef } from "react";
+import React, { useState, useTransition, useMemo, useRef, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import ImageExtension from "@tiptap/extension-image";
 import LinkExtension from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Extension } from "@tiptap/core";
-import { Button } from "@/components/ui/Button";
-import { Input, Textarea } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { Badge } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { MediaPickerModal } from "@/components/admin/MediaPickerModal";
 import { createPost, updatePost } from "@/actions/posts";
 import { createPage, updatePage } from "@/actions/pages";
 import { createTag } from "@/actions/tags";
 import { generateExcerptAction, rewriteAction, translateAction } from "@/actions/ai";
 import { generateDubLinkAction } from "@/actions/dub";
-import { useRouter } from "@/i18n/routing";
+import { useRouter, LOCALES, LOCALE_NAMES, normalizeLocale, type Locale } from "@/i18n/routing";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
-import {
-  Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3,
-  List, ListOrdered, Quote, Minus, Undo, Redo, Image as ImageIcon,
-  Sparkles, Save, ArrowLeft, Clock, FileText, CheckCircle2,
-  Folder, Tag, Link2, X, Eye, SlidersHorizontal, Upload, Loader2,
-  PlaySquare, RefreshCw, Globe, Send, QrCode, Copy, Share2, ExternalLink, CalendarClock
-} from "lucide-react";
-import { parseEmbedUrl, extractSteamId, extractItchId, extractYouTubeId, extractVimeoId } from "@/lib/utils/embeds";
+import { EditorToolbar } from "@/components/admin/editor/EditorToolbar";
+import { PostEditorHeader } from "@/components/admin/editor/PostEditorHeader";
+import { PostPublishPanel } from "@/components/admin/editor/PostPublishPanel";
+import { PostTaxonomyPanel } from "@/components/admin/editor/PostTaxonomyPanel";
+import { PostCoverImageField } from "@/components/admin/editor/PostCoverImageField";
+import { PostDubPanel } from "@/components/admin/editor/PostDubPanel";
+import { PostAiModals } from "@/components/admin/editor/PostAiModals";
+import { PostInsertModals } from "@/components/admin/editor/PostInsertModals";
+import { AutoExitBlockOnEnter } from "@/components/admin/editor/tiptapExtensions";
+import { parseEmbedUrl, extractSteamId, extractItchId } from "@/lib/utils/embeds";
+import { generateSlug } from "@/lib/utils/slug";
 
 /**
  * Configuration properties for the rich-text article editor.
@@ -65,92 +62,20 @@ export interface PostEditorProps {
   availableTags?: Array<{ id: string; name: string }>;
 }
 
-/** Predefined catalog of selectable authoring languages. */
-export const ALL_LANGUAGE_OPTIONS = [
-  { value: "es", label: "Español (es)" },
-  { value: "en", label: "English (en)" },
-  { value: "fr", label: "Français (fr)" },
-  { value: "de", label: "Deutsch (de)" },
-  { value: "pt", label: "Português (pt)" },
-  { value: "it", label: "Italiano (it)" },
-  { value: "ja", label: "日本語 (ja)" },
-  { value: "zh", label: "简体中文 (zh)" },
-];
+/** Predefined catalog of selectable authoring languages restricted to supported locales. */
+const ALL_LANGUAGE_OPTIONS: Array<{ value: Locale; label: string }> = LOCALES.map((code) => ({
+  value: code,
+  label: `${LOCALE_NAMES[code]} (${code})`,
+}));
 
-/**
- * Custom TipTap extension governing Enter key semantics for block-level transitions.
- *
- * Handles three specific cases:
- * - **Headings**: Pressing Enter at the end of a heading exits to a clean paragraph.
- * - **Empty blockquotes**: Pressing Enter inside an empty blockquote lifts it to a paragraph.
- * - **All other nodes**: Defers to TipTap's built-in Enter behavior (list continuation, paragraph splitting, etc.).
- *
- * @remarks
- * Uses ProseMirror node ancestry traversal (`$from.node(depth)`) instead of `$from.parent`
- * to correctly detect list context, since text inside list items is nested within paragraph nodes.
- */
-const AutoExitBlockOnEnter = Extension.create({
-  name: "autoExitBlockOnEnter",
-  addKeyboardShortcuts() {
-    return {
-      Enter: ({ editor }) => {
-        const { selection } = editor.state;
-        const { $from, empty } = selection;
-        if (!empty) return false;
-
-        const depth = $from.depth;
-
-        for (let d = depth; d >= 0; d--) {
-          const ancestorType = $from.node(d).type.name;
-          if (ancestorType === "listItem" || ancestorType === "taskItem") {
-            return false;
-          }
-        }
-
-        const parentType = $from.parent.type.name;
-
-        if (parentType === "heading") {
-          const isAtEnd = $from.parentOffset === $from.parent.content.size;
-          if (isAtEnd) {
-            return editor.chain().splitBlock({ keepMarks: false }).setParagraph().unsetAllMarks().run();
-          }
-          return false;
-        }
-
-        if (parentType === "blockquote" && $from.parent.content.size === 0) {
-          return editor.chain().lift("blockquote").setParagraph().unsetAllMarks().run();
-        }
-
-        for (let d = depth - 1; d >= 0; d--) {
-          const ancestorType = $from.node(d).type.name;
-          if (ancestorType === "blockquote") {
-            const paragraph = $from.parent;
-            if (paragraph.content.size === 0) {
-              return editor.chain().lift("blockquote").run();
-            }
-            break;
-          }
-        }
-
-        return false;
-      },
-    };
-  },
-});
-
-/**
- * Converts a text string into a clean, URL-safe alphanumeric slug.
- *
- * @param {string} text - Raw input string to convert.
- * @returns {string} Clean URL-friendly slug.
- */
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+function buildEditorSnapshot(state: {
+  title: string;
+  slug: string;
+  contentHtml: string;
+  excerpt: string;
+  coverImage: string;
+}): string {
+  return JSON.stringify(state);
 }
 
 /**
@@ -170,14 +95,15 @@ export function PostEditor({
 }: PostEditorProps) {
   const t = useTranslations("editor");
   const tc = useTranslations("common");
-  const ta = useTranslations("admin");
   const router = useRouter();
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
 
-  const allowedLocales = useMemo(() => {
-    const list = supportedLocales && supportedLocales.length > 0 ? supportedLocales : ["es", "en"];
-    return Array.from(new Set([...list, "es", "en"]));
+  const allowedLocales = useMemo<Locale[]>(() => {
+    const filtered = (supportedLocales || []).filter((code): code is Locale =>
+      (LOCALES as readonly string[]).includes(code)
+    );
+    return Array.from(new Set([...LOCALES, ...filtered]));
   }, [supportedLocales]);
 
   const availableLanguageOptions = useMemo(() => {
@@ -196,6 +122,7 @@ export function PostEditor({
 
   const [title, setTitle] = useState(initialPost?.title || "");
   const [slug, setSlug] = useState(initialPost?.slug || "");
+  const [isSlugManual, setIsSlugManual] = useState(Boolean(initialPost?.id && initialPost?.slug));
   const [contentHtml, setContentHtml] = useState(initialPost?.contentMd || "");
   const [excerpt, setExcerpt] = useState(initialPost?.excerpt || "");
   const [coverImage, setCoverImage] = useState(initialPost?.coverImage || "");
@@ -203,11 +130,52 @@ export function PostEditor({
   const [scheduledAt, setScheduledAt] = useState<string>(
     initialPost?.publishedAt ? formatDateTimeLocal(initialPost.publishedAt) : formatDateTimeLocal()
   );
-  const [locale, setLocale] = useState(initialPost?.locale || allowedLocales[0] || "es");
+  const [locale, setLocale] = useState<Locale>(normalizeLocale(initialPost?.locale || allowedLocales[0]));
   const [pinned, setPinned] = useState(initialPost?.pinned ?? false);
   const [shortUrl, setShortUrl] = useState(initialPost?.shortUrl || "");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(initialPost?.categories || []);
   const [selectedTags, setSelectedTags] = useState<string[]>(initialPost?.tags || []);
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    buildEditorSnapshot({
+      title: initialPost?.title || "",
+      slug: initialPost?.slug || "",
+      contentHtml: initialPost?.contentMd || "",
+      excerpt: initialPost?.excerpt || "",
+      coverImage: initialPost?.coverImage || "",
+    })
+  );
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const isDirty = useMemo(() => {
+    return (
+      buildEditorSnapshot({
+        title,
+        slug,
+        contentHtml,
+        excerpt,
+        coverImage,
+      }) !== savedSnapshot
+    );
+  }, [title, slug, contentHtml, excerpt, coverImage, savedSnapshot]);
+
+  const backHref = mode === "page" ? "/admin/pages" : "/admin/posts";
+
+  function handleNavigateBack() {
+    if (isDirty) {
+      setLeaveConfirmOpen(true);
+      return;
+    }
+    router.push(backHref);
+  }
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
   const [localTags, setLocalTags] = useState<Array<{ id: string; name: string }>>(availableTags || []);
   const [newTagInput, setNewTagInput] = useState("");
   const [showInspector, setShowInspector] = useState(true);
@@ -235,11 +203,13 @@ export function PostEditor({
   const [aiLoading, setAiLoading] = useState(false);
 
   const [aiTranslateModalOpen, setAiTranslateModalOpen] = useState(false);
-  const [targetTranslateLocale, setTargetTranslateLocale] = useState(locale === "es" ? "en" : "es");
+  const [targetTranslateLocale, setTargetTranslateLocale] = useState<Locale>(locale === "es" ? "en" : "es");
   const [isTranslating, setIsTranslating] = useState(false);
 
   function openAiTranslateModal() {
-    const otherLocale = availableLanguageOptions.find((opt) => opt.value !== locale)?.value || (locale === "es" ? "en" : "es");
+    const otherLocale =
+      availableLanguageOptions.find((opt) => opt.value !== locale)?.value ||
+      (locale === "es" ? "en" : "es");
     setTargetTranslateLocale(otherLocale);
     setAiTranslateModalOpen(true);
   }
@@ -321,51 +291,6 @@ export function PostEditor({
     },
   });
 
-  function toggleMark(mark: "bold" | "italic" | "strike" | "code") {
-    if (!editor) return;
-    if (editor.isActive(mark)) {
-      editor.chain().focus().unsetMark(mark).run();
-    } else {
-      editor.chain().focus().setMark(mark).run();
-    }
-  }
-
-  function toggleHeading(level: 1 | 2 | 3) {
-    if (!editor) return;
-    if (editor.isActive("heading", { level })) {
-      editor.chain().focus().setParagraph().run();
-    } else {
-      editor.chain().focus().setHeading({ level }).run();
-    }
-  }
-
-  function toggleBlockquote() {
-    if (!editor) return;
-    if (editor.isActive("blockquote")) {
-      editor.chain().focus().lift("blockquote").run();
-    } else {
-      editor.chain().focus().wrapIn("blockquote").run();
-    }
-  }
-
-  function toggleBullet() {
-    if (!editor) return;
-    if (editor.isActive("bulletList")) {
-      editor.chain().focus().liftListItem("listItem").run();
-    } else {
-      editor.chain().focus().toggleBulletList().run();
-    }
-  }
-
-  function toggleOrdered() {
-    if (!editor) return;
-    if (editor.isActive("orderedList")) {
-      editor.chain().focus().liftListItem("listItem").run();
-    } else {
-      editor.chain().focus().toggleOrderedList().run();
-    }
-  }
-
   const { wordCount, readingTime } = useMemo(() => {
     const textOnly = contentHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
     const words = textOnly ? textOnly.split(/\s+/).filter(Boolean).length : 0;
@@ -375,7 +300,9 @@ export function PostEditor({
 
   function handleTitleChange(newTitle: string) {
     setTitle(newTitle);
-    setSlug(slugify(newTitle));
+    if (!isSlugManual) {
+      setSlug(generateSlug(newTitle));
+    }
   }
 
   function handleInsertEmbed() {
@@ -446,29 +373,32 @@ export function PostEditor({
     }
   }
 
+  async function uploadAsset(file: File, folder: "covers" | "articles"): Promise<string | null> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("folder", folder);
+
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    if (data.success && data.url) {
+      return data.url as string;
+    }
+    throw new Error(data.error || "");
+  }
+
   async function handleDirectCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploadingCover(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("folder", "covers");
-
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success && data.url) {
-        setCoverImage(data.url);
+      const url = await uploadAsset(file, "covers");
+      if (url) {
+        setCoverImage(url);
         toast.success(t("coverUploaded"));
-      } else {
-        toast.error(data.error || t("coverUploadError"));
       }
-    } catch {
-      toast.error(t("networkError"));
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : t("coverUploadError"));
     } finally {
       setIsUploadingCover(false);
       e.target.value = "";
@@ -480,24 +410,14 @@ export function PostEditor({
     if (!file) return;
 
     setIsUploadingInline(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("folder", "articles");
-
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success && data.url) {
-        editor?.chain().focus().setImage({ src: data.url }).run();
+      const url = await uploadAsset(file, "articles");
+      if (url) {
+        editor?.chain().focus().setImage({ src: url }).run();
         toast.success(t("inlineUploaded"));
-      } else {
-        toast.error(data.error || t("inlineUploadError"));
       }
-    } catch {
-      toast.error(t("networkError"));
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : t("inlineUploadError"));
     } finally {
       setIsUploadingInline(false);
       e.target.value = "";
@@ -517,7 +437,7 @@ export function PostEditor({
       return;
     }
 
-    const tagSlug = slugify(trimmed);
+    const tagSlug = generateSlug(trimmed);
     const res = await createTag(siteId, { name: trimmed, slug: tagSlug });
     if (res.success) {
       const newTagObj = { id: res.id, name: trimmed };
@@ -557,7 +477,7 @@ export function PostEditor({
 
     const payload = {
       title,
-      slug: slug || slugify(title),
+      slug: slug || generateSlug(title),
       contentMd: rawContent,
       contentHtml: rawContent,
       excerpt,
@@ -575,7 +495,7 @@ export function PostEditor({
       if (mode === "page") {
         const pagePayload = {
           title,
-          slug: slug || slugify(title),
+          slug: slug || generateSlug(title),
           contentMd: rawContent,
           contentHtml: rawContent,
           excerpt,
@@ -589,6 +509,7 @@ export function PostEditor({
           const res = await updatePage(initialPost.id, pagePayload);
           if (res.success) {
             setStatus(saveStatus);
+            setSavedSnapshot(JSON.stringify({ title, slug: pagePayload.slug, contentHtml: rawContent, excerpt, coverImage }));
             toast.success(
               saveStatus === "published"
                 ? t("pagePublishedUpdated")
@@ -607,6 +528,7 @@ export function PostEditor({
           const res = await createPage(siteId, pagePayload);
           if (res.success) {
             setStatus(saveStatus);
+            setSavedSnapshot(JSON.stringify({ title, slug: pagePayload.slug, contentHtml: rawContent, excerpt, coverImage }));
             toast.success(
               saveStatus === "published"
                 ? t("pagePublished")
@@ -627,6 +549,7 @@ export function PostEditor({
         const res = await updatePost(initialPost.id, payload);
         if (res.success) {
           setStatus(saveStatus);
+          setSavedSnapshot(JSON.stringify({ title, slug: payload.slug, contentHtml: rawContent, excerpt, coverImage }));
           toast.success(
             saveStatus === "published"
               ? t("postPublishedUpdated")
@@ -645,6 +568,7 @@ export function PostEditor({
         const res = await createPost(siteId, payload);
         if (res.success) {
           setStatus(saveStatus);
+          setSavedSnapshot(JSON.stringify({ title, slug: payload.slug, contentHtml: rawContent, excerpt, coverImage }));
           toast.success(
             saveStatus === "published"
               ? t("postPublished")
@@ -669,10 +593,11 @@ export function PostEditor({
     setIsGeneratingDub(true);
     try {
       const currentOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-      const postSlug = slug || slugify(title);
+      const postSlug = slug || generateSlug(title);
       const fullUrl = `${currentOrigin}/entry/${postSlug}`;
 
       const res = await generateDubLinkAction({
+        siteId,
         postId: initialPost?.id,
         originalUrl: fullUrl,
         customSlug: postSlug,
@@ -758,7 +683,7 @@ export function PostEditor({
         const resTitle = await translateAction(siteId, title, targetTranslateLocale);
         if (resTitle.success) {
           setTitle(resTitle.translated);
-          setSlug(slugify(resTitle.translated));
+          setSlug(generateSlug(resTitle.translated));
         }
       }
 
@@ -814,7 +739,7 @@ export function PostEditor({
     const currentHtml = editor ? editor.getHTML() : contentHtml;
     const rawContent = currentHtml && currentHtml !== "<p></p>" ? currentHtml : "";
     const duplicatedTitle = `${title} (${targetTranslateLocale.toUpperCase()})`;
-    const duplicatedSlug = slug ? `${slug}-${targetTranslateLocale}` : slugify(duplicatedTitle);
+    const duplicatedSlug = slug ? `${slug}-${targetTranslateLocale}` : generateSlug(duplicatedTitle);
 
     setIsTranslating(true);
     try {
@@ -868,82 +793,19 @@ export function PostEditor({
 
   return (
     <div className="space-y-6">
-      {/* Top Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(mode === "page" ? "/admin/pages" : "/admin/posts")}
-            className="text-text-muted hover:text-text"
-          >
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            {mode === "page" ? tc("pages") : ta("recentPosts").split(" ")[0]}
-          </Button>
-
-          <span className="w-px h-4 bg-border" />
-
-          <Badge variant={status === "published" ? "success" : status === "archived" ? "outline" : "warning"}>
-            {status === "published" ? t("published") : status === "archived" ? t("archived") : t("draft")}
-          </Badge>
-
-          <span className="text-[11px] text-text-muted hidden md:inline-flex items-center gap-1 font-mono">
-            <Clock className="w-3 h-3" />
-            {t("wordCount", { count: wordCount, minutes: readingTime })}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowInspector(!showInspector)}
-            className="text-xs"
-            title={t("postSettings")}
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5 mr-1" />
-            {showInspector ? t("hideDetails") : t("details")}
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setAiModalOpen(true)}
-            className="text-accent text-xs font-semibold"
-          >
-            <Sparkles className="w-3.5 h-3.5 mr-1" />
-            {t("aiAssistant")}
-          </Button>
-
-          {status !== "published" && status !== "scheduled" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleSave("draft")}
-              loading={isPending}
-              icon={<Save className="w-3.5 h-3.5" />}
-            >
-              {t("saveDraft")}
-            </Button>
-          )}
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => handleSave(status === "draft" ? "published" : status)}
-            loading={isPending}
-            icon={status === "scheduled" ? <CalendarClock className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-          >
-            {status === "published"
-              ? t("saveChanges")
-              : status === "scheduled"
-              ? t("schedulePublication")
-              : status === "archived"
-              ? t("saveArchived")
-              : t("publish")}
-          </Button>
-        </div>
-      </div>
+      <PostEditorHeader
+        mode={mode}
+        status={status}
+        wordCount={wordCount}
+        readingTime={readingTime}
+        showInspector={showInspector}
+        isPending={isPending}
+        onNavigateBack={handleNavigateBack}
+        onToggleInspector={() => setShowInspector(!showInspector)}
+        onOpenAiModal={() => setAiModalOpen(true)}
+        onSaveDraft={() => handleSave("draft")}
+        onSavePrimary={() => handleSave(status === "draft" ? "published" : status)}
+      />
 
       {/* Main Grid: Left Editor + Right Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -960,193 +822,15 @@ export function PostEditor({
             />
           </div>
 
-          {/* WYSIWYG Formatting Toolbar (Single-row scrollable on mobile) */}
-          <div className="bg-surface border border-border rounded-xl p-1.5 sm:p-2 flex items-center gap-1 shadow-xs sticky top-16 sm:top-20 z-20 overflow-x-auto no-scrollbar">
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleMark("bold")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("bold") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("boldTooltip")}
-            >
-              <Bold className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleMark("italic")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("italic") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("italicTooltip")}
-            >
-              <Italic className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleMark("strike")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("strike") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("strikeTooltip")}
-            >
-              <Strikethrough className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleMark("code")}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover transition-colors shrink-0 ${editor?.isActive("code") ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("codeTooltip")}
-            >
-              <Code className="w-4 h-4" />
-            </button>
-
-            <span className="w-px h-4 bg-border mx-1 shrink-0" />
-
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleHeading(1)}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("heading", { level: 1 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("h1")}
-            >
-              <Heading1 className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleHeading(2)}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("heading", { level: 2 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("h2")}
-            >
-              <Heading2 className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleHeading(3)}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("heading", { level: 3 }) ? "text-accent bg-accent/10 font-bold" : "text-text"}`}
-              title={t("h3")}
-            >
-              <Heading3 className="w-4 h-4" />
-            </button>
-
-            <span className="w-px h-4 bg-border mx-1 shrink-0" />
-
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={toggleBullet}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("bulletList") ? "text-accent bg-accent/10" : "text-text"}`}
-              title={t("bulletList")}
-            >
-              <List className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={toggleOrdered}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("orderedList") ? "text-accent bg-accent/10" : "text-text"}`}
-              title={t("orderedList")}
-            >
-              <ListOrdered className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={toggleBlockquote}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("blockquote") ? "text-accent bg-accent/10" : "text-text"}`}
-              title={t("quote")}
-            >
-              <Quote className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor?.chain().focus().setHorizontalRule().run()}
-              className="p-1.5 rounded-lg hover:bg-surface-hover text-text shrink-0"
-              title={t("divider")}
-            >
-              <Minus className="w-4 h-4" />
-            </button>
-
-            <span className="w-px h-4 bg-border mx-1 shrink-0" />
-
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={openLinkModal}
-              className={`p-1.5 rounded-lg hover:bg-surface-hover shrink-0 ${editor?.isActive("link") ? "text-accent bg-accent/10" : "text-text"}`}
-              title={t("link")}
-            >
-              <Link2 className="w-4 h-4" />
-            </button>
-
-            {/* Media Library image insertion */}
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => openMediaPicker("editor")}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text ml-1 shrink-0 whitespace-nowrap"
-              title={t("library")}
-            >
-              <ImageIcon className="w-3.5 h-3.5 text-accent" />
-              <span>{t("library")}</span>
-            </button>
-
-            {/* Direct Image upload */}
-            <input
-              ref={inlineFileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleDirectInlineUpload}
-            />
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => inlineFileInputRef.current?.click()}
-              disabled={isUploadingInline}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text shrink-0 whitespace-nowrap"
-              title={t("directUpload")}
-            >
-              {isUploadingInline ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 text-accent" />}
-              <span>{t("directUpload")}</span>
-            </button>
-
-            {/* Embed Media (YouTube, Vimeo, Steam, itch.io) */}
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setEmbedModalOpen(true)}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface-hover hover:bg-accent/10 hover:text-accent border border-border transition-colors flex items-center gap-1.5 text-text shrink-0 whitespace-nowrap"
-              title={t("embed")}
-            >
-              <PlaySquare className="w-3.5 h-3.5 text-accent" />
-              <span>{t("embed")}</span>
-            </button>
-
-            <div className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => editor?.chain().focus().undo().run()}
-                disabled={!editor?.can().undo()}
-                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text shrink-0"
-                title={t("undo")}
-              >
-                <Undo className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => editor?.chain().focus().redo().run()}
-                disabled={!editor?.can().redo()}
-                className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-20 text-text shrink-0"
-                title={t("redo")}
-              >
-                <Redo className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <EditorToolbar
+            editor={editor}
+            inlineFileInputRef={inlineFileInputRef}
+            isUploadingInline={isUploadingInline}
+            onDirectInlineUpload={handleDirectInlineUpload}
+            onOpenMediaPicker={() => openMediaPicker("editor")}
+            onOpenLinkModal={openLinkModal}
+            onOpenEmbedModal={() => setEmbedModalOpen(true)}
+          />
 
           {/* Editor Canvas */}
           <div className="bg-surface border border-border rounded-xl p-3.5 sm:p-6 lg:p-8 min-h-[350px] sm:min-h-[500px] shadow-xs">
@@ -1157,357 +841,75 @@ export function PostEditor({
         {/* Right Inspector Sidebar */}
         {showInspector && (
           <div className="lg:col-span-4 space-y-4">
-            {/* Slug & Language */}
             <div className="p-4 sm:p-5 rounded-xl bg-surface border border-border space-y-3.5 shadow-xs">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border">
-                {t("postParams")}
-              </h3>
-
-              <div className="space-y-1">
-                <div className="flex gap-2 items-end">
-                  <div className="flex-1">
-                    <Input
-                      label={t("urlSlug")}
-                      value={slug}
-                      onChange={(e) => setSlug(e.target.value)}
-                      placeholder={t("postSlugPlaceholder")}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSlug(slugify(title));
-                      toast.success(t("slugRegenerated"));
-                    }}
-                    className="text-xs shrink-0"
-                    title={t("regenerateSlug")}
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-text">{t("language")}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={openAiTranslateModal}
-                    className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1 hover:underline"
-                  >
-                    <Globe className="w-3 h-3" />
-                    {t("translatePost")}
-                  </Button>
-                </div>
-
-                <Select
-                  value={locale}
-                  onChange={(val) => setLocale(val)}
-                  options={availableLanguageOptions}
-                />
-
-                <Select
-                  label={t("publishStatus")}
-                  value={status}
-                  onChange={(val) => setStatus(val as "draft" | "published" | "scheduled" | "archived")}
-                  options={[
-                    { value: "draft", label: t("draftHidden") },
-                    { value: "published", label: t("publishedVisible") },
-                    { value: "scheduled", label: t("scheduledOption") },
-                    { value: "archived", label: t("archived") },
-                  ]}
-                />
-
-                {status === "scheduled" && (
-                  <div className="space-y-1.5 p-3 rounded-lg bg-surface-hover/50 border border-border">
-                    <label className="text-xs font-semibold text-text flex items-center gap-1.5">
-                      <CalendarClock className="w-3.5 h-3.5 text-accent" />
-                      <span>{t("scheduleDate")}</span>
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(e) => setScheduledAt(e.target.value)}
-                      className="w-full bg-surface border border-border rounded-lg px-3 py-1.5 text-xs text-text focus:outline-hidden focus:ring-1 focus:ring-accent font-mono"
-                    />
-                    <p className="text-[11px] text-text-muted">
-                      {t("scheduleHint")}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Categories & Taxonomy (Vertical List) */}
-              {mode === "post" && (
-                <div className="space-y-2 pt-3 border-t border-border">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-text flex items-center gap-1.5">
-                      <Folder className="w-3.5 h-3.5 text-accent" />
-                      <span>{t("categories")}</span>
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                    {availableCategories.map((c) => (
-                      <Checkbox
-                        key={c.id}
-                        checked={selectedCategories.includes(c.id)}
-                        onChange={(checked) => {
-                          if (checked) {
-                            setSelectedCategories([...selectedCategories, c.id]);
-                          } else {
-                            setSelectedCategories(selectedCategories.filter((id) => id !== c.id));
-                          }
-                        }}
-                        label={c.name}
-                        className="w-full"
-                      />
-                    ))}
-                    {availableCategories.length === 0 && (
-                      <p className="text-xs text-text-muted">{t("noCategoriesYet")}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Tags */}
-              {mode === "post" && (
-                <div className="space-y-2 pt-3 border-t border-border">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-text flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5 text-accent" />
-                      <span>{t("tags")}</span>
-                    </span>
-                  </div>
-
-                  {selectedTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pb-1">
-                      {selectedTags.map((tId) => {
-                        const tagObj = localTags.find((t) => t.id === tId);
-                        return (
-                          <span
-                            key={tId}
-                            className="inline-flex items-center gap-1 text-[11px] bg-accent/10 text-accent font-medium px-2 py-0.5 rounded-full border border-accent/20"
-                          >
-                            #{tagObj?.name || tId}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedTags(selectedTags.filter((id) => id !== tId))}
-                              className="hover:text-rose-500 ml-0.5 cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder={t("newTagPlaceholder")}
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddTag();
-                        }
-                      }}
-                    />
-                    <Button size="sm" variant="secondary" onClick={handleAddTag} className="text-xs shrink-0">
-                      {tc("add")}
-                    </Button>
-                  </div>
-
-                  {localTags.filter((t) => !selectedTags.includes(t.id)).length > 0 && (
-                    <div className="pt-1.5 border-t border-border/50">
-                      <p className="text-[11px] text-text-muted mb-1.5">{t("existingSuggestions")}</p>
-                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                        {localTags
-                          .filter((t) => !selectedTags.includes(t.id))
-                          .map((t) => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => setSelectedTags([...selectedTags, t.id])}
-                              className="text-[11px] bg-surface-hover hover:bg-accent/10 hover:text-accent px-2 py-0.5 rounded border border-border transition-colors text-text-muted cursor-pointer"
-                            >
-                              + {t.name}
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Resumen / Extracto SEO */}
-              <div className="space-y-1.5 pt-3 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-text">{t("seoExcerpt")}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleAiGenerateExcerpt}
-                    disabled={aiLoading}
-                    className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    {t("aiGenerate")}
-                  </Button>
-                </div>
-                <Textarea
-                  placeholder={t("excerptPlaceholder")}
-                  value={excerpt}
-                  onChange={(e) => setExcerpt(e.target.value)}
-                  className="min-h-[75px] text-xs"
-                />
-              </div>
-
-              {mode === "post" && (
-                <div className="pt-1">
-                  <Checkbox
-                    checked={pinned}
-                    onChange={(val) => setPinned(val)}
-                    label={t("pinPost")}
-                  />
-                </div>
-              )}
-
-              {/* Dub.co Short Link & UTM Builder */}
-              {mode === "post" && isDubEnabled && (
-                <div className="pt-3 border-t border-border space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-text flex items-center gap-1.5">
-                      <Share2 className="w-3.5 h-3.5 text-accent" />
-                      <span>{t("dubShortLink")}</span>
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDubModalOpen(true)}
-                      className="text-[11px] text-accent p-0 h-auto font-bold flex items-center gap-1"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      {shortUrl ? "UTM Builder" : t("generateDubLink")}
-                    </Button>
-                  </div>
-
-                  {shortUrl ? (
-                    <div className="flex items-center gap-1.5 bg-surface-hover/50 p-1.5 rounded-lg border border-border">
-                      <input
-                        type="text"
-                        readOnly
-                        value={shortUrl}
-                        className="bg-transparent text-xs font-mono text-text flex-1 outline-hidden select-all"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          navigator.clipboard.writeText(shortUrl);
-                          toast.success(t("dubCopied"));
-                        }}
-                        className="p-1 h-auto text-xs shrink-0"
-                        title={tc("copy")}
-                      >
-                        <Copy className="w-3 h-3" />
-                      </Button>
-                      {qrCodeUrl && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setQrModalOpen(true)}
-                          className="p-1 h-auto text-xs shrink-0"
-                          title={tc("qrCode")}
-                        >
-                          <QrCode className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-text-muted leading-tight">
-                      {t("dubPromoDesc")}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Cover Image */}
-            <div className="p-4 sm:p-5 rounded-xl bg-surface border border-border space-y-3 shadow-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-border">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                  {t("coverImage")}
-                </h3>
-                {coverImage && (
-                  <button
-                    type="button"
-                    onClick={() => setCoverImage("")}
-                    className="text-[11px] text-rose-500 hover:underline font-semibold flex items-center gap-1"
-                  >
-                    <X className="w-3 h-3" /> {t("remove")}
-                  </button>
-                )}
-              </div>
-
-              {coverImage ? (
-                <div className="relative rounded-xl overflow-hidden border border-border aspect-video w-full bg-surface-hover/30">
-                  <img src={coverImage} alt={t("coverImage")} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border bg-surface-hover/20 aspect-video w-full flex items-center justify-center text-text-muted text-xs">
-                  {t("noCoverAssigned")}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <input
-                  ref={coverFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleDirectCoverUpload}
-                />
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => coverFileInputRef.current?.click()}
-                  disabled={isUploadingCover}
-                  icon={isUploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  className="text-xs flex-1"
-                >
-                  {isUploadingCover ? t("uploading") : t("upload")}
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openMediaPicker("cover")}
-                  icon={<ImageIcon className="w-3.5 h-3.5 text-accent" />}
-                  className="text-xs flex-1"
-                >
-                  {t("library")}
-                </Button>
-              </div>
-
-              <Input
-                placeholder="https://... cover.jpg"
-                value={coverImage || ""}
-                onChange={(e) => setCoverImage(e.target.value)}
+              <PostPublishPanel
+                mode={mode}
+                title={title}
+                slug={slug}
+                onSlugChange={(nextSlug, manual) => {
+                  setSlug(nextSlug);
+                  setIsSlugManual(manual);
+                }}
+                locale={locale}
+                onLocaleChange={setLocale}
+                availableLanguageOptions={availableLanguageOptions}
+                onOpenTranslateModal={openAiTranslateModal}
+                status={status}
+                onStatusChange={setStatus}
+                scheduledAt={scheduledAt}
+                onScheduledAtChange={setScheduledAt}
+                excerpt={excerpt}
+                onExcerptChange={setExcerpt}
+                aiLoading={aiLoading}
+                onAiGenerateExcerpt={handleAiGenerateExcerpt}
+                pinned={pinned}
+                onPinnedChange={setPinned}
               />
+
+              {mode === "post" && (
+                <PostTaxonomyPanel
+                  availableCategories={availableCategories}
+                  selectedCategories={selectedCategories}
+                  onChangeCategories={setSelectedCategories}
+                  localTags={localTags}
+                  selectedTags={selectedTags}
+                  onChangeTags={setSelectedTags}
+                  newTagInput={newTagInput}
+                  onNewTagInputChange={setNewTagInput}
+                  onAddTag={handleAddTag}
+                />
+              )}
+
+              {mode === "post" && isDubEnabled && (
+                <PostDubPanel
+                  shortUrl={shortUrl}
+                  qrCodeUrl={qrCodeUrl}
+                  title={title}
+                  slug={slug}
+                  dubModalOpen={dubModalOpen}
+                  setDubModalOpen={setDubModalOpen}
+                  qrModalOpen={qrModalOpen}
+                  setQrModalOpen={setQrModalOpen}
+                  utmSource={utmSource}
+                  setUtmSource={setUtmSource}
+                  utmMedium={utmMedium}
+                  setUtmMedium={setUtmMedium}
+                  utmCampaign={utmCampaign}
+                  setUtmCampaign={setUtmCampaign}
+                  isGeneratingDub={isGeneratingDub}
+                  onGenerateDubLink={handleGenerateDubLink}
+                />
+              )}
             </div>
+
+            <PostCoverImageField
+              coverImage={coverImage}
+              onChangeCoverImage={setCoverImage}
+              coverFileInputRef={coverFileInputRef}
+              isUploadingCover={isUploadingCover}
+              onDirectCoverUpload={handleDirectCoverUpload}
+              onOpenLibrary={() => openMediaPicker("cover")}
+            />
           </div>
         )}
       </div>
@@ -1520,299 +922,52 @@ export function PostEditor({
         title={mediaTarget === "cover" ? t("selectCoverModalTitle") : t("insertImageModalTitle")}
       />
 
-      {/* AI Assistant Modal */}
-      <Modal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} title={t("aiAssistantModal")}>
-        <div className="space-y-4">
-          <p className="text-xs text-text-muted">
-            {t("aiAssistantDesc")}
-          </p>
-          <Textarea
-            label={t("aiInstruction")}
-            placeholder={t("aiInstructionPlaceholder")}
-            value={aiInstruction}
-            onChange={(e) => setAiInstruction(e.target.value)}
-            className="min-h-[90px]"
-          />
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => setAiModalOpen(false)} className="text-xs">
-              {tc("cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleAiAssist}
-              loading={aiLoading}
-              icon={<Sparkles className="w-4 h-4" />}
-              className="text-xs"
-            >
-              {t("applyChanges")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <PostAiModals
+        hasExistingId={Boolean(initialPost?.id)}
+        availableLanguageOptions={availableLanguageOptions}
+        aiModalOpen={aiModalOpen}
+        setAiModalOpen={setAiModalOpen}
+        aiInstruction={aiInstruction}
+        setAiInstruction={setAiInstruction}
+        aiLoading={aiLoading}
+        onAiAssist={handleAiAssist}
+        aiTranslateModalOpen={aiTranslateModalOpen}
+        setAiTranslateModalOpen={setAiTranslateModalOpen}
+        targetTranslateLocale={targetTranslateLocale}
+        setTargetTranslateLocale={setTargetTranslateLocale}
+        isTranslating={isTranslating}
+        onAiTranslatePost={handleAiTranslatePost}
+        onManualTranslatePost={handleManualTranslatePost}
+      />
 
-      {/* Translation & Localization Modal */}
-      <Modal isOpen={aiTranslateModalOpen} onClose={() => setAiTranslateModalOpen(false)} title={t("translateModalTitle")}>
-        <div className="space-y-4 text-xs">
-          <p className="text-text-muted">
-            {t("translateModalDesc")}
-          </p>
+      <PostInsertModals
+        embedModalOpen={embedModalOpen}
+        setEmbedModalOpen={setEmbedModalOpen}
+        embedUrl={embedUrl}
+        setEmbedUrl={setEmbedUrl}
+        onInsertEmbed={handleInsertEmbed}
+        linkModalOpen={linkModalOpen}
+        setLinkModalOpen={setLinkModalOpen}
+        linkUrl={linkUrl}
+        setLinkUrl={setLinkUrl}
+        hasActiveLink={Boolean(editor?.isActive("link"))}
+        onSaveLink={handleSaveLink}
+        onRemoveLink={handleRemoveLink}
+      />
 
-          <Select
-            label={t("targetLanguage")}
-            value={targetTranslateLocale}
-            onChange={(val) => setTargetTranslateLocale(val)}
-            options={availableLanguageOptions}
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {/* AI Translation Card */}
-            <div className="p-3.5 bg-accent/5 border border-accent/20 rounded-xl flex flex-col justify-between space-y-3">
-              <div className="space-y-1">
-                <p className="font-semibold text-accent flex items-center gap-1.5 text-xs">
-                  <Sparkles className="w-4 h-4" /> {t("translateWithAi")}
-                </p>
-                <p className="text-[11px] text-text-muted leading-relaxed">
-                  {t("translateWithAiDesc")}
-                </p>
-              </div>
-
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleAiTranslatePost}
-                loading={isTranslating}
-                icon={<Sparkles className="w-3.5 h-3.5" />}
-                className="w-full text-xs font-semibold"
-                disabled={isTranslating}
-              >
-                {isTranslating ? t("translating") : t("startTranslation")}
-              </Button>
-            </div>
-
-            {/* Manual Translation (Without AI) Card */}
-            <div className="p-3.5 bg-surface-hover/50 border border-border rounded-xl flex flex-col justify-between space-y-3">
-              <div className="space-y-1">
-                <p className="font-semibold text-text flex items-center gap-1.5 text-xs">
-                  <Globe className="w-4 h-4 text-emerald-400" /> {t("manualTranslate")}
-                </p>
-                <p className="text-[11px] text-text-muted leading-relaxed">
-                  {t("manualTranslateDesc")}
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                {initialPost?.id ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleManualTranslatePost("duplicate")}
-                    loading={isTranslating}
-                    icon={<FileText className="w-3.5 h-3.5" />}
-                    className="w-full text-xs font-medium"
-                    disabled={isTranslating}
-                  >
-                    {t("createDuplicateManual")}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleManualTranslatePost("change")}
-                  disabled={isTranslating}
-                  className="w-full text-xs text-text-muted hover:text-text"
-                >
-                  {t("changeLanguageOnly")}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => setAiTranslateModalOpen(false)} className="text-xs" disabled={isTranslating}>
-              {tc("cancel")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Embed Modal */}
-      <Modal isOpen={embedModalOpen} onClose={() => setEmbedModalOpen(false)} title={t("embedModalTitle")}>
-        <div className="space-y-4 text-xs">
-          <p className="text-text-muted">
-            {t("embedModalDesc")}
-          </p>
-
-          <Input
-            label={t("embedInputLabel")}
-            placeholder={t("embedInputPlaceholder")}
-            value={embedUrl}
-            onChange={(e) => setEmbedUrl(e.target.value)}
-            helperText={t("embedHelperText")}
-          />
-
-          <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1.5 text-text-muted">
-            <p className="font-semibold text-text">{t("supportedFormats")}</p>
-            <ul className="list-disc pl-4 space-y-1 font-mono text-[11px]">
-              <li><strong>Steam:</strong> steam:1299800 o store.steampowered.com/app/1299800/</li>
-              <li><strong>itch.io:</strong> itch:2548291 o itch.io/embed/2548291</li>
-              <li><strong>YouTube:</strong> https://www.youtube.com/watch?v=...</li>
-              <li><strong>X / Twitter:</strong> https://x.com/...</li>
-              <li><strong>Bluesky:</strong> https://bsky.app/...</li>
-              <li><strong>Iframes:</strong> &lt;iframe src=&quot;...&quot;&gt;&lt;/iframe&gt;</li>
-            </ul>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => setEmbedModalOpen(false)} className="text-xs">
-              {tc("cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleInsertEmbed}
-              disabled={!embedUrl.trim()}
-              icon={<PlaySquare className="w-4 h-4" />}
-              className="text-xs"
-            >
-              {t("insertEmbed")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Link Modal */}
-      <Modal isOpen={linkModalOpen} onClose={() => setLinkModalOpen(false)} title={t("linkModalTitle")}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSaveLink();
-          }}
-          className="space-y-4 text-xs"
-        >
-          <Input
-            label={t("linkUrlLabel")}
-            placeholder="https://example.com"
-            value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            helperText={t("linkUrlHelper")}
-            autoFocus
-          />
-
-          <div className="flex justify-between items-center pt-2 border-t border-border">
-            {editor?.isActive("link") ? (
-              <Button type="button" variant="danger" onClick={handleRemoveLink} className="text-xs">
-                {t("removeLink")}
-              </Button>
-            ) : (
-              <div />
-            )}
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" onClick={() => setLinkModalOpen(false)} className="text-xs">
-                {tc("cancel")}
-              </Button>
-              <Button type="submit" variant="primary" className="text-xs">
-                {t("saveLink")}
-              </Button>
-            </div>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Dub.co UTM Builder Modal */}
-      <Modal isOpen={dubModalOpen} onClose={() => setDubModalOpen(false)} title={t("dubModalTitle")}>
-        <div className="space-y-4 text-xs">
-          <p className="text-text-muted">
-            {t("dubModalDesc")}
-          </p>
-
-          <div className="space-y-3">
-            <Input
-              label={t("utmSourceLabel")}
-              placeholder={t("utmSourcePlaceholder")}
-              value={utmSource}
-              onChange={(e) => setUtmSource(e.target.value)}
-            />
-
-            <Input
-              label={t("utmMediumLabel")}
-              placeholder={t("utmMediumPlaceholder")}
-              value={utmMedium}
-              onChange={(e) => setUtmMedium(e.target.value)}
-            />
-
-            <Input
-              label={t("utmCampaignLabel")}
-              placeholder={t("utmCampaignPlaceholder")}
-              value={utmCampaign}
-              onChange={(e) => setUtmCampaign(e.target.value)}
-            />
-          </div>
-
-          <div className="p-3 bg-surface-hover/30 border border-border rounded-lg space-y-1 text-text-muted">
-            <p className="font-semibold text-text flex items-center gap-1.5">
-              <Share2 className="w-3.5 h-3.5 text-accent" />
-              {t("originalDestination")}
-            </p>
-            <p className="font-mono text-[11px] truncate">
-              {typeof window !== "undefined" ? window.location.origin : ""}/entry/{slug || slugify(title)}
-            </p>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => setDubModalOpen(false)} className="text-xs">
-              {tc("cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleGenerateDubLink}
-              loading={isGeneratingDub}
-              icon={<Sparkles className="w-4 h-4" />}
-              className="text-xs"
-            >
-              {t("generateWithDub")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Dub.co QR Code Modal */}
-      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title={t("qrModalTitle")}>
-        <div className="space-y-4 text-xs text-center">
-          <p className="text-text-muted">
-            {t("qrModalDesc")}
-          </p>
-
-          {qrCodeUrl && (
-            <div className="flex justify-center py-2">
-              <div className="p-3 bg-white rounded-xl shadow-xs border border-border inline-block">
-                <img src={qrCodeUrl} alt={t("qrModalTitle")} className="w-48 h-48 object-contain" />
-              </div>
-            </div>
-          )}
-
-          {shortUrl && (
-            <div className="flex items-center justify-center gap-2">
-              <span className="font-mono text-xs text-accent font-semibold">{shortUrl}</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(shortUrl);
-                  toast.success(tc("copied"));
-                }}
-                className="text-xs"
-              >
-                <Copy className="w-3.5 h-3.5 mr-1" /> {tc("copy")}
-              </Button>
-            </div>
-          )}
-
-          <div className="flex justify-end pt-2 border-t border-border">
-            <Button variant="primary" onClick={() => setQrModalOpen(false)} className="text-xs">
-              {t("close")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <ConfirmModal
+        isOpen={leaveConfirmOpen}
+        onClose={() => setLeaveConfirmOpen(false)}
+        onConfirm={() => {
+          setLeaveConfirmOpen(false);
+          router.push(backHref);
+        }}
+        title={t("unsavedChangesTitle")}
+        message={t("unsavedChangesDesc")}
+        confirmText={t("discardAndLeave")}
+        cancelText={tc("cancel")}
+        variant="warning"
+      />
     </div>
   );
 }

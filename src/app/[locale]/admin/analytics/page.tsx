@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { analytics } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
@@ -49,7 +49,7 @@ export default async function AdminAnalyticsOverviewPage({
   const { locale } = await params;
   const sp = searchParams ? await searchParams : {};
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const metrics = await getAnalyticsOverviewMetrics(site.id, sp.range, sp);

@@ -1,20 +1,21 @@
 import { getRequestConfig } from "next-intl/server";
 import { routing, type Locale } from "./routing";
 
-function deepMerge(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
-  const result: Record<string, any> = { ...target };
+type MessageDictionary = Record<string, unknown>;
+
+function isPlainObject(value: unknown): value is MessageDictionary {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepMerge(target: MessageDictionary, source: MessageDictionary): MessageDictionary {
+  const result: MessageDictionary = { ...target };
   for (const key of Object.keys(source || {})) {
-    if (
-      source[key] &&
-      typeof source[key] === "object" &&
-      !Array.isArray(source[key]) &&
-      target[key] &&
-      typeof target[key] === "object" &&
-      !Array.isArray(target[key])
-    ) {
-      result[key] = deepMerge(target[key], source[key]);
+    const sourceVal = source[key];
+    const targetVal = target[key];
+    if (isPlainObject(sourceVal) && isPlainObject(targetVal)) {
+      result[key] = deepMerge(targetVal, sourceVal);
     } else {
-      result[key] = source[key];
+      result[key] = sourceVal;
     }
   }
   return result;
@@ -31,14 +32,14 @@ export default getRequestConfig(async ({ requestLocale }) => {
     locale = routing.defaultLocale;
   }
 
-  let defaultMessages: Record<string, any> = {};
+  let defaultMessages: MessageDictionary = {};
   try {
     defaultMessages = (await import(`../../messages/en.json`)).default;
   } catch {
     defaultMessages = {};
   }
 
-  let localeMessages: Record<string, any> = {};
+  let localeMessages: MessageDictionary = {};
   if (locale !== "en") {
     try {
       localeMessages = (await import(`../../messages/${locale}.json`)).default;

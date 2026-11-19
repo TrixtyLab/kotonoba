@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { completeSetupWizard, type SetupWizardData } from "@/actions/setup";
+import type { SetupWizardData } from "@/lib/services/setup";
 import { useRouter } from "@/i18n/routing";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { SetupStepPanels } from "@/components/setup/SetupStepPanels";
 import { useTranslations, useLocale } from "next-intl";
 import {
   ShieldCheck,
@@ -16,14 +16,7 @@ import {
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
-  Sparkles,
-  User,
-  Eye,
-  EyeOff,
-  Sun,
-  Moon,
   Check,
-  Laptop
 } from "lucide-react";
 
 /**
@@ -34,7 +27,6 @@ import {
  */
 export function SetupWizardClient() {
   const t = useTranslations("setup");
-  const tc = useTranslations("common");
   const locale = useLocale();
   const router = useRouter();
 
@@ -57,15 +49,6 @@ export function SetupWizardClient() {
     categoryName: "General",
   });
 
-  const colorPresets = [
-    { hex: "#6366f1", nameKey: "colorIndigo" },
-    { hex: "#3b82f6", nameKey: "colorBlue" },
-    { hex: "#10b981", nameKey: "colorEmerald" },
-    { hex: "#8b5cf6", nameKey: "colorPurple" },
-    { hex: "#ec4899", nameKey: "colorPink" },
-    { hex: "#f59e0b", nameKey: "colorAmber" },
-  ] as const;
-
   function updateField<K extends keyof SetupWizardData>(field: K, val: SetupWizardData[K]) {
     setFormData((prev) => ({ ...prev, [field]: val }));
   }
@@ -81,8 +64,13 @@ export function SetupWizardClient() {
         setError(t("errorInvalidEmail"));
         return false;
       }
-      if (formData.adminPassword.length < 8) {
-        setError(t("errorPasswordLength"));
+      if (
+        formData.adminPassword.length < 10 ||
+        !/[A-Z]/.test(formData.adminPassword) ||
+        !/[a-z]/.test(formData.adminPassword) ||
+        !/[0-9]/.test(formData.adminPassword)
+      ) {
+        setError(`${t("errorPasswordLength")} (10+ chars, uppercase, lowercase, number)`);
         return false;
       }
     }
@@ -119,14 +107,26 @@ export function SetupWizardClient() {
   async function handleComplete() {
     if (!validateStep(4)) return;
     startTransition(async () => {
-      const res = await completeSetupWizard({
-        ...formData,
-        locale: locale || formData.locale || "es",
-      });
-      if (res.success) {
-        setStep(5);
-      } else {
-        setError(res.error || t("errorGeneric"));
+      try {
+        const response = await fetch("/api/setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...formData,
+            locale: locale || formData.locale || "es",
+          }),
+        });
+        const res = (await response.json()) as {
+          success?: boolean;
+          error?: string;
+        };
+        if (response.ok && res.success) {
+          setStep(5);
+        } else {
+          setError(res.error || t("errorGeneric"));
+        }
+      } catch {
+        setError(t("errorGeneric"));
       }
     });
   }
@@ -235,304 +235,16 @@ export function SetupWizardClient() {
 
           {/* Step Form Content */}
           <div className="min-h-[240px] flex flex-col justify-center">
-            {/* STEP 1: ADMIN ACCOUNT */}
-            {step === 1 && (
-              <div className="space-y-4 animate-fade-in">
-                <div className="border-b border-border/60 pb-2.5">
-                  <h2 className="text-sm font-bold text-text flex items-center gap-2">
-                    <User className="w-4 h-4 text-accent" />
-                    {t("step1_heading")}
-                  </h2>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {t("step1_description")}
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">{t("fullName")}</label>
-                    <Input
-                      placeholder={t("fullNamePlaceholder")}
-                      value={formData.adminName}
-                      onChange={(e) => updateField("adminName", e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">{t("email")}</label>
-                    <Input
-                      type="email"
-                      placeholder={t("emailPlaceholder")}
-                      value={formData.adminEmail}
-                      onChange={(e) => updateField("adminEmail", e.target.value)}
-                      autoComplete="email"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">
-                      {t("password")} <span className="text-text-muted font-normal">{t("passwordMinHint")}</span>
-                    </label>
-                    <div className="relative">
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        placeholder={t("passwordPlaceholder")}
-                        value={formData.adminPassword}
-                        onChange={(e) => updateField("adminPassword", e.target.value)}
-                        autoComplete="new-password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text p-1 transition-colors"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 2: BLOG SITE INFO */}
-            {step === 2 && (
-              <div className="space-y-4 animate-fade-in">
-                <div className="border-b border-border/60 pb-2.5">
-                  <h2 className="text-sm font-bold text-text flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-accent" />
-                    {t("step2_heading")}
-                  </h2>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {t("step2_description")}
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">{t("blogName")}</label>
-                    <Input
-                      placeholder={t("blogNamePlaceholder")}
-                      value={formData.siteName}
-                      onChange={(e) => updateField("siteName", e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">{t("blogSubtitle")}</label>
-                    <Input
-                      placeholder={t("blogSubtitlePlaceholder")}
-                      value={formData.siteSubtitle}
-                      onChange={(e) => updateField("siteSubtitle", e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">{t("domain")}</label>
-                    <Input
-                      placeholder={t("domainPlaceholder")}
-                      value={formData.domain}
-                      onChange={(e) => updateField("domain", e.target.value)}
-                    />
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-text-muted">
-                      <span>{t("canonicalUrl")}</span>
-                      <span className="font-mono text-accent font-semibold px-1.5 py-0.5 bg-accent/10 rounded-sm border border-accent/20">
-                        {cleanDomainPreview.includes("localhost") ? `http://${cleanDomainPreview}` : `https://${cleanDomainPreview}`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 3: VISUAL BRANDING & THEME */}
-            {step === 3 && (
-              <div className="space-y-4 animate-fade-in">
-                <div className="border-b border-border/60 pb-2.5">
-                  <h2 className="text-sm font-bold text-text flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-accent" />
-                    {t("step3_heading")}
-                  </h2>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {t("step3_description")}
-                  </p>
-                </div>
-
-                <div className="space-y-4 pt-1">
-                  {/* Color Preset Palette */}
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-2">{t("accentColor")}</label>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                      {colorPresets.map((preset) => {
-                        const isSelected = formData.primaryColor === preset.hex;
-                        return (
-                          <button
-                            key={preset.hex}
-                            type="button"
-                            onClick={() => updateField("primaryColor", preset.hex)}
-                            className={`p-2 rounded-md border flex flex-col items-center gap-1 transition-all ${
-                              isSelected
-                                ? "border-accent bg-accent/10 font-bold"
-                                : "border-border bg-surface-hover/30 hover:border-text-muted hover:bg-surface-hover"
-                            }`}
-                          >
-                            <span
-                              className="w-5 h-5 rounded-sm flex items-center justify-center text-white"
-                              style={{ backgroundColor: preset.hex }}
-                            >
-                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                            </span>
-                            <span className="text-[10px] text-text truncate">
-                              {t(preset.nameKey)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Theme Mode Selector */}
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-2">{t("defaultTheme")}</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => updateField("theme", "dark")}
-                        className={`p-3 rounded-md border flex items-center gap-3 transition-all text-left ${
-                          formData.theme === "dark"
-                            ? "border-accent bg-accent/10 text-accent font-bold"
-                            : "border-border bg-surface-hover/30 text-text-muted hover:text-text hover:border-text-muted"
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-sm bg-slate-900 border border-slate-700 flex items-center justify-center text-accent shrink-0">
-                          <Moon className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-text">{t("darkTheme")}</p>
-                          <p className="text-[10px] text-text-muted">{t("darkThemeHint")}</p>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => updateField("theme", "light")}
-                        className={`p-3 rounded-md border flex items-center gap-3 transition-all text-left ${
-                          formData.theme === "light"
-                            ? "border-accent bg-accent/10 text-accent font-bold"
-                            : "border-border bg-surface-hover/30 text-text-muted hover:text-text hover:border-text-muted"
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-sm bg-slate-100 border border-slate-300 flex items-center justify-center text-amber-500 shrink-0">
-                          <Sun className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-text">{t("lightTheme")}</p>
-                          <p className="text-[10px] text-text-muted">{t("lightThemeHint")}</p>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 4: CATEGORIES & STARTER STRUCTURE */}
-            {step === 4 && (
-              <div className="space-y-4 animate-fade-in">
-                <div className="border-b border-border/60 pb-2.5">
-                  <h2 className="text-sm font-bold text-text flex items-center gap-2">
-                    <FolderPlus className="w-4 h-4 text-accent" />
-                    {t("step4_heading")}
-                  </h2>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {t("step4_description")}
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-semibold text-text mb-1">{t("categoryName")}</label>
-                    <Input
-                      placeholder={t("categoryNamePlaceholder")}
-                      value={formData.categoryName}
-                      onChange={(e) => updateField("categoryName", e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-
-                  {/* Starter Content Preview Banner */}
-                  <div className="p-3.5 rounded-md bg-surface-hover/40 border border-border text-xs space-y-1.5">
-                    <div className="flex items-center gap-2 font-bold text-text">
-                      <Sparkles className="w-3.5 h-3.5 text-accent" />
-                      <span>{t("starterSeedTitle")}</span>
-                    </div>
-                    <p className="text-text-muted leading-relaxed text-[11px]">
-                      {t("starterSeedDescription")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 5: SUCCESS / COMPLETED */}
-            {step === 5 && (
-              <div className="space-y-5 text-center py-3 animate-fade-in">
-                <div className="w-12 h-12 bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 rounded-md flex items-center justify-center mx-auto">
-                  <Sparkles className="w-6 h-6" />
-                </div>
-
-                <div className="space-y-1 max-w-md mx-auto">
-                  <h2 className="text-lg font-bold text-text tracking-tight">
-                    {t("step5_heading")}
-                  </h2>
-                  <p className="text-xs text-text-muted leading-relaxed">
-                    {t("step5_description", { siteName: formData.siteName })}
-                  </p>
-                </div>
-
-                {/* Summary Box */}
-                <div className="p-3.5 rounded-md bg-surface-hover/30 border border-border text-xs text-left max-w-md mx-auto grid grid-cols-2 gap-2.5">
-                  <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryAdmin")}</span>
-                    <span className="font-medium text-text truncate block">{formData.adminEmail}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryDomain")}</span>
-                    <span className="font-mono text-accent font-semibold truncate block">{cleanDomainPreview}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryTheme")}</span>
-                    <span className="font-medium text-text capitalize block">{formData.theme}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryCategory")}</span>
-                    <span className="font-medium text-text block">{formData.categoryName}</span>
-                  </div>
-                </div>
-
-                {/* CTA Action Buttons */}
-                <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => router.push("/admin")}
-                    icon={<ArrowRight className="w-3.5 h-3.5" />}
-                  >
-                    {t("goToDashboard")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push("/")}
-                    icon={<Laptop className="w-3.5 h-3.5" />}
-                  >
-                    {t("viewPublicBlog")}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <SetupStepPanels
+              step={step}
+              formData={formData}
+              showPassword={showPassword}
+              onToggleShowPassword={() => setShowPassword((prev) => !prev)}
+              cleanDomainPreview={cleanDomainPreview}
+              onUpdateField={updateField}
+              onGoToDashboard={() => router.push("/admin")}
+              onViewPublicBlog={() => router.push("/")}
+            />
           </div>
 
           {/* Stepper Navigation Actions */}

@@ -6,6 +6,8 @@ import { createTag, deleteTag } from "@/actions/tags";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useToast } from "@/components/ui/Toast";
 import { Tag as TagIcon, Plus, Search } from "lucide-react";
 
@@ -80,13 +82,11 @@ export function TagsManagerClient({
 
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-text tracking-tight">{tc("tags")}</h1>
-        <p className="text-xs text-text-muted mt-0.5">
-          {t("tagsSubtitle")}
-        </p>
-      </div>
+      <AdminPageHeader
+        title={tc("tags")}
+        subtitle={t("tagsSubtitle")}
+        icon={<TagIcon className="w-5 h-5" />}
+      />
 
       {/* Create form */}
       <form onSubmit={handleCreate} className="p-4 rounded-xl bg-surface border border-border shadow-xs flex flex-col sm:flex-row gap-3 items-end">
@@ -142,9 +142,7 @@ export function TagsManagerClient({
           ))}
 
           {filteredTags.length === 0 && (
-            <p className="text-xs text-text-muted py-6 text-center w-full">
-              {t("noTags")}
-            </p>
+            <EmptyState title={t("noTags")} className="w-full p-6 border-0 bg-transparent" />
           )}
         </div>
       </div>

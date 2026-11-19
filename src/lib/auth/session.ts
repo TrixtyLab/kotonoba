@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { verifyToken, signAccessToken, getSessionDuration, type TokenPayload } from "./jwt";
 import { getDb } from "@/lib/db";
+import { isProductionEnv } from "@/lib/config/env";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -26,18 +27,19 @@ export async function getCurrentUser(): Promise<(TokenPayload & { exists: boolea
       try {
         const db = getDb();
         const user = db.select().from(users).where(eq(users.id, refreshPayload.userId)).get();
-        if (user) {
+        if (user && (refreshPayload.tokenVersion ?? 1) === user.tokenVersion) {
           const { maxAgeSeconds } = getSessionDuration();
           const newAccessToken = await signAccessToken({
             userId: user.id,
             email: user.email,
             role: user.role,
             siteId: user.siteId,
+            tokenVersion: user.tokenVersion,
           });
 
           cookieStore.set("access_token", newAccessToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
+            secure: isProductionEnv(),
             sameSite: "lax",
             path: "/",
             maxAge: maxAgeSeconds,
@@ -48,6 +50,7 @@ export async function getCurrentUser(): Promise<(TokenPayload & { exists: boolea
             email: user.email,
             role: user.role,
             siteId: user.siteId,
+            tokenVersion: user.tokenVersion,
             exists: true,
           };
         }
@@ -62,11 +65,15 @@ export async function getCurrentUser(): Promise<(TokenPayload & { exists: boolea
   const db = getDb();
   const user = db.select().from(users).where(eq(users.id, payload.userId)).get();
 
-  if (!user) return { ...payload, exists: false };
+  if (!user || (payload.tokenVersion ?? 1) !== user.tokenVersion) {
+    return { ...payload, exists: false };
+  }
 
   return {
     ...payload,
     role: user.role,
+    siteId: user.siteId,
+    tokenVersion: user.tokenVersion,
     exists: true,
   };
 }

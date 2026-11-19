@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getAllSites } from "@/actions/sites";
 import { redirect } from "@/i18n/routing";
 import { AdminClientLayout } from "@/components/admin/AdminClientLayout";
 import { getLocalizedText } from "@/lib/utils/localization";
+
+export const dynamic = "force-dynamic";
 
 /**
  * Dynamically computes metadata and platform favicon configuration for the admin panel.
@@ -49,20 +51,20 @@ export default async function AdminLayout({
 
   const allSites = await getAllSites();
 
-  // If user is super_admin or user.siteId is null/empty -> Global (access to all sites)
-  // Otherwise -> Restricted strictly to user's assigned site
-  const isGlobalUser = user.role === "super_admin" || !user.siteId;
+  // Only a super administrator has a global view. Every other role is bound
+  // to the site stored in its own account, regardless of stale cookies.
+  const isGlobalUser = user.role === "super_admin";
   const accessibleSites = isGlobalUser
     ? allSites
     : allSites.filter((s) => s.id === user.siteId);
 
-  const site = await getActiveSite();
+  const site = await getAdminSite();
 
-  // Fallback to assigned site if activeSite is not accessible to this user
+  // Never fall back to an inaccessible active site.
   const effectiveSite =
     site && accessibleSites.some((s) => s.id === site.id)
       ? site
-      : accessibleSites[0] || site;
+      : accessibleSites[0] || null;
 
   const currentSiteOption = effectiveSite
     ? {

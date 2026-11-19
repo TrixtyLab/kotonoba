@@ -28,7 +28,7 @@ ENV HOSTNAME="0.0.0.0"
 ENV DB_PATH=/app/data/kotonoba.db
 ENV UPLOAD_DIR=/app/data/uploads
 
-RUN apk add --no-cache curl wget
+RUN apk add --no-cache curl wget sqlite
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs

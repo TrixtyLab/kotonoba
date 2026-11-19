@@ -8,6 +8,7 @@ import { SearchModal, type SearchPostItem } from "@/components/blog/SearchModal"
 import { NavIcon } from "@/components/blog/NavIcon";
 import { Search, Menu, X } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
+import { sanitizeUrl, isExternalHttpUrl } from "@/lib/security/urls";
 
 /**
  * Custom navigation menu item structure supporting bilingual labels and icons.
@@ -60,7 +61,7 @@ export interface HeaderProps {
  * @param props - HeaderProps configuring site branding, navigation links, and searchable posts.
  * @returns React JSX header element.
  */
-export function Header({ site, categories = [], searchPosts = [] }: HeaderProps) {
+export function Header({ site, searchPosts = [] }: HeaderProps) {
   const t = useTranslations("blog");
   const locale = useLocale();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -97,7 +98,13 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
       try {
         const parsed = JSON.parse(site.navLinks);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          customList = parsed;
+          customList = parsed
+            .filter((item): item is CustomNavItem => Boolean(item && typeof item.url === "string"))
+            .map((item) => ({
+              ...item,
+              url: sanitizeUrl(item.url, { allowRelative: true, allowMailtoTel: true }) || "",
+            }))
+            .filter((item) => item.url.length > 0);
         }
       } catch {
         // Fall back
@@ -172,7 +179,7 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
             {/* Main Navigation: Standard Content Links */}
             <nav className={`hidden md:flex items-stretch gap-6 lg:gap-8 h-full flex-1 ${alignmentClass}`}>
               {textNavItems.map((item) => {
-                const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+                const isExternal = isExternalHttpUrl(item.url);
                 const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
                 const label = getNavItemLabel(item);
 
@@ -226,7 +233,7 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
                   <div className="hidden sm:flex items-center gap-1">
                     {socialNavItems.map((item) => {
                       const label = getNavItemLabel(item);
-                      const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+                      const isExternal = isExternalHttpUrl(item.url);
 
                       if (isExternal) {
                         return (
@@ -291,7 +298,7 @@ export function Header({ site, categories = [], searchPosts = [] }: HeaderProps)
             {/* Standard Text Navigation Items */}
             <div className="space-y-1">
               {textNavItems.map((item) => {
-                const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+                const isExternal = isExternalHttpUrl(item.url);
                 const isActive = !isExternal && (pathname === item.url || (item.url !== "/" && pathname.startsWith(item.url)));
                 const label = getNavItemLabel(item);
 

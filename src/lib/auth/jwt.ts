@@ -1,8 +1,15 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { getJwtSecretString } from "@/lib/config/secrets";
+import { getRefreshDurationEnv, getSessionDurationEnv } from "@/lib/config/env";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "dev-secret-change-me-in-production-32ch"
-);
+/**
+ * Returns the signing key derived from the validated environment secret.
+ *
+ * @returns UTF-8 encoded secret bytes.
+ */
+function getSigningKey(): Uint8Array {
+  return new TextEncoder().encode(getJwtSecretString());
+}
 
 /**
  * Standard JWT session payload representing an authenticated user identity and scope.
@@ -16,6 +23,8 @@ export interface TokenPayload extends JWTPayload {
   role: string;
   /** Associated site identifier for tenancy scoping, or null if globally scoped. */
   siteId: string | null;
+  /** Monotonic user token version checked against the database to revoke stale sessions. */
+  tokenVersion?: number;
 }
 
 /**
@@ -25,7 +34,7 @@ export interface TokenPayload extends JWTPayload {
  * @param duration - A duration string such as '30d', '24h', '60m', '3600s'.
  * @returns Total duration in seconds, defaulting to 30 days (2592000s) on invalid formats.
  */
-export function parseDurationToSeconds(duration: string): number {
+function parseDurationToSeconds(duration: string): number {
   if (!duration) return 60 * 60 * 24 * 30;
   const trimmed = duration.trim();
   const match = trimmed.match(/^(\d+)([smhdwy]?)$/i);
@@ -58,7 +67,7 @@ export function parseDurationToSeconds(duration: string): number {
  * @returns An object containing the duration string expression and computed seconds.
  */
 export function getSessionDuration(): { expiresIn: string; maxAgeSeconds: number } {
-  const expiresIn = process.env.SESSION_DURATION || process.env.JWT_EXPIRES_IN || "30d";
+  const expiresIn = getSessionDurationEnv();
   const maxAgeSeconds = parseDurationToSeconds(expiresIn);
   return { expiresIn, maxAgeSeconds };
 }
@@ -69,7 +78,7 @@ export function getSessionDuration(): { expiresIn: string; maxAgeSeconds: number
  * @returns An object containing the duration string expression and computed seconds.
  */
 export function getRefreshDuration(): { expiresIn: string; maxAgeSeconds: number } {
-  const expiresIn = process.env.REFRESH_DURATION || process.env.REFRESH_EXPIRES_IN || "90d";
+  const expiresIn = getRefreshDurationEnv();
   const maxAgeSeconds = parseDurationToSeconds(expiresIn);
   return { expiresIn, maxAgeSeconds };
 }
@@ -90,7 +99,7 @@ export async function signAccessToken(
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(expiresInOverride || expiresIn)
-    .sign(JWT_SECRET);
+    .sign(getSigningKey());
 }
 
 /**
@@ -102,14 +111,15 @@ export async function signAccessToken(
  */
 export async function signRefreshToken(
   userId: string,
+  tokenVersion: number = 1,
   expiresInOverride?: string
 ): Promise<string> {
   const { expiresIn } = getRefreshDuration();
-  return new SignJWT({ userId })
+  return new SignJWT({ userId, tokenVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(expiresInOverride || expiresIn)
-    .sign(JWT_SECRET);
+    .sign(getSigningKey());
 }
 
 /**
@@ -120,7 +130,7 @@ export async function signRefreshToken(
  */
 export async function verifyToken(token: string): Promise<TokenPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getSigningKey());
     return payload as TokenPayload;
   } catch {
     return null;

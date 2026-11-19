@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { posts, sites, settings } from "@/lib/db/schema";
+import { posts, settings } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
-import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
+import { getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getCanonicalBaseUrl } from "@/lib/tenant";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { normalizeMediaUrl, resolveAbsoluteUrl } from "@/lib/storage";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { sanitizeRichHtml } from "@/lib/security/sanitize";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Wraps arbitrary text in a CDATA section, escaping embedded terminators.
+ *
+ * @param value - Raw text to embed.
+ * @returns Text safe to place inside `<![CDATA[ ... ]]>`.
+ */
+function safeCdata(value: string): string {
+  return value.replace(/]]>/g, "]]]]><![CDATA[>");
+}
 
 /**
  * Escapes XML special characters within string literals.
@@ -28,7 +41,7 @@ function escapeXml(str: string): string {
  * @returns {Promise<NextResponse>} Promise resolving to an XML formatted NextResponse stream.
  */
 export async function GET(): Promise<NextResponse> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
 
   if (!site) {
     return new NextResponse("Blog site not found", { status: 404 });
@@ -54,7 +67,6 @@ export async function GET(): Promise<NextResponse> {
   const includeFullContent = configMap.rss_full_content !== "false";
 
   const baseUrl = await getCanonicalBaseUrl(site);
-  await publishScheduledPosts(site.id);
 
   const publishedPosts = db
     .select()
@@ -78,16 +90,16 @@ export async function GET(): Promise<NextResponse> {
         : new Date(post.createdAt).toUTCString();
       const coverUrl = resolveAbsoluteUrl(post.coverImage, baseUrl);
       const content = includeFullContent
-        ? post.contentHtml || post.contentMd || post.excerpt || ""
+        ? sanitizeRichHtml(post.contentHtml || post.contentMd || post.excerpt || "")
         : post.excerpt || "";
 
       return `    <item>
-      <title><![CDATA[${post.title}]]></title>
+      <title><![CDATA[${safeCdata(post.title)}]]></title>
       <link>${escapeXml(postUrl)}</link>
       <guid isPermaLink="true">${escapeXml(postUrl)}</guid>
       <pubDate>${pubDate}</pubDate>
-      <description><![CDATA[${post.excerpt || ""}]]></description>
-      <content:encoded><![CDATA[${content}]]></content:encoded>
+      <description><![CDATA[${safeCdata(post.excerpt || "")}]]></description>
+      <content:encoded><![CDATA[${safeCdata(content)}]]></content:encoded>
       ${coverUrl ? `<enclosure url="${escapeXml(coverUrl)}" type="image/jpeg" length="0"/>` : ""}
     </item>`;
     })
@@ -102,9 +114,9 @@ export async function GET(): Promise<NextResponse> {
   xmlns:content="http://purl.org/rss/1.0/modules/content/" 
   xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title><![CDATA[${channelTitle}]]></title>
+    <title><![CDATA[${safeCdata(channelTitle)}]]></title>
     <link>${escapeXml(baseUrl)}</link>
-    <description><![CDATA[${channelDesc}]]></description>
+    <description><![CDATA[${safeCdata(channelDesc)}]]></description>
     <language>${escapeXml(siteLocale)}</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
     <atom:link href="${escapeXml(`${baseUrl}/feed.xml`)}" rel="self" type="application/rss+xml"/>

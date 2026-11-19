@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getSiteSettings } from "@/actions/settings";
 import { notFound } from "next/navigation";
 import { IntegrationsSettingsClient } from "@/components/admin/settings/IntegrationsSettingsClient";
@@ -15,7 +15,7 @@ export default async function IntegrationsSettingsPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const settingsMap = await getSiteSettings(site.id);

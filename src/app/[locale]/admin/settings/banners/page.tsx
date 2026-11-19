@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { getSiteBanners } from "@/lib/banners";
 import { BannersSettingsClient } from "@/components/admin/settings/BannersSettingsClient";
@@ -9,7 +9,7 @@ import { BannersSettingsClient } from "@/components/admin/settings/BannersSettin
  * @returns {Promise<React.JSX.Element>} React JSX banner settings view.
  */
 export default async function BannersSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const banners = await getSiteBanners(site.id);

@@ -112,8 +112,10 @@ export async function getSiteBanners(siteId: string): Promise<SiteBannersConfig>
       map.set(s.key, s.value);
     }
 
-    const defaultImage = map.get("header_banner_image")?.trim() || null;
-    const defaultLink = map.get("header_banner_link")?.trim() || null;
+    const { sanitizeUrl } = await import("@/lib/security/sanitize");
+
+    const defaultImage = sanitizeUrl(map.get("header_banner_image"), { allowRelative: true });
+    const defaultLink = sanitizeUrl(map.get("header_banner_link"), { allowRelative: true });
     const defaultTarget = (map.get("header_banner_target") === "_self" ? "_self" : "_blank") as "_blank" | "_self";
     const defaultAlt = map.get("header_banner_alt")?.trim() || "";
 
@@ -127,8 +129,8 @@ export async function getSiteBanners(siteId: string): Promise<SiteBannersConfig>
       : null;
 
     const scheduleEnabled = map.get("header_banner_schedule_enabled") === "true";
-    const scheduledImage = map.get("header_banner_scheduled_image")?.trim() || null;
-    const scheduledLink = map.get("header_banner_scheduled_link")?.trim() || null;
+    const scheduledImage = sanitizeUrl(map.get("header_banner_scheduled_image"), { allowRelative: true });
+    const scheduledLink = sanitizeUrl(map.get("header_banner_scheduled_link"), { allowRelative: true });
     const scheduledTarget = (map.get("header_banner_scheduled_target") === "_self" ? "_self" : "_blank") as "_blank" | "_self";
     const scheduledAlt = map.get("header_banner_scheduled_alt")?.trim() || "";
     const startDate = map.get("header_banner_start_date")?.trim() || null;
@@ -160,7 +162,14 @@ export async function getSiteBanners(siteId: string): Promise<SiteBannersConfig>
       try {
         const parsed = JSON.parse(rawSidebar);
         if (Array.isArray(parsed)) {
-          sidebarBanners = parsed.filter((b) => b && typeof b.imageUrl === "string" && b.imageUrl.trim().length > 0);
+          sidebarBanners = parsed
+            .filter((b): b is SidebarBannerItem => Boolean(b && typeof b.imageUrl === "string"))
+            .map((b) => ({
+              ...b,
+              imageUrl: sanitizeUrl(b.imageUrl, { allowRelative: true }) || "",
+              linkUrl: sanitizeUrl(b.linkUrl, { allowRelative: true }) || "",
+            }))
+            .filter((b) => b.imageUrl.length > 0);
         }
       } catch {
         sidebarBanners = [];

@@ -25,12 +25,12 @@
 
 ### 🏢 Multi-Tenant Architecture & Domain Isolation
 - **Multiple Blogs on a Single Instance:** Host and govern multiple isolated blog sites with independent categories, tags, posts, branding, and navigation.
-- **Custom Domain & Subdomain Routing:** Native hostname resolution via [`src/lib/tenant.ts`](file:///e:/proyects/blog-cms/src/lib/tenant.ts), mapping incoming requests (e.g. `blog.mycompany.com`, `tech.domain.org`, `localhost:3000`) directly to their corresponding site records.
+- **Custom Domain & Subdomain Routing:** Native hostname resolution via [`src/lib/tenant.ts`](src/lib/tenant.ts), mapping incoming requests (e.g. `blog.mycompany.com`, `tech.domain.org`, `localhost:3000`) directly to their corresponding site records.
 - **Dashboard & Root Domain Redirection (`ADMIN_DOMAIN`):** If a user visits an unassigned domain or a designated dashboard domain (e.g. `blog-dashboard.example.com` or root domain), any request to public blog paths is automatically redirected to `/[locale]/admin`, ensuring blog content is only displayed on assigned blog domains (`blog.example.com`).
 - **Instant Workspace Switcher:** Switch between tenant blogs seamlessly within the administrative navigation bar and sidebar.
 
 ### ✍️ Rich WYSIWYG & Markdown Editor
-- **TipTap v2 Engine:** Full WYSIWYG authoring with bold, italic, strikethrough, inline code, headings (H1–H3), blockquotes, lists, and horizontal dividers.
+- **TipTap v3 Engine:** Full WYSIWYG authoring with bold, italic, strikethrough, inline code, headings (H1–H3), blockquotes, lists, and horizontal dividers.
 - **Live Mermaid Diagrams:** Write ` ```mermaid ` code blocks with instant graphical diagram rendering in both the editor preview and public article reader.
 - **Rich Media & Gaming Embeds:** Automatic parsing and responsive widget embedding for **Steam Games** (App ID, store URL, or iframe), **itch.io Games** (Game ID, embed URL, or iframe), YouTube, X (Twitter), Bluesky, Vimeo, and direct video files using simple `@[steam](id)`, `@[itch](id)` or `@[embed](url)` tags.
 - **Bidirectional Markdown Sync:** Full HTML to Markdown and Markdown to HTML conversion with live word count and reading time estimations.
@@ -76,18 +76,18 @@
 - **Dual-Mode Storage Backend:**
   - **Local Filesystem:** Stored persistently on disk at `UPLOAD_DIR` (`/app/data/uploads`).
   - **Cloudflare R2 & AWS S3:** High-performance object storage with full support for **private buckets**.
-- **Presigned Access Grants (`@aws-sdk/s3-request-presigner`):** Generates secure, cryptographic 24-hour access grants for private bucket objects without requiring public read permissions.
-- **Internal Streaming Proxy:** Media served via `/api/uploads/[...path]` streams securely from private buckets or disk with immutable cache headers (`Cache-Control: public, max-age=31536000, immutable`).
+- **Presigned Access Grants (`@aws-sdk/s3-request-presigner`):** Generates secure, cryptographic 1-hour access grants for private bucket objects without requiring public read permissions.
+- **Internal Streaming Proxy:** Media served via `/api/uploads/[...path]` streams securely from tenant-scoped storage (`sites/<siteId>/...`) or private buckets with immutable cache headers (`Cache-Control: public, max-age=31536000, immutable`).
 - **Interactive Media Manager (`/admin/media`):**
   - Live storage provider detection with active bucket and privacy status badge.
   - Hierarchical folder navigation with subfolder creation.
-  - Drag-and-drop file uploader with mime validation (JPEG, PNG, WebP, GIF, SVG).
+  - Drag-and-drop file uploader with magic-byte validation (`JPEG`, `PNG`, `WebP`, `GIF`).
   - Move files between directories, search assets, and delete files.
   - Integrated **Media Picker Modal** accessible directly from the post editor and branding settings.
 
 ### 🌐 Internationalization & Localization (i18n)
-- **Built with `next-intl`:** Route-based language prefixing (`/es/`, `/en/`) with automatic fallback.
-- **Multilingual Content:** Articles and site settings support localized titles, descriptions, categories, tags, and custom navigation link labels.
+- **Built with `next-intl`:** Supported interface and content locales: **`en`** (English) and **`es`** (Español) with route-based prefixing (`/en/`, `/es/`).
+- **Multilingual Metadata:** Site names, subtitles, and custom navigation labels support English & Spanish translations.
 - **Localized Date Formatting:** Formats publication timestamps according to the active locale using native `Intl.DateTimeFormat`.
 - **Locale Switcher & Language Selector:** Seamless UI switcher in public blog headers and administrative bars.
 
@@ -103,22 +103,22 @@
 
 ### 🛡️ Enterprise-Grade Security
 - **Argon2id Password Hashing:** Industry-standard memory-hard password hashing for user credentials.
-- **Stateless JWT Sessions:** Signed with `jose` using HS256 and stored in secure, `httpOnly`, `sameSite=lax` cookies.
-- **AES-256-GCM Database Encryption:** Sensitive site settings (AI keys, storage secrets, endpoints) are encrypted at rest using AES-256-GCM.
-- **Sliding-Window Rate Limiting:** In-memory sliding window limiter protecting authentication endpoints and analytics ingestion beacons.
-- **Security Headers:** Strict Content Security Policy (CSP), HSTS, X-Content-Type-Options, X-Frame-Options, and Referrer-Policy headers.
-- **First-Run Guard:** Automated 5-step onboarding wizard (`/setup`) that self-locks once an administrator account is registered.
+- **Stateless JWT Sessions with Revocation:** Signed with `jose` using HS256 in `httpOnly`, `sameSite=lax` cookies with per-user `tokenVersion` invalidation on role/site/password changes.
+- **AES-256-GCM Credentials Encryption:** Third-party integration secrets (AI keys, Discord webhooks, Bluesky App Passwords, S3 secret keys) are encrypted at rest with a dedicated `ENCRYPTION_KEY` (`ENCRYPTION_KEY_ID`).
+- **SSRF & XSS Hardening:** Outbound webhook/AI URLs enforce DNS + private IP blocking, and stored HTML/CSS/nav URLs are sanitized via `sanitize-html` & strict URL allowlists.
+- **Security Headers & CSP:** Per-request nonce Content Security Policy (`CSP_MODE=report-only|enforce`), HSTS, X-Content-Type-Options, X-Frame-Options, and Referrer-Policy headers.
+- **First-Run Guard:** Atomic setup wizard (`/setup`) enforcing strong passwords and self-locking once an administrator account is registered.
 
-### 💾 Backup & Disaster Recovery
-- **One-Click Site Backup (`/api/backup/export`):** Streams a compressed ZIP archive containing all database tables (JSON format), uploaded media files, and manifest metadata.
-- **ZIP Restoration Wizard (`/api/backup/import`):** Upload a backup ZIP to restore database entities and media in either **Merge** (non-destructive) or **Replace** mode.
-- **Online CLI Backup Script:** [`scripts/backup.sh`](file:///e:/proyects/blog-cms/scripts/backup.sh) captures atomic SQLite snapshots with gzip compression and automated 30-day retention cleanup.
+### 💾 Encrypted Backup & Disaster Recovery
+- **Encrypted Site Export (`/api/backup/export`):** Downloads an AES-256-GCM encrypted `.kotonoba-backup` archive (`BACKUP_ENCRYPTION_KEY`) bundling tenant database records, checksum manifest, and tenant-scoped media files.
+- **Safe Restoration Wizard (`/api/backup/import`):** Transactional restore in **Merge** or **Replace** mode with automatic pre-replace snapshots, zip-bomb/traversal limits, and content sanitization.
+- **Online CLI Backup Script:** [`scripts/backup.sh`](scripts/backup.sh) captures atomic SQLite snapshots (supporting `DB_PATH` and optional `BACKUP_ENCRYPTION_KEY` encryption) with 30-day retention.
 
 ---
 
 ## ⚙️ Environment Variables Reference
 
-Kotonoba can be configured via environment variables or directly through the Web UI (`/admin/settings/*`).
+Kotonoba can be configured via environment variables or directly through the Web UI (`/admin/settings/*`). See [`.env.example`](.env.example) for a complete template.
 
 | Variable | Type | Default in Container | Required? | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -127,12 +127,19 @@ Kotonoba can be configured via environment variables or directly through the Web
 | `HOSTNAME` | `string` | `0.0.0.0` | No | Network interface binding address. |
 | `SITE_URL` | `string` | `http://localhost:3000` | No | Fallback canonical URL for sitemaps, robots, and OpenGraph when domain is unspecified. |
 | `ADMIN_DOMAIN` | `string` | `""` | No | Optional dashboard/root domain (e.g. `blog-dashboard.example.com`). Redirects public paths to `/admin`. |
-| `JWT_SECRET` | `string` | *(Required)* | **Yes (Prod)** | 32+ character random secret key for signing JWT tokens and encrypting credentials (AES-256). |
+| `CSP_MODE` | `string` | `report-only` | No | CSP enforcement mode (`report-only` or `enforce`). |
+| `TRUSTED_PROXY_IPS` | `string` | `""` | No | Comma-separated reverse-proxy IPs/CIDRs trusted for `X-Forwarded-For` / `X-Forwarded-Host`. |
+| `JWT_SECRET` | `string` | *(Required)* | **Yes (Prod)** | 32+ character random secret key for signing session JWTs. |
+| `ENCRYPTION_KEY` | `string` | *(Required)* | **Yes (Prod)** | Dedicated 32+ character secret (distinct from `JWT_SECRET`) encrypting stored third-party secrets. |
+| `ENCRYPTION_KEY_ID` | `string` | `k1` | No | Key identifier stamped onto encrypted payloads (`v2:<keyId>:...`). |
+| `BACKUP_ENCRYPTION_KEY` | `string` | *(Required)* | **Yes (Backups)** | 32-byte key (64 hex chars or base64) used for AES-256-GCM `.kotonoba-backup` archives. |
+| `CRON_SECRET` | `string` | `""` | Recommended | Bearer token required by `POST /api/cron/publish` for scheduled post publishing & retries. |
 | `SESSION_DURATION` | `string` | `30d` | No | Access token expiration duration (e.g. `30d`, `7d`, `24h`). Alias: `JWT_EXPIRES_IN`. |
 | `REFRESH_DURATION` | `string` | `90d` | No | Refresh token expiration duration. Alias: `REFRESH_EXPIRES_IN`. |
 | `DB_PATH` | `string` | `/app/data/kotonoba.db` | No | Absolute or relative filesystem path to the SQLite database file. |
 | `UPLOAD_DIR` | `string` | `/app/data/uploads` | No | Local directory for uploaded media and images. |
 | `MAX_UPLOAD_SIZE` | `number` | `10485760` (10MB) | No | Maximum allowed upload file size in bytes. |
+| `MAX_BACKUP_SIZE` | `number` | `104857600` (100MB) | No | Maximum uploaded backup archive size in bytes. |
 | `DUB_API_KEY` | `string` | `""` | No | Dub.co API Key for branded short link generation. |
 | `DUB_DOMAIN` | `string` | `dub.sh` | No | Short link domain registered on Dub.co. |
 | `R2_ACCOUNT_ID` | `string` | `""` | No | Cloudflare Account ID for Cloudflare R2 object storage. |
@@ -166,6 +173,9 @@ services:
       - PORT=3000
       - SITE_URL=https://myblog.com
       - JWT_SECRET=your_super_secret_random_32_character_string_here
+      - ENCRYPTION_KEY=your_dedicated_32_character_encryption_key_here
+      - BACKUP_ENCRYPTION_KEY=your_64_hex_char_or_base64_32_byte_backup_key
+      - CRON_SECRET=your_random_cron_bearer_secret
     volumes:
       - kotonoba_data:/app/data
 

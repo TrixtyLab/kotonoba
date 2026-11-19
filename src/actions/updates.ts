@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import packageJson from "../../package.json";
+import { getAppVersionEnv } from "@/lib/config/env";
 
 /**
  * Information regarding the current installation status and remote GitHub releases for Kotonoba.
@@ -24,8 +25,9 @@ export interface UpdateInfo {
  * @returns {string} The active SemVer version string.
  */
 export async function getCurrentVersion(): Promise<string> {
-  if (process.env.APP_VERSION) {
-    return process.env.APP_VERSION.trim();
+  const envVersion = getAppVersionEnv();
+  if (envVersion) {
+    return envVersion;
   }
   try {
     const pkgPath = path.resolve(process.cwd(), "package.json");

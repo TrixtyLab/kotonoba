@@ -2,23 +2,40 @@ import { MetadataRoute } from "next";
 import { getDb } from "@/lib/db";
 import { posts, pages, categories } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition, getPublicPageCondition } from "@/lib/db/scheduled";
-import { LOCALES } from "@/i18n/routing";
-import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
+import { getPublicPostCondition, getPublicPageCondition } from "@/lib/db/scheduled";
+import { LOCALES, normalizeLocale, type Locale } from "@/i18n/locales";
+import { getPublicSite, getCanonicalBaseUrl } from "@/lib/tenant";
+
+export const dynamic = "force-dynamic";
+
+function resolveSiteEnabledLocales(rawSupported?: string | null, fallbackLocale?: string | null): Locale[] {
+  const defaultLoc = normalizeLocale(fallbackLocale);
+  if (rawSupported) {
+    try {
+      const parsed = JSON.parse(rawSupported);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter((loc): loc is Locale =>
+          (LOCALES as readonly string[]).includes(loc)
+        );
+        if (clean.length > 0) return Array.from(new Set(clean));
+      }
+    } catch {}
+  }
+  return [defaultLoc];
+}
 
 /**
- * Generates dynamic XML sitemaps with multi-language hreflang alternates, change frequencies, and priority weights.
+ * Generates dynamic XML sitemaps using accurate locale-specific alternates for monolingual
+ * articles/pages and configured site languages for root and category archives.
  *
  * @returns Array of sitemap entries with URLs and timestamps.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const baseUrl = await getCanonicalBaseUrl(site);
+  const siteLocales = resolveSiteEnabledLocales(site?.supportedLocales, site?.locale);
 
   const db = getDb();
-  if (site) {
-    await publishScheduledPosts(site.id);
-  }
 
   const publishedPosts = site
     ? db
@@ -38,11 +55,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ? db
         .select({
           slug: pages.slug,
+          locale: pages.locale,
           updatedAt: pages.updatedAt,
         })
         .from(pages)
         .where(and(eq(pages.siteId, site.id), getPublicPageCondition()))
-        .orderBy(desc(pages.updatedAt))
+        .orderBy(desc(pages.publishedAt))
         .limit(1000)
         .all()
     : [];
@@ -61,55 +79,57 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: "daily",
       priority: 1.0,
-      alternates: {
-        languages: Object.fromEntries(
-          LOCALES.map((l) => [l, l === "en" ? baseUrl : `${baseUrl}/${l}`])
-        ),
-      },
+      ...(siteLocales.length > 1
+        ? {
+            alternates: {
+              languages: Object.fromEntries(
+                siteLocales.map((l) => [l, l === "en" ? baseUrl : `${baseUrl}/${l}`])
+              ),
+            },
+          }
+        : {}),
     },
     ...allCategories.map((c) => ({
       url: `${baseUrl}/category/${c.slug}`,
       lastModified: new Date(),
       changeFrequency: "weekly" as const,
       priority: 0.7,
-      alternates: {
-        languages: Object.fromEntries(
-          LOCALES.map((l) => [
-            l,
-            l === "en" ? `${baseUrl}/category/${c.slug}` : `${baseUrl}/${l}/category/${c.slug}`,
-          ])
-        ),
-      },
+      ...(siteLocales.length > 1
+        ? {
+            alternates: {
+              languages: Object.fromEntries(
+                siteLocales.map((l) => [
+                  l,
+                  l === "en" ? `${baseUrl}/category/${c.slug}` : `${baseUrl}/${l}/category/${c.slug}`,
+                ])
+              ),
+            },
+          }
+        : {}),
     })),
-    ...publishedPages.map((p) => ({
-      url: `${baseUrl}/p/${p.slug}`,
-      lastModified: p.updatedAt,
-      changeFrequency: "monthly" as const,
-      priority: 0.8,
-      alternates: {
-        languages: Object.fromEntries(
-          LOCALES.map((l) => [
-            l,
-            l === "en" ? `${baseUrl}/p/${p.slug}` : `${baseUrl}/${l}/p/${p.slug}`,
-          ])
-        ),
-      },
-    })),
+    ...publishedPages.map((p) => {
+      const pageLocale = normalizeLocale(p.locale);
+      const pageUrl = pageLocale === "en" ? `${baseUrl}/p/${p.slug}` : `${baseUrl}/${pageLocale}/p/${p.slug}`;
+      return {
+        url: pageUrl,
+        lastModified: p.updatedAt,
+        changeFrequency: "monthly" as const,
+        priority: 0.8,
+        alternates: {
+          languages: { [pageLocale]: pageUrl },
+        },
+      };
+    }),
     ...publishedPosts.map((p) => {
-      const isDefaultLocale = !p.locale || p.locale === "en";
-      const postUrl = isDefaultLocale ? `${baseUrl}/entry/${p.slug}` : `${baseUrl}/${p.locale}/entry/${p.slug}`;
+      const postLocale = normalizeLocale(p.locale);
+      const postUrl = postLocale === "en" ? `${baseUrl}/entry/${p.slug}` : `${baseUrl}/${postLocale}/entry/${p.slug}`;
       return {
         url: postUrl,
         lastModified: p.updatedAt,
         changeFrequency: "weekly" as const,
         priority: 0.9,
         alternates: {
-          languages: Object.fromEntries(
-            LOCALES.map((l) => [
-              l,
-              l === "en" ? `${baseUrl}/entry/${p.slug}` : `${baseUrl}/${l}/entry/${p.slug}`,
-            ])
-          ),
+          languages: { [postLocale]: postUrl },
         },
       };
     }),

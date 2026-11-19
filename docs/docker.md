@@ -76,7 +76,7 @@ For zero-downtime updates with automated health validation and instant rollback:
 ### Initial Production Boot
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d nginx app-blue
+docker compose -f docker-compose.prod.yml up -d nginx app-blue scheduler
 ```
 
 ### Deploying Updates
@@ -103,7 +103,15 @@ chmod +x scripts/deploy.sh
 | :--- | :--- | :--- |
 | `DB_PATH` | `/app/data/kotonoba.db` | Absolute path to SQLite database file |
 | `UPLOAD_DIR` | `/app/data/uploads` | Directory for image and media uploads |
-| `JWT_SECRET` | *(Required)* | 32+ character secret for signing auth tokens & encryption |
+| `JWT_SECRET` | *(Required)* | 32+ character secret strictly for signing session JWTs |
+| `ENCRYPTION_KEY` | *(Required)* | Dedicated 32+ character key for encrypting stored third-party secrets |
+| `ENCRYPTION_KEY_ID` | `k1` | Key identifier stamped onto encrypted payloads (`v2:<keyId>:...`) |
+| `BACKUP_ENCRYPTION_KEY` | *(Required)* | 32-byte key (64 hex chars or base64) encrypting backups and host snapshots |
+| `CRON_SECRET` | `""` | Bearer token required by `POST /api/cron/publish` |
+| `CSP_MODE` | `report-only` | Content Security Policy mode (`report-only` or `enforce`) |
+| `TRUSTED_PROXY_IPS` | `""` | Comma-separated reverse-proxy IPs/CIDRs trusted for forwarded headers |
+| `MAX_SITE_STORAGE_BYTES` | `524288000` | Per-tenant upload quota in bytes (default 500 MB; `0` disables) |
+| `ANALYTICS_RETENTION_DAYS` | `365` | Raw hit retention window before daily rollup pruning (`0` disables) |
 | `SITE_URL` | `http://localhost:3000` | Canonical URL for sitemaps and OpenGraph |
 | `ADMIN_DOMAIN` | `""` | Optional dashboard domain (e.g. `blog-dashboard.example.com`) |
 | `NODE_ENV` | `production` | Node execution environment |
@@ -117,6 +125,7 @@ chmod +x scripts/deploy.sh
 
 > [!NOTE]
 > Storage and AI configurations can also be configured directly via the **Admin Settings UI** (`/admin/settings/*`) and are stored securely in SQLite with AES-256 encryption.
+> For production HTTPS deployments, replace `./nginx/nginx.conf` in [`docker-compose.prod.yml`](../docker-compose.prod.yml) with [`nginx/nginx.tls.conf`](../nginx/nginx.tls.conf) and mount your TLS certificate chain under `/etc/nginx/certs/`.
 
 ---
 
@@ -127,16 +136,16 @@ All database records, site configurations, and uploaded media reside in the shar
 - `/app/data/kotonoba.db`: SQLite database in WAL (Write-Ahead Logging) mode.
 - `/app/data/uploads/`: Uploaded images and media.
 
-### Online Atomic Backup
+### Online Atomic Encrypted Backup & Restore
 
-Execute an online snapshot without locking readers:
+Execute an online snapshot verified via `PRAGMA integrity_check` without locking readers:
 
 ```bash
-chmod +x scripts/backup.sh
-./scripts/backup.sh
+chmod +x scripts/backup.sh scripts/restore.sh
+BACKUP_ENCRYPTION_KEY=your-backup-key ./scripts/backup.sh
 ```
 
-Backups are saved to `./backups/blog_backup_YYYYMMDD_HHMMSS.db.gz` and automatically rotated with a 30-day retention window.
+Backups are encrypted as `./backups/blog_backup_YYYYMMDD_HHMMSS.db.gz.enc` alongside a `.sha256` checksum and rotated with a 30-day retention window (`RETENTION_DAYS`). See [`docs/runbook.md`](./runbook.md) for restoration via `scripts/restore.sh` and legacy media tenant migration (`scripts/migrate-media-tenants.mjs`).
 
 ---
 

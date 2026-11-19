@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
-import { Archive, Download, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Archive, Download, Upload } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 
 /**
@@ -48,11 +48,16 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
         throw new Error(data.error || "Export failed");
       }
 
+      const contentDisposition = res.headers.get("content-disposition") || "";
+      const filenameMatch = contentDisposition.match(/filename="([^"]+)"/i);
+      const downloadFilename =
+        filenameMatch?.[1] || `kotonoba-backup-${new Date().toISOString().slice(0, 10)}.kotonoba-backup`;
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `kotonoba-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = downloadFilename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -178,7 +183,7 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".zip"
+            accept=".kotonoba-backup,.zip"
             onChange={handleFileSelected}
             className="hidden"
           />

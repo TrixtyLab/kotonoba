@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { getActiveSite, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
-import { getCategories } from "@/actions/categories";
+import { getPublicSite, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
+import { getPublicCategories } from "@/actions/categories";
 import { getDb } from "@/lib/db";
 import { posts, settings } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicPostCondition } from "@/lib/db/scheduled";
 import { Header } from "@/components/blog/Header";
 import { HeaderBanner } from "@/components/blog/HeaderBanner";
 import { Footer } from "@/components/blog/Footer";
@@ -14,8 +14,11 @@ import { redirect } from "@/i18n/routing";
 import { headers } from "next/headers";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { getSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
+import { getAdminDomainEnv, getDefaultSiteUrl } from "@/lib/config/env";
+import { getRequestHost } from "@/lib/http/request";
+import { normalizeMediaUrl } from "@/lib/utils/media";
 
-import { normalizeMediaUrl } from "@/lib/storage";
+export const dynamic = "force-dynamic";
 
 /**
  * Dynamically computes metadata, robots directives, and favicon links for the public blog.
@@ -23,8 +26,8 @@ import { normalizeMediaUrl } from "@/lib/storage";
  * @returns {Promise<Metadata>} Metadata configuration object with resolved assets and social tags.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
-  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const site = await getPublicSite();
+  const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const defaultFavicon = "/icon.svg";
   const rawFavicon = site?.faviconUrl || defaultFavicon;
   const favicon = normalizeMediaUrl(rawFavicon) || defaultFavicon;
@@ -93,10 +96,7 @@ export default async function BlogLayout({
 
   // Verify incoming host domain matching
   const headersList = await headers();
-  const rawHost =
-    headersList.get("x-forwarded-host")?.split(",")[0].trim() ||
-    headersList.get("host")?.split(",")[0].trim() ||
-    "localhost:3000";
+  const rawHost = getRequestHost(headersList);
   const cleanHost = normalizeDomain(rawHost);
   const isLocal =
     cleanHost === "localhost" ||
@@ -105,9 +105,8 @@ export default async function BlogLayout({
     cleanHost.endsWith(".localhost");
 
   const siteForHost = await getSiteForHost();
-  const adminDomain = process.env.ADMIN_DOMAIN
-    ? normalizeDomain(process.env.ADMIN_DOMAIN)
-    : null;
+  const rawAdminDomain = getAdminDomainEnv();
+  const adminDomain = rawAdminDomain ? normalizeDomain(rawAdminDomain) : null;
 
   // If visiting the designated dashboard domain or a non-blog host in production, redirect to /admin
   const isExplicitAdminDomain = Boolean(adminDomain && cleanHost === adminDomain);
@@ -117,7 +116,7 @@ export default async function BlogLayout({
     redirect({ href: "/admin", locale });
   }
 
-  const site = siteForHost || (isLocal ? await getActiveSite() : null);
+  const site = siteForHost || (isLocal ? await getPublicSite() : null);
   const siteData = site || {
     id: "default",
     name: "Kotonoba",
@@ -128,12 +127,9 @@ export default async function BlogLayout({
     supportedLocales: '["en"]',
   };
 
-  const categories = site ? await getCategories(site.id) : [];
+  const categories = site ? await getPublicCategories(site.id) : [];
 
   const db = getDb();
-  if (site) {
-    await publishScheduledPosts(site.id);
-  }
 
   const searchPosts = site
     ? db
@@ -145,6 +141,7 @@ export default async function BlogLayout({
         })
         .from(posts)
         .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
+        .limit(20)
         .all()
     : [];
 

@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getAllSites } from "@/actions/sites";
 import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "@/i18n/routing";
@@ -29,7 +29,7 @@ export default async function AdminSitesPage({
     return null;
   }
 
-  const currentSite = await getActiveSite();
+  const currentSite = await getAdminSite();
   if (!currentSite) notFound();
 
   const allSites = await getAllSites();

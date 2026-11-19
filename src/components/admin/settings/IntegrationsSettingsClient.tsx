@@ -65,9 +65,9 @@ export function IntegrationsSettingsClient({
   const [discordEnabled, setDiscordEnabled] = useState(
     initialSettings.discord_notifications_enabled === "true"
   );
-  const [discordWebhookUrl, setDiscordWebhookUrl] = useState(
-    initialSettings.discord_webhook_url || ""
-  );
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
+  const hasSavedDiscordWebhook =
+    initialSettings.has_discord_webhook_url === "true" || Boolean(initialSettings.discord_webhook_url_masked);
   const [discordBotUsername, setDiscordBotUsername] = useState(
     initialSettings.discord_bot_username || ""
   );
@@ -81,9 +81,9 @@ export function IntegrationsSettingsClient({
   const [blueskyIdentifier, setBlueskyIdentifier] = useState(
     initialSettings.bluesky_identifier || ""
   );
-  const [blueskyAppPassword, setBlueskyAppPassword] = useState(
-    initialSettings.bluesky_app_password || ""
-  );
+  const [blueskyAppPassword, setBlueskyAppPassword] = useState("");
+  const hasSavedBlueskyPassword =
+    initialSettings.has_bluesky_app_password === "true" || Boolean(initialSettings.bluesky_app_password_masked);
   const [blueskyServiceUrl, setBlueskyServiceUrl] = useState(
     initialSettings.bluesky_service_url || ""
   );
@@ -114,14 +114,12 @@ export function IntegrationsSettingsClient({
 
   async function handleSave() {
     startTransition(async () => {
-      const res = await saveSiteSettings(siteId, {
+      const payload: Record<string, string> = {
         discord_notifications_enabled: discordEnabled ? "true" : "false",
-        discord_webhook_url: discordWebhookUrl.trim(),
         discord_bot_username: discordBotUsername.trim(),
         discord_bot_avatar: discordBotAvatar.trim(),
         bluesky_enabled: blueskyEnabled ? "true" : "false",
         bluesky_identifier: blueskyIdentifier.trim(),
-        bluesky_app_password: blueskyAppPassword.trim(),
         bluesky_service_url: blueskyServiceUrl.trim(),
         bluesky_include_tags: blueskyIncludeTags ? "true" : "false",
         bluesky_include_title: blueskyIncludeTitle ? "true" : "false",
@@ -129,26 +127,37 @@ export function IntegrationsSettingsClient({
         rss_enabled: rssEnabled ? "true" : "false",
         rss_items_count: rssItemsCount,
         rss_full_content: rssFullContent ? "true" : "false",
-      });
+      };
+
+      if (discordWebhookUrl.trim()) {
+        payload.discord_webhook_url = discordWebhookUrl.trim();
+      }
+      if (blueskyAppPassword.trim()) {
+        payload.bluesky_app_password = blueskyAppPassword.trim();
+      }
+
+      const res = await saveSiteSettings(siteId, payload);
 
       if (res.success) {
+        setDiscordWebhookUrl("");
+        setBlueskyAppPassword("");
         toast.success(t("saveSuccess"));
         router.refresh();
       } else {
-        toast.error(t("saveError"));
+        toast.error(res.error || t("saveError"));
       }
     });
   }
 
   async function handleTestDiscord() {
-    if (!discordWebhookUrl.trim()) {
+    if (!discordWebhookUrl.trim() && !hasSavedDiscordWebhook) {
       toast.error(t("discordWebhookUrlPlaceholder"));
       return;
     }
 
     setIsTestingDiscord(true);
     try {
-      const res = await testDiscordWebhookAction(siteId, discordWebhookUrl.trim());
+      const res = await testDiscordWebhookAction(siteId, discordWebhookUrl.trim() || undefined);
       if (res.success) {
         toast.success(t("discordTestSuccess"));
       } else {
@@ -162,7 +171,7 @@ export function IntegrationsSettingsClient({
   }
 
   async function handleTestBluesky() {
-    if (!blueskyIdentifier.trim() || !blueskyAppPassword.trim()) {
+    if (!blueskyIdentifier.trim() || (!blueskyAppPassword.trim() && !hasSavedBlueskyPassword)) {
       toast.error(t("blueskyCredentialsRequired"));
       return;
     }
@@ -171,8 +180,9 @@ export function IntegrationsSettingsClient({
     setTestedBlueskyProfile(null);
     try {
       const res = await testBlueskyConnectionAction({
+        siteId,
         identifier: blueskyIdentifier.trim(),
-        appPassword: blueskyAppPassword.trim(),
+        appPassword: blueskyAppPassword.trim() || undefined,
         serviceUrl: blueskyServiceUrl.trim() || undefined,
       });
 
@@ -231,9 +241,15 @@ export function IntegrationsSettingsClient({
           <div className={`space-y-4 pt-1 transition-opacity ${discordEnabled ? "opacity-100" : "opacity-50 pointer-events-none"}`}>
             <Input
               label={t("discordWebhookUrl")}
+              type="password"
+              autoComplete="off"
               value={discordWebhookUrl}
               onChange={(e) => setDiscordWebhookUrl(e.target.value)}
-              placeholder="https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz"
+              placeholder={
+                hasSavedDiscordWebhook
+                  ? `${initialSettings.discord_webhook_url_masked || "••••••••"} (saved)`
+                  : "https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz"
+              }
               helperText={t("discordWebhookHelper")}
             />
 
@@ -302,9 +318,14 @@ export function IntegrationsSettingsClient({
               <Input
                 label={t("blueskyAppPassword")}
                 type="password"
+                autoComplete="off"
                 value={blueskyAppPassword}
                 onChange={(e) => setBlueskyAppPassword(e.target.value)}
-                placeholder="xxxx-xxxx-xxxx-xxxx"
+                placeholder={
+                  hasSavedBlueskyPassword
+                    ? `${initialSettings.bluesky_app_password_masked || "••••••••"} (saved)`
+                    : "xxxx-xxxx-xxxx-xxxx"
+                }
                 helperText={t("blueskyAppPasswordHelp")}
               />
             </div>

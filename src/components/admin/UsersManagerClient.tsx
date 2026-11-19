@@ -3,15 +3,18 @@
 import React, { useState, useMemo, useTransition } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { createUser, updateUser, deleteUser, type UserRecord } from "@/actions/users";
+import type { UpdateUserInput } from "@/lib/security/validate";
+import type { AuthRole } from "@/lib/auth/site-access";
+import { canManageSites } from "@/lib/auth/roles";
 import { formatDate } from "@/lib/utils/date";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { SiteSelect } from "@/components/admin/SiteSelect";
 import { Badge } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminDataTable, type AdminTableColumn } from "@/components/admin/AdminDataTable";
+import { UserFormModal } from "@/components/admin/UserFormModal";
 import {
   Users,
   UserPlus,
@@ -21,29 +24,19 @@ import {
   Trash2,
   Search,
   FileText,
-  Calendar,
   Globe,
-  Lock,
-  Mail,
   User,
-  Image as ImageIcon,
-  KeyRound,
-  Filter,
 } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 
-/**
- * Site option model for tenant assignment dropdowns.
- */
+/** Site option model for tenant assignment dropdowns. */
 export interface SiteOption {
   id: string;
   name: string;
   domain: string;
 }
 
-/**
- * Properties configuring the UsersManagerClient component.
- */
+/** Properties configuring the UsersManagerClient component. */
 export interface UsersManagerClientProps {
   /** Catalog of initial user records. */
   initialUsers: UserRecord[];
@@ -52,14 +45,19 @@ export interface UsersManagerClientProps {
   /** Active user's unique identifier. */
   currentUserId: string;
   /** Active user's access role. */
-  currentUserRole: "super_admin" | "admin" | "editor" | "author";
+  currentUserRole: AuthRole;
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return (name[0] || "U").toUpperCase();
 }
 
 /**
  * Modern user and team management interface with role-based access control, search filtering, and user provisioning.
- *
- * @param props - UsersManagerClientProps configuring initial users, sites, and caller permissions.
- * @returns React JSX user management view.
  */
 export function UsersManagerClient({
   initialUsers,
@@ -73,6 +71,7 @@ export function UsersManagerClient({
   const router = useRouter();
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
+  const isSuper = canManageSites(currentUserRole);
 
   const [users, setUsers] = useState<UserRecord[]>(initialUsers);
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,31 +85,31 @@ export function UsersManagerClient({
   const [formDisplayName, setFormDisplayName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPassword, setFormPassword] = useState("");
-  const [formRole, setFormRole] = useState<"super_admin" | "admin" | "editor" | "author">("author");
+  const [formRole, setFormRole] = useState<AuthRole>("author");
   const [formSiteId, setFormSiteId] = useState<string>("");
   const [formAvatarUrl, setFormAvatarUrl] = useState("");
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
 
   const stats = useMemo(() => {
-    const total = users.length;
-    const superAdmins = users.filter((u) => u.role === "super_admin").length;
-    const admins = users.filter((u) => u.role === "admin").length;
-    const editors = users.filter((u) => u.role === "editor").length;
-    const authors = users.filter((u) => u.role === "author").length;
-    return { total, superAdmins, admins, editors, authors };
+    return {
+      total: users.length,
+      superAdmins: users.filter((u) => u.role === "super_admin").length,
+      admins: users.filter((u) => u.role === "admin").length,
+      editors: users.filter((u) => u.role === "editor").length,
+      authors: users.filter((u) => u.role === "author").length,
+    };
   }, [users]);
 
   const filteredUsers = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     return users.filter((u) => {
       const matchesSearch =
-        u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase());
-
+        u.displayName.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q);
       const matchesRole = roleFilter === "all" || u.role === roleFilter;
       const matchesSite =
         siteFilter === "all" ||
         (siteFilter === "global" ? !u.siteId : u.siteId === siteFilter);
-
       return matchesSearch && matchesRole && matchesSite;
     });
   }, [users, searchQuery, roleFilter, siteFilter]);
@@ -120,8 +119,8 @@ export function UsersManagerClient({
     setFormDisplayName("");
     setFormEmail("");
     setFormPassword("");
-    setFormRole(currentUserRole === "admin" ? "author" : "author");
-    setFormSiteId(currentUserRole === "super_admin" ? "" : (availableSites[0]?.id || ""));
+    setFormRole("author");
+    setFormSiteId(isSuper ? "" : (availableSites[0]?.id || ""));
     setFormAvatarUrl("");
     setFormErrors({});
     setModalOpen(true);
@@ -156,8 +155,10 @@ export function UsersManagerClient({
     }
 
     startTransition(async () => {
+      const resolvedSiteName = availableSites.find((s) => s.id === formSiteId)?.name || null;
+
       if (editingUser) {
-        const payload: Record<string, any> = {
+        const payload: Partial<UpdateUserInput> = {
           displayName: formDisplayName.trim(),
           email: formEmail.trim(),
           role: formRole,
@@ -180,8 +181,7 @@ export function UsersManagerClient({
                     email: formEmail.trim().toLowerCase(),
                     role: formRole,
                     siteId: formSiteId || null,
-                    siteName:
-                      availableSites.find((s) => s.id === formSiteId)?.name || null,
+                    siteName: resolvedSiteName,
                     avatarUrl: formAvatarUrl.trim() || null,
                   }
                 : u
@@ -189,12 +189,10 @@ export function UsersManagerClient({
           );
           setModalOpen(false);
           router.refresh();
+        } else if (res.errors) {
+          setFormErrors(res.errors);
         } else {
-          if (res.errors) {
-            setFormErrors(res.errors);
-          } else {
-            toast.error(res.error || tc("save"));
-          }
+          toast.error(res.error || tc("save"));
         }
       } else {
         const res = await createUser({
@@ -214,8 +212,7 @@ export function UsersManagerClient({
             email: formEmail.trim().toLowerCase(),
             role: formRole,
             siteId: formSiteId || null,
-            siteName:
-              availableSites.find((s) => s.id === formSiteId)?.name || null,
+            siteName: resolvedSiteName,
             avatarUrl: formAvatarUrl.trim() || null,
             postCount: 0,
             createdAt: new Date(),
@@ -223,12 +220,10 @@ export function UsersManagerClient({
           setUsers((prev) => [newUserObj, ...prev]);
           setModalOpen(false);
           router.refresh();
+        } else if (res.errors) {
+          setFormErrors(res.errors);
         } else {
-          if (res.errors) {
-            setFormErrors(res.errors);
-          } else {
-            toast.error(res.error || tc("save"));
-          }
+          toast.error(res.error || tc("save"));
         }
       }
     });
@@ -249,7 +244,7 @@ export function UsersManagerClient({
     });
   }
 
-  function getRoleBadge(role: UserRecord["role"]) {
+  function renderRoleBadge(role: UserRecord["role"]) {
     switch (role) {
       case "super_admin":
         return (
@@ -283,35 +278,32 @@ export function UsersManagerClient({
     }
   }
 
-  function getInitials(name: string) {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return (name[0] || "U").toUpperCase();
-  }
+  const columns: AdminTableColumn[] = [
+    { key: "name", label: t("displayName") },
+    { key: "role", label: t("role"), className: "hidden sm:table-cell" },
+    { key: "site", label: t("assignedSite"), className: "hidden md:table-cell" },
+    { key: "posts", label: t("postsCount"), className: "text-center hidden md:table-cell" },
+    { key: "created", label: t("created"), className: "hidden lg:table-cell" },
+    { key: "actions", label: tc("actions"), className: "text-right" },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
-        <div>
-          <h1 className="text-xl font-bold text-text flex items-center gap-2.5">
-            <Users className="w-6 h-6 text-accent" />
-            <span>{t("title")}</span>
-          </h1>
-          <p className="text-xs text-text-muted mt-1">{t("description")}</p>
-        </div>
-
-        <Button
-          variant="primary"
-          onClick={openCreateModal}
-          icon={<UserPlus className="w-4 h-4" />}
-          className="text-xs shadow-sm"
-        >
-          {t("newUser")}
-        </Button>
-      </div>
+      <AdminPageHeader
+        title={t("title")}
+        subtitle={t("description")}
+        icon={<Users className="w-6 h-6" />}
+        actions={
+          <Button
+            variant="primary"
+            onClick={openCreateModal}
+            icon={<UserPlus className="w-4 h-4" />}
+            className="text-xs shadow-sm"
+          >
+            {t("newUser")}
+          </Button>
+        }
+      />
 
       {/* Metric Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -364,7 +356,7 @@ export function UsersManagerClient({
           <div className="w-36">
             <Select
               value={roleFilter}
-              onChange={(val) => setRoleFilter(val)}
+              onChange={setRoleFilter}
               options={[
                 { value: "all", label: t("allRoles") },
                 { value: "super_admin", label: t("roleSuperAdmin") },
@@ -375,11 +367,11 @@ export function UsersManagerClient({
             />
           </div>
 
-          {currentUserRole === "super_admin" && availableSites.length > 1 && (
+          {isSuper && availableSites.length > 1 && (
             <div className="w-40">
               <Select
                 value={siteFilter}
-                onChange={(val) => setSiteFilter(val)}
+                onChange={setSiteFilter}
                 options={[
                   { value: "all", label: t("allSites") },
                   { value: "global", label: t("globalSite") },
@@ -391,263 +383,135 @@ export function UsersManagerClient({
         </div>
       </div>
 
-      {/* Users Table */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-surface-hover/40 border-b border-border text-text-muted uppercase text-[10px] tracking-wider font-semibold">
-              <tr>
-                <th className="py-3 px-4">{t("displayName")}</th>
-                <th className="py-3 px-4 hidden sm:table-cell">{t("role")}</th>
-                <th className="py-3 px-4 hidden md:table-cell">{t("assignedSite")}</th>
-                <th className="py-3 px-4 text-center hidden md:table-cell">{t("postsCount")}</th>
-                <th className="py-3 px-4 hidden lg:table-cell">{t("created")}</th>
-                <th className="py-3 px-4 text-right">{tc("actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-text-muted">
-                    <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="font-semibold text-sm">{t("noUsersFound")}</p>
-                    <p className="text-xs mt-0.5">{t("noUsersFoundDesc")}</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((user) => {
-                  const isSelf = user.id === currentUserId;
-                  const canManage =
-                    currentUserRole === "super_admin" ||
-                    (currentUserRole === "admin" && user.role !== "super_admin");
+      <AdminDataTable
+        columns={columns}
+        isEmpty={filteredUsers.length === 0}
+        emptyIcon={<Users className="w-8 h-8 opacity-40" />}
+        emptyTitle={t("noUsersFound")}
+        emptyDescription={t("noUsersFoundDesc")}
+      >
+        {filteredUsers.map((user) => {
+          const isSelf = user.id === currentUserId;
+          const canManage = isSuper || (currentUserRole === "admin" && user.role !== "super_admin");
 
-                  return (
-                    <tr
-                      key={user.id}
-                      className="hover:bg-surface-hover/30 transition-colors group"
-                    >
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          {user.avatarUrl ? (
-                            <img
-                              src={user.avatarUrl}
-                              alt={user.displayName}
-                              className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-accent/15 text-accent font-bold flex items-center justify-center text-xs shrink-0 border border-accent/20">
-                              {getInitials(user.displayName)}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-text truncate">
-                                {user.displayName}
-                              </span>
-                              {isSelf && (
-                                <Badge variant="secondary" size="sm" className="text-[9px]">
-                                  Tú
-                                </Badge>
-                              )}
-                            </div>
-                            <span className="text-[11px] text-text-muted block truncate font-mono">
-                              {user.email}
-                            </span>
-
-                            {/* Mobile metadata sub-line */}
-                            <div className="flex items-center gap-1.5 mt-1 sm:hidden flex-wrap">
-                              {getRoleBadge(user.role)}
-                              {user.siteName && (
-                                <span className="text-[10px] text-text-muted flex items-center gap-1">
-                                  <Globe className="w-3 h-3" /> {user.siteName}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-4 whitespace-nowrap hidden sm:table-cell">
-                        {getRoleBadge(user.role)}
-                      </td>
-
-                      <td className="py-3.5 px-4 whitespace-nowrap hidden md:table-cell">
-                        {user.siteName ? (
-                          <span className="inline-flex items-center gap-1.5 text-text text-xs font-medium">
-                            <Globe className="w-3.5 h-3.5 text-text-muted" />
-                            <span>{user.siteName}</span>
-                          </span>
-                        ) : (
-                          <span className="text-text-muted text-[11px] italic">
-                            {t("globalSite")}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-3.5 px-4 text-center font-mono text-xs hidden md:table-cell">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-hover border border-border text-text-muted">
-                          <FileText className="w-3 h-3" />
-                          <span>{user.postCount}</span>
+          return (
+            <tr key={user.id} className="hover:bg-surface-hover/30 transition-colors group">
+              <td className="py-3.5 px-4">
+                <div className="flex items-center gap-3">
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.displayName}
+                      className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-accent/15 text-accent font-bold flex items-center justify-center text-xs shrink-0 border border-accent/20">
+                      {getInitials(user.displayName)}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-text truncate">{user.displayName}</span>
+                      {isSelf && (
+                        <Badge variant="secondary" size="sm" className="text-[9px]">
+                          Tú
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-text-muted block truncate font-mono">
+                      {user.email}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-1 sm:hidden flex-wrap">
+                      {renderRoleBadge(user.role)}
+                      {user.siteName && (
+                        <span className="text-[10px] text-text-muted flex items-center gap-1">
+                          <Globe className="w-3 h-3" /> {user.siteName}
                         </span>
-                      </td>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-text-muted text-[11px] font-mono hidden lg:table-cell">
-                        {formatDate(new Date(user.createdAt), locale)}
-                      </td>
+              <td className="py-3.5 px-4 whitespace-nowrap hidden sm:table-cell">
+                {renderRoleBadge(user.role)}
+              </td>
 
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(user)}
-                            disabled={!canManage}
-                            title={tc("edit")}
-                            className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-text"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </Button>
+              <td className="py-3.5 px-4 whitespace-nowrap hidden md:table-cell">
+                {user.siteName ? (
+                  <span className="inline-flex items-center gap-1.5 text-text text-xs font-medium">
+                    <Globe className="w-3.5 h-3.5 text-text-muted" />
+                    <span>{user.siteName}</span>
+                  </span>
+                ) : (
+                  <span className="text-text-muted text-[11px] italic">{t("globalSite")}</span>
+                )}
+              </td>
 
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setUserToDelete(user)}
-                            disabled={!canManage || isSelf}
-                            title={tc("delete")}
-                            className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-rose-500 disabled:opacity-30"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              <td className="py-3.5 px-4 text-center font-mono text-xs hidden md:table-cell">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-hover border border-border text-text-muted">
+                  <FileText className="w-3 h-3" />
+                  <span>{user.postCount}</span>
+                </span>
+              </td>
 
-      {/* Create / Edit User Modal */}
-      <Modal
+              <td className="py-3.5 px-4 whitespace-nowrap text-text-muted text-[11px] font-mono hidden lg:table-cell">
+                {formatDate(new Date(user.createdAt), locale)}
+              </td>
+
+              <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditModal(user)}
+                    disabled={!canManage}
+                    title={tc("edit")}
+                    className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-text"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setUserToDelete(user)}
+                    disabled={!canManage || isSelf}
+                    title={tc("delete")}
+                    className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-rose-500 disabled:opacity-30"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </AdminDataTable>
+
+      <UserFormModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingUser ? t("editUser") : t("newUser")}
-      >
-        <div className="space-y-4 pt-1">
-          <Input
-            label={t("displayName")}
-            value={formDisplayName}
-            onChange={(e) => setFormDisplayName(e.target.value)}
-            placeholder={t("displayNamePlaceholder")}
-            error={formErrors.displayName?.[0]}
-            required
-          />
+        isEditing={Boolean(editingUser)}
+        isPending={isPending}
+        currentUserRole={currentUserRole}
+        availableSites={availableSites}
+        displayName={formDisplayName}
+        onChangeDisplayName={setFormDisplayName}
+        email={formEmail}
+        onChangeEmail={setFormEmail}
+        password={formPassword}
+        onChangePassword={setFormPassword}
+        role={formRole}
+        onChangeRole={setFormRole}
+        siteId={formSiteId}
+        onChangeSiteId={setFormSiteId}
+        avatarUrl={formAvatarUrl}
+        onChangeAvatarUrl={setFormAvatarUrl}
+        formErrors={formErrors}
+        onSave={handleSaveUser}
+      />
 
-          <Input
-            label={t("email")}
-            type="email"
-            value={formEmail}
-            onChange={(e) => setFormEmail(e.target.value)}
-            placeholder={t("emailPlaceholder")}
-            error={formErrors.email?.[0]}
-            required
-          />
-
-          <div className="space-y-1.5">
-            <Input
-              label={t("password")}
-              type="password"
-              value={formPassword}
-              onChange={(e) => setFormPassword(e.target.value)}
-              placeholder={
-                editingUser ? t("passwordEditPlaceholder") : t("passwordPlaceholder")
-              }
-              error={formErrors.password?.[0]}
-              required={!editingUser}
-            />
-            {editingUser && (
-              <p className="text-[11px] text-text-muted">{t("passwordEditPlaceholder")}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-text">{t("role")}</label>
-            <Select
-              value={formRole}
-              onChange={(val) => setFormRole(val as any)}
-              options={
-                currentUserRole === "super_admin"
-                  ? [
-                      { value: "super_admin", label: `${t("roleSuperAdmin")} - ${t("roleSuperAdminDesc")}` },
-                      { value: "admin", label: `${t("roleAdmin")} - ${t("roleAdminDesc")}` },
-                      { value: "editor", label: `${t("roleEditor")} - ${t("roleEditorDesc")}` },
-                      { value: "author", label: `${t("roleAuthor")} - ${t("roleAuthorDesc")}` },
-                    ]
-                  : [
-                      { value: "editor", label: `${t("roleEditor")} - ${t("roleEditorDesc")}` },
-                      { value: "author", label: `${t("roleAuthor")} - ${t("roleAuthorDesc")}` },
-                    ]
-              }
-            />
-          </div>
-
-          {currentUserRole === "super_admin" ? (
-            <SiteSelect
-              label={t("assignedSite")}
-              value={formSiteId}
-              onChange={(val) => setFormSiteId(val)}
-              availableSites={availableSites}
-              globalLabel={t("globalSite")}
-              globalDesc={t("globalAccessDesc")}
-              helperText={t("assignedSiteDesc")}
-            />
-          ) : (
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text">{t("assignedSite")}</label>
-              <div className="p-3 bg-surface-hover/40 border border-border rounded-xl flex items-center justify-between text-xs">
-                <span className="text-text-muted">
-                  {availableSites.find((s) => s.id === formSiteId)?.name || t("assignedSite")}
-                </span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-surface border border-border text-text-muted">
-                  {availableSites.find((s) => s.id === formSiteId)?.domain}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <Input
-            label={t("avatarUrl")}
-            value={formAvatarUrl}
-            onChange={(e) => setFormAvatarUrl(e.target.value)}
-            placeholder={t("avatarUrlPlaceholder")}
-            error={formErrors.avatarUrl?.[0]}
-          />
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setModalOpen(false)}
-            >
-              {tc("cancel")}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              loading={isPending}
-              onClick={handleSaveUser}
-            >
-              {tc("save")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={!!userToDelete}
         onClose={() => setUserToDelete(null)}

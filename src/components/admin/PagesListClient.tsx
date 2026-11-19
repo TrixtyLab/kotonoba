@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { deletePage } from "@/actions/pages";
 import { Search, Eye, Edit3, Trash2, ExternalLink, Plus, Files } from "lucide-react";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
 
@@ -92,25 +94,19 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
 
   return (
     <div className="space-y-6">
-      {/* Header and Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-text flex items-center gap-2">
-            <Files className="w-5 h-5 text-accent" />
-            <span>{tc("pages")}</span>
-          </h2>
-          <p className="text-xs text-text-muted mt-0.5">
-            {t("pagesDesc")}
-          </p>
-        </div>
-
-        <Link href="/admin/pages/new">
-          <Button variant="primary" size="sm">
-            <Plus className="w-4 h-4 mr-1.5" />
-            <span>{t("createPage")}</span>
-          </Button>
-        </Link>
-      </div>
+      <AdminPageHeader
+        title={tc("pages")}
+        subtitle={t("pagesDesc")}
+        icon={<Files className="w-5 h-5" />}
+        actions={
+          <Link href="/admin/pages/new">
+            <Button variant="primary" size="sm">
+              <Plus className="w-4 h-4 mr-1.5" />
+              <span>{t("createPage")}</span>
+            </Button>
+          </Link>
+        }
+      />
 
       {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3 rounded-xl border border-border">
@@ -152,155 +148,140 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
         </div>
       </div>
 
-      {/* Pages Table */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-border bg-surface-hover/30 text-[11px] font-bold text-text-muted uppercase tracking-wider">
-                <th className="py-3 px-4">{tc("title")}</th>
-                <th className="py-3 px-4 hidden sm:table-cell">{tc("status")}</th>
-                <th className="py-3 px-4 hidden md:table-cell">{tc("language")}</th>
-                <th className="py-3 px-4 hidden sm:table-cell">{tc("views")}</th>
-                <th className="py-3 px-4 hidden md:table-cell">{tc("date")}</th>
-                <th className="py-3 px-4 text-right">{tc("actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border text-xs">
-              {filteredPages.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-text-muted">
-                    <Files className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="font-semibold text-text">{tc("pages")}</p>
-                    <p className="text-[11px] mt-0.5">{t("noPagesFound")}</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredPages.map((page) => (
-                  <tr key={page.id} className="hover:bg-surface-hover/50 transition-colors group">
-                    <td className="py-3 px-4 max-w-xs">
-                      <Link
-                        href={`/admin/pages/${page.id}`}
-                        className="font-semibold text-text hover:text-accent transition-colors block truncate"
-                      >
-                        {page.title}
-                      </Link>
-                      <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-muted font-mono">
-                        <span>/p/{page.slug}</span>
-                      </div>
+      <AdminDataTable
+        columns={[
+          { key: "title", label: tc("title") },
+          { key: "status", label: tc("status"), className: "hidden sm:table-cell" },
+          { key: "language", label: tc("language"), className: "hidden md:table-cell" },
+          { key: "views", label: tc("views"), className: "hidden sm:table-cell" },
+          { key: "date", label: tc("date"), className: "hidden md:table-cell" },
+          { key: "actions", label: tc("actions"), className: "text-right" },
+        ]}
+        isEmpty={filteredPages.length === 0}
+        emptyIcon={<Files className="w-8 h-8" />}
+        emptyTitle={tc("pages")}
+        emptyDescription={t("noPagesFound")}
+      >
+        {filteredPages.map((page) => (
+          <tr key={page.id} className="hover:bg-surface-hover/50 transition-colors group">
+            <td className="py-3 px-4 max-w-xs">
+              <Link
+                href={`/admin/pages/${page.id}`}
+                className="font-semibold text-text hover:text-accent transition-colors block truncate"
+              >
+                {page.title}
+              </Link>
+              <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-muted font-mono">
+                <span>/p/{page.slug}</span>
+              </div>
 
-                      {/* Mobile metadata badge sub-line */}
-                      <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
-                        <Badge
-                          variant={
-                            page.status === "published"
-                              ? "success"
-                              : page.status === "scheduled"
-                              ? "primary"
-                              : page.status === "archived"
-                              ? "secondary"
-                              : "warning"
-                          }
-                          className="text-[9px] py-0 px-1.5"
-                        >
-                          {page.status === "published"
-                            ? t("statusPublished")
-                            : page.status === "scheduled"
-                            ? t("statusScheduled")
-                            : page.status === "archived"
-                            ? t("statusArchived")
-                            : t("statusDraft")}
-                        </Badge>
-                        <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
-                          {page.locale}
-                        </span>
-                        <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
-                          <Eye className="w-2.5 h-2.5" /> {page.views.toLocaleString()}
-                        </span>
-                        <span className="text-[10px] text-text-muted">
-                          {page.publishedAtFormatted || page.createdAtFormatted}
-                        </span>
-                      </div>
-                    </td>
+              <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
+                <Badge
+                  variant={
+                    page.status === "published"
+                      ? "success"
+                      : page.status === "scheduled"
+                      ? "primary"
+                      : page.status === "archived"
+                      ? "secondary"
+                      : "warning"
+                  }
+                  className="text-[9px] py-0 px-1.5"
+                >
+                  {page.status === "published"
+                    ? t("statusPublished")
+                    : page.status === "scheduled"
+                    ? t("statusScheduled")
+                    : page.status === "archived"
+                    ? t("statusArchived")
+                    : t("statusDraft")}
+                </Badge>
+                <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
+                  {page.locale}
+                </span>
+                <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
+                  <Eye className="w-2.5 h-2.5" /> {page.views.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-text-muted">
+                  {page.publishedAtFormatted || page.createdAtFormatted}
+                </span>
+              </div>
+            </td>
 
-                    <td className="py-3 px-4 hidden sm:table-cell">
-                      <Badge
-                        variant={
-                          page.status === "published"
-                            ? "success"
-                            : page.status === "scheduled"
-                            ? "primary"
-                            : page.status === "archived"
-                            ? "secondary"
-                            : "warning"
-                        }
-                      >
-                        {page.status === "published"
-                          ? t("statusPublished")
-                          : page.status === "scheduled"
-                          ? t("statusScheduled")
-                          : page.status === "archived"
-                          ? t("statusArchived")
-                          : t("statusDraft")}
-                      </Badge>
-                    </td>
+            <td className="py-3 px-4 hidden sm:table-cell">
+              <Badge
+                variant={
+                  page.status === "published"
+                    ? "success"
+                    : page.status === "scheduled"
+                    ? "primary"
+                    : page.status === "archived"
+                    ? "secondary"
+                    : "warning"
+                }
+              >
+                {page.status === "published"
+                  ? t("statusPublished")
+                  : page.status === "scheduled"
+                  ? t("statusScheduled")
+                  : page.status === "archived"
+                  ? t("statusArchived")
+                  : t("statusDraft")}
+              </Badge>
+            </td>
 
-                    <td className="py-3 px-4 hidden md:table-cell">
-                      <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
-                        {page.locale}
-                      </span>
-                    </td>
+            <td className="py-3 px-4 hidden md:table-cell">
+              <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
+                {page.locale}
+              </span>
+            </td>
 
-                    <td className="py-3 px-4 text-text-muted hidden sm:table-cell">
-                      <span className="flex items-center gap-1 font-mono">
-                        <Eye className="w-3.5 h-3.5" />
-                        {page.views.toLocaleString()}
-                      </span>
-                    </td>
+            <td className="py-3 px-4 text-text-muted hidden sm:table-cell">
+              <span className="flex items-center gap-1 font-mono">
+                <Eye className="w-3.5 h-3.5" />
+                {page.views.toLocaleString()}
+              </span>
+            </td>
 
-                    <td className="py-3 px-4 text-text-muted whitespace-nowrap hidden md:table-cell">
-                      {page.publishedAtFormatted || page.createdAtFormatted}
-                    </td>
+            <td className="py-3 px-4 text-text-muted whitespace-nowrap hidden md:table-cell">
+              {page.publishedAtFormatted || page.createdAtFormatted}
+            </td>
 
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
-                        {page.status === "published" && (
-                          <a
-                            href={`/p/${page.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                            title={tc("preview")}
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
+            <td className="py-3 px-4 text-right">
+              <div className="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
+                {page.status === "published" && (
+                  <a
+                    href={`/p/${page.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                    title={tc("preview")}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
 
-                        <Link
-                          href={`/admin/pages/${page.id}`}
-                          className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                          title={tc("edit")}
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </Link>
+                <Link
+                  href={`/admin/pages/${page.id}`}
+                  className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                  title={tc("edit")}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </Link>
 
-                        <button
-                          type="button"
-                          onClick={() => setPageToDelete(page.id)}
-                          className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer"
-                          title={tc("delete")}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                <button
+                  type="button"
+                  onClick={() => setPageToDelete(page.id)}
+                  className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer"
+                  title={tc("delete")}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </AdminDataTable>
 
       {/* Confirm Delete Dialog */}
       <ConfirmModal

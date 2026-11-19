@@ -1,9 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { Heart } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
+
+const likeListeners = new Set<() => void>();
+
+function subscribeLikes(listener: () => void): () => void {
+  likeListeners.add(listener);
+  return () => {
+    likeListeners.delete(listener);
+  };
+}
 
 /**
  * Properties configuring the LikeButton reaction component.
@@ -25,29 +34,27 @@ export interface LikeButtonProps {
  */
 export function LikeButton({ postId, initialLikes = 0, size = "sm" }: LikeButtonProps) {
   const t = useTranslations("blog");
-  const [liked, setLiked] = useState(false);
+  const liked = useSyncExternalStore(
+    subscribeLikes,
+    () => typeof window !== "undefined" && localStorage.getItem(`liked_${postId}`) === "true",
+    () => false
+  );
   const [likesCount, setLikesCount] = useState(initialLikes);
   const toast = useToast();
-
-  useEffect(() => {
-    const isLiked = localStorage.getItem(`liked_${postId}`) === "true";
-    setLiked(isLiked);
-  }, [postId]);
 
   function handleLike(e: React.MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
 
     if (liked) {
-      setLiked(false);
       setLikesCount((prev) => Math.max(0, prev - 1));
       localStorage.removeItem(`liked_${postId}`);
     } else {
-      setLiked(true);
       setLikesCount((prev) => prev + 1);
       localStorage.setItem(`liked_${postId}`, "true");
       toast.success(t("likeThanks"));
     }
+    likeListeners.forEach((listener) => listener());
   }
 
   const isSmall = size === "sm";

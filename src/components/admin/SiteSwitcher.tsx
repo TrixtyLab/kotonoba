@@ -1,38 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
-import { Globe, ChevronDown, Check, Plus, Loader2, Edit3, Trash2, ExternalLink } from "lucide-react";
-import { useRouter } from "@/i18n/routing";
+import React, { useState, useTransition } from "react";
+import { ChevronDown, Check, Plus, Loader2 } from "lucide-react";
+import { useRouter, normalizeLocale, type Locale } from "@/i18n/routing";
 import { setActiveSiteAction, createSite, updateSite, deleteSite } from "@/actions/sites";
-import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Badge } from "@/components/ui/Badge";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { useLocale, useTranslations } from "next-intl";
 import { getLocalizedText } from "@/lib/utils/localization";
-
-function getSitePublicUrl(domain?: string | null): string {
-  if (!domain) return "/";
-  const clean = domain
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")
-    .trim();
-  if (!clean) return "/";
-
-  const isLocal =
-    clean === "localhost" ||
-    clean === "127.0.0.1" ||
-    clean === "::1" ||
-    clean.endsWith(".localhost") ||
-    clean.startsWith("localhost:");
-
-  const protocol = isLocal ? "http" : "https";
-  return `${protocol}://${clean}`;
-}
+import { SiteManageModal } from "@/components/admin/SiteManageModal";
 
 /**
  * Representation of a selectable blog site in the tenant switcher dropdown.
@@ -95,10 +70,12 @@ export function SiteSwitcher({
   const [isPending, startTransition] = useTransition();
 
   const [sites, setSites] = useState<SiteOption[]>(initialSites);
+  const [prevInitialSites, setPrevInitialSites] = useState<SiteOption[]>(initialSites);
 
-  useEffect(() => {
+  if (prevInitialSites !== initialSites) {
+    setPrevInitialSites(initialSites);
     setSites(initialSites);
-  }, [initialSites]);
+  }
 
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -107,7 +84,7 @@ export function SiteSwitcher({
   const [formName, setFormName] = useState("");
   const [formDomain, setFormDomain] = useState("");
   const [formSubtitle, setFormSubtitle] = useState("");
-  const [formLocale, setFormLocale] = useState("es");
+  const [formLocale, setFormLocale] = useState<Locale>("es");
   const [formTheme, setFormTheme] = useState<"dark" | "light">("dark");
   const [formColor, setFormColor] = useState("#3b82f6");
 
@@ -127,7 +104,7 @@ export function SiteSwitcher({
     setFormName(getLocalizedText(s.name, s.locale || locale));
     setFormDomain(s.domain);
     setFormSubtitle(getLocalizedText(s.subtitle, s.locale || locale));
-    setFormLocale(s.locale || "es");
+    setFormLocale(normalizeLocale(s.locale));
     setFormTheme(s.theme || "dark");
     setFormColor(s.primaryColor || "#3b82f6");
     setIsCreatingNew(false);
@@ -346,202 +323,45 @@ export function SiteSwitcher({
         )}
       </div>
 
-      {/* Direct Manage & Add Sites Modal (super_admin only) */}
       {canManageSites && (
-        <>
-          <Modal
-            isOpen={manageModalOpen}
-            onClose={() => {
-              setManageModalOpen(false);
-              setEditingSiteId(null);
-              setIsCreatingNew(false);
-            }}
-            title={t("siteManager")}
-          >
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          {/* Header Action */}
-          <div className="flex items-center justify-between pb-2 border-b border-border">
-            <p className="text-xs text-text-muted">
-              {t("multiTenantHint")}
-            </p>
-            {!isCreatingNew && !editingSiteId && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={openCreateForm}
-                icon={<Plus className="w-3.5 h-3.5" />}
-                className="text-xs"
-              >
-                {t("addSite")}
-              </Button>
-            )}
-          </div>
-
-          {/* Form when Creating or Editing */}
-          {(isCreatingNew || editingSiteId) ? (
-            <div className="p-4 rounded-xl border border-border bg-surface-hover/30 space-y-3 animate-fade-in">
-              <h4 className="text-xs font-bold text-text">
-                {editingSiteId ? t("editSite") : t("createSite")}
-              </h4>
-
-              <Input
-                label={t("siteName")}
-                placeholder={t("siteNamePlaceholder")}
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-              />
-
-              <Input
-                label={t("domain")}
-                placeholder={t("domainPlaceholder")}
-                value={formDomain}
-                onChange={(e) => setFormDomain(e.target.value)}
-                helperText={t("multiTenantHint")}
-              />
-
-              <Input
-                label={t("siteSubtitle")}
-                placeholder={t("siteSubtitlePlaceholder")}
-                value={formSubtitle}
-                onChange={(e) => setFormSubtitle(e.target.value)}
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Select
-                  label={tc("language")}
-                  value={formLocale}
-                  onChange={(val) => setFormLocale(val)}
-                  options={[
-                    { value: "es", label: "Español (es)" },
-                    { value: "en", label: "English (en)" },
-                  ]}
-                />
-
-                <Select
-                  label={ts("theme")}
-                  value={formTheme}
-                  onChange={(val) => setFormTheme(val === "light" ? "light" : "dark")}
-                  options={[
-                    { value: "dark", label: ts("themeDark") },
-                    { value: "light", label: ts("themeLight") },
-                  ]}
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setIsCreatingNew(false);
-                    setEditingSiteId(null);
-                  }}
-                  className="text-xs"
-                >
-                  {tc("cancel")}
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSaveSite}
-                  loading={isPending}
-                  className="text-xs"
-                >
-                  {editingSiteId ? t("saveChanges") : t("addSite")}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* List of Sites */}
-          <div className="space-y-2">
-            {sites.map((s) => {
-              const isCurrent = s.id === currentSite.id;
-              return (
-                <div
-                  key={s.id}
-                  className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-colors ${
-                    isCurrent
-                      ? "border-accent bg-accent/5"
-                      : "border-border bg-surface hover:border-border-hover"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-text truncate">{getLocalizedText(s.name, locale)}</span>
-                      {isCurrent ? (
-                        <Badge variant="success" className="text-[10px] py-0 px-1.5">{t("active")}</Badge>
-                      ) : null}
-                    </div>
-                    <p className="text-[11px] font-mono text-text-muted truncate mt-0.5">{s.domain}</p>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {!isCurrent && (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => {
-                          handleSelectSite(s.id);
-                          setManageModalOpen(false);
-                        }}
-                        disabled={isPending}
-                        className="text-xs py-1 px-2.5 min-h-[28px]"
-                      >
-                        {t("activate")}
-                      </Button>
-                    )}
-
-                    <a
-                      href={getSitePublicUrl(s.domain)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
-                      title={t("viewPublicBlog")}
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-
-                    <button
-                      type="button"
-                      onClick={() => openEditForm(s)}
-                      className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-accent transition-colors"
-                      title={t("editSite")}
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {sites.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setSiteToDelete(s.id)}
-                        className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
-                        title={t("deleteSite")}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </Modal>
-
-      {/* Confirm Delete Site Modal */}
-      <ConfirmModal
-        isOpen={Boolean(siteToDelete)}
-        onClose={() => setSiteToDelete(null)}
-        onConfirm={handleConfirmDelete}
-        title={t("deleteSite")}
-        message={t("confirmDeleteSite")}
-        confirmText={tc("delete")}
-        cancelText={tc("cancel")}
-        variant="danger"
-        isLoading={isPending}
-      />
-      </>
+        <SiteManageModal
+          isOpen={manageModalOpen}
+          onClose={() => {
+            setManageModalOpen(false);
+            setEditingSiteId(null);
+            setIsCreatingNew(false);
+          }}
+          sites={sites}
+          currentSiteId={currentSite.id}
+          editingSiteId={editingSiteId}
+          isCreatingNew={isCreatingNew}
+          siteToDelete={siteToDelete}
+          isPending={isPending}
+          formName={formName}
+          onChangeFormName={setFormName}
+          formDomain={formDomain}
+          onChangeFormDomain={setFormDomain}
+          formSubtitle={formSubtitle}
+          onChangeFormSubtitle={setFormSubtitle}
+          formLocale={formLocale}
+          onChangeFormLocale={setFormLocale}
+          formTheme={formTheme}
+          onChangeFormTheme={setFormTheme}
+          onOpenCreate={openCreateForm}
+          onOpenEdit={openEditForm}
+          onCancelForm={() => {
+            setIsCreatingNew(false);
+            setEditingSiteId(null);
+          }}
+          onSave={handleSaveSite}
+          onSelectSite={(siteId) => {
+            handleSelectSite(siteId);
+            setManageModalOpen(false);
+          }}
+          onRequestDelete={setSiteToDelete}
+          onCancelDelete={() => setSiteToDelete(null)}
+          onConfirmDelete={handleConfirmDelete}
+        />
       )}
     </>
   );

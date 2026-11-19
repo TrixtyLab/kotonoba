@@ -56,6 +56,8 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "md" }: Mod
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
       <div
+        role="dialog"
+        aria-modal="true"
         className={`relative w-full ${maxW[maxWidth]} glass-strong rounded-2xl shadow-2xl border border-border p-4 sm:p-6 z-10 animate-slide-up max-h-[90dvh] flex flex-col`}
       >
         <div className="flex items-center justify-between pb-3 sm:pb-4 mb-3 sm:mb-4 border-b border-border/50 shrink-0">

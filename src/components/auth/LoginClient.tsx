@@ -27,7 +27,6 @@ export interface LoginClientProps {
  */
 export function LoginClient({ showSetupLink }: LoginClientProps) {
   const t = useTranslations("auth");
-  const tc = useTranslations("common");
   const router = useRouter();
 
   const [email, setEmail] = useState("");

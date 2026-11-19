@@ -1,18 +1,21 @@
 import path from "path";
 import fs from "fs/promises";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync } from "fs";
+import { Readable } from "stream";
+import { ensureDir } from "@/lib/utils/fs";
 import {
   S3Client,
+  GetObjectCommand,
   PutObjectCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
   CopyObjectCommand,
-  GetObjectCommand,
 } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getDb } from "@/lib/db";
-import { settings, sites } from "@/lib/db/schema";
+import { pages, posts, settings, sites, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { decryptSecretOrLegacyPlaintext } from "@/lib/security/crypto";
+import { getRuntimeUploadDir, getStorageEnvCredentials } from "@/lib/config/env";
 
 /**
  * Storage configuration interface holding resolved driver and authentication parameters.
@@ -95,28 +98,6 @@ export interface MediaListingResult {
 }
 
 /**
- * Resolves the absolute local filesystem directory used for persistent uploads.
- *
- * @returns Absolute directory path string.
- */
-export function getUploadDir(): string {
-  if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR;
-  if (process.env.NODE_ENV === "production") return "/app/data/uploads";
-  return path.join(process.cwd(), "data", "uploads");
-}
-
-/**
- * Ensures a directory path exists on the local filesystem.
- *
- * @param dir - Absolute directory path string.
- */
-export function ensureDir(dir: string): void {
-  if (!existsSync(/*turbopackIgnore: true*/ dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
-/**
  * Dynamically resolves the active storage configuration for a given tenant site.
  * Inspects SQLite settings for custom S3/R2 credentials, falling back to environment variables and local disk.
  *
@@ -124,20 +105,20 @@ export function ensureDir(dir: string): void {
  * @returns Resolved StorageConfig object.
  */
 export function getStorageConfig(siteId?: string): StorageConfig {
-  const uploadDir = getUploadDir();
+  const uploadDir = getRuntimeUploadDir();
   ensureDir(uploadDir);
 
   const {
-    R2_ACCOUNT_ID,
-    R2_ACCESS_KEY_ID,
-    R2_SECRET_ACCESS_KEY,
-    R2_BUCKET_NAME,
-    R2_PUBLIC_URL,
-    S3_BUCKET,
-    AWS_ACCESS_KEY_ID,
-    AWS_SECRET_ACCESS_KEY,
-    AWS_REGION,
-  } = process.env;
+    r2AccountId: R2_ACCOUNT_ID,
+    r2AccessKeyId: R2_ACCESS_KEY_ID,
+    r2SecretAccessKey: R2_SECRET_ACCESS_KEY,
+    r2BucketName: R2_BUCKET_NAME,
+    r2PublicUrl: R2_PUBLIC_URL,
+    s3Bucket: S3_BUCKET,
+    awsAccessKeyId: AWS_ACCESS_KEY_ID,
+    awsSecretAccessKey: AWS_SECRET_ACCESS_KEY,
+    awsRegion: AWS_REGION,
+  } = getStorageEnvCredentials();
 
   try {
     const db = getDb();
@@ -183,8 +164,9 @@ export function getStorageConfig(siteId?: string): StorageConfig {
             : undefined);
         const accessKeyId =
           map.s3_access_key || R2_ACCESS_KEY_ID || AWS_ACCESS_KEY_ID || "";
+        const rawSecretKey = map.s3_secret_key ? decryptSecretOrLegacyPlaintext(map.s3_secret_key) : "";
         const secretAccessKey =
-          map.s3_secret_key || R2_SECRET_ACCESS_KEY || AWS_SECRET_ACCESS_KEY || "";
+          rawSecretKey || R2_SECRET_ACCESS_KEY || AWS_SECRET_ACCESS_KEY || "";
         const publicUrl = (map.s3_public_url || R2_PUBLIC_URL || "").replace(/\/$/, "");
 
         if (bucket && accessKeyId && secretAccessKey) {
@@ -251,40 +233,6 @@ export function getS3Client(config: StorageConfig): S3Client {
   });
 }
 
-export { normalizeMediaUrl, resolveAbsoluteUrl, normalizeHtmlMediaUrls } from "@/lib/utils/media";
-
-/**
- * Generates a presigned GET access grant URL for an object residing in a private S3/R2 bucket.
- *
- * @param filePath - Relative path to the stored media object.
- * @param expiresInSeconds - Access grant duration in seconds. Defaults to 3600 (1 hour).
- * @param siteId - Optional site identifier.
- * @returns Promise resolving to the signed access URL string.
- */
-export async function getPresignedMediaUrl(
-  filePath: string,
-  expiresInSeconds = 3600,
-  siteId?: string
-): Promise<string> {
-  const config = getStorageConfig(siteId);
-  const cleanPath = sanitizePath(filePath);
-
-  if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
-    try {
-      const s3 = getS3Client(config);
-      const command = new GetObjectCommand({
-        Bucket: config.bucket,
-        Key: cleanPath,
-      });
-      return await getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
-    } catch {
-      return `/api/uploads/${cleanPath}`;
-    }
-  }
-
-  return `/api/uploads/${cleanPath}`;
-}
-
 /**
  * Returns a summary of current storage driver status for administrative inspection.
  *
@@ -301,6 +249,199 @@ export function getStorageStatus(siteId?: string) {
   };
 }
 
+const MEDIA_MIME_MAP: Record<string, string> = {
+  ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+};
+
+/**
+ * Resolves an allowlisted Content-Type from asset extension to prevent MIME spoofing on uploads.
+ *
+ * @param filePath - Relative object key or filename.
+ * @returns Allowlisted MIME content-type string.
+ */
+export function getSafeMediaContentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  return MEDIA_MIME_MAP[ext] || "application/octet-stream";
+}
+
+/**
+ * Builds standard MIME, caching, nosniff, and SVG sandbox response headers for a resolved media asset.
+ *
+ * @param asset - Resolved media asset payload and metadata.
+ * @param cacheControl - Cache-Control header directive for the serving endpoint.
+ * @returns HTTP headers map suitable for `NextResponse`.
+ */
+export function buildMediaAssetHeaders(
+  asset: Extract<StoredMediaReadResult, { status: "ok" }>,
+  cacheControl = "public, max-age=31536000, immutable"
+): Record<string, string> {
+  const isSvg = asset.contentType === "image/svg+xml";
+  return {
+    "Content-Type": asset.contentType,
+    "Cache-Control": cacheControl,
+    "X-Content-Type-Options": "nosniff",
+    ...(asset.contentLength !== undefined
+      ? { "Content-Length": String(asset.contentLength) }
+      : {}),
+    ...(asset.etag ? { ETag: asset.etag } : {}),
+    ...(isSvg
+      ? {
+          "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+          "Content-Disposition": "inline",
+        }
+      : {}),
+  };
+}
+
+/**
+ * Result returned when loading a stored media object for direct HTTP streaming.
+ */
+export type StoredMediaReadResult =
+  | {
+      status: "ok";
+      body: ReadableStream<Uint8Array> | Buffer;
+      contentType: string;
+      contentLength?: number;
+      etag?: string;
+    }
+  | {
+      status: "not-modified";
+      etag?: string;
+    }
+  | {
+      status: "not-found";
+    };
+
+async function toWebStreamOrBuffer(body: unknown): Promise<ReadableStream<Uint8Array> | Buffer | null> {
+  if (!body) return null;
+  if (Buffer.isBuffer(body)) return body;
+  if (body instanceof Uint8Array) return Buffer.from(body);
+  if (body instanceof ReadableStream) return body as ReadableStream<Uint8Array>;
+  if (
+    typeof (body as { transformToWebStream?: () => ReadableStream<Uint8Array> })
+      .transformToWebStream === "function"
+  ) {
+    return (
+      body as { transformToWebStream: () => ReadableStream<Uint8Array> }
+    ).transformToWebStream();
+  }
+  if (typeof (body as { pipe?: unknown }).pipe === "function") {
+    return Readable.toWeb(body as Readable) as unknown as ReadableStream<Uint8Array>;
+  }
+  if (
+    typeof (body as { transformToByteArray?: () => Promise<Uint8Array> })
+      .transformToByteArray === "function"
+  ) {
+    const bytes = await (
+      body as { transformToByteArray: () => Promise<Uint8Array> }
+    ).transformToByteArray();
+    return Buffer.from(bytes);
+  }
+  return null;
+}
+
+/**
+ * Reads or streams a media asset directly from R2/S3 or local disk so callers serve `/api/uploads/*`
+ * on the active site origin without issuing 307 redirects to external bucket URLs.
+ *
+ * @param relativePath - Validated storage-relative asset path (e.g. `sites/<siteId>/covers/a.png`).
+ * @param options - Optional tenant identifier and conditional `If-None-Match` ETag header.
+ * @returns Streamable object payload, `not-modified` marker, or `not-found`.
+ */
+export async function readStoredMediaObject(
+  relativePath: string,
+  options: { siteId?: string; ifNoneMatch?: string | null } = {}
+): Promise<StoredMediaReadResult> {
+  const cleanRelative = sanitizePath(relativePath);
+  if (
+    !cleanRelative ||
+    cleanRelative.split("/").some((segment) => segment.startsWith("."))
+  ) {
+    return { status: "not-found" };
+  }
+
+  const config = getStorageConfig(options.siteId);
+  const contentType = getSafeMediaContentType(cleanRelative);
+
+  if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
+    try {
+      const s3 = getS3Client(config);
+      const res = await s3.send(
+        new GetObjectCommand({
+          Bucket: config.bucket,
+          Key: cleanRelative,
+          ...(options.ifNoneMatch ? { IfNoneMatch: options.ifNoneMatch } : {}),
+        })
+      );
+
+      const body = await toWebStreamOrBuffer(res.Body);
+      if (!body) {
+        return { status: "not-found" };
+      }
+
+      return {
+        status: "ok",
+        body,
+        contentType,
+        contentLength: typeof res.ContentLength === "number" ? res.ContentLength : undefined,
+        etag: res.ETag,
+      };
+    } catch (error) {
+      const metaStatus = (error as { $metadata?: { httpStatusCode?: number } })?.$metadata
+        ?.httpStatusCode;
+      const errName = (error as { name?: string })?.name;
+      if (metaStatus === 304 || errName === "NotModified") {
+        return {
+          status: "not-modified",
+          etag: options.ifNoneMatch || undefined,
+        };
+      }
+      if (metaStatus === 404 || errName === "NoSuchKey" || errName === "NotFound") {
+        return { status: "not-found" };
+      }
+      throw error;
+    }
+  }
+
+  let filePath: string;
+  try {
+    filePath = resolveContainedLocalPath(config.uploadDir, cleanRelative);
+  } catch {
+    return { status: "not-found" };
+  }
+
+  const uploadRoot = path.resolve(/*turbopackIgnore: true*/ config.uploadDir);
+  if (filePath === uploadRoot || !filePath.startsWith(uploadRoot + path.sep)) {
+    return { status: "not-found" };
+  }
+
+  if (!existsSync(/*turbopackIgnore: true*/ filePath)) {
+    return { status: "not-found" };
+  }
+
+  const [realRoot, realFile] = await Promise.all([
+    fs.realpath(/*turbopackIgnore: true*/ uploadRoot),
+    fs.realpath(/*turbopackIgnore: true*/ filePath),
+  ]);
+  if (!realFile.startsWith(realRoot + path.sep)) {
+    return { status: "not-found" };
+  }
+
+  const fileBuffer = await fs.readFile(/*turbopackIgnore: true*/ realFile);
+  return {
+    status: "ok",
+    body: fileBuffer,
+    contentType: getSafeMediaContentType(realFile),
+    contentLength: fileBuffer.byteLength,
+  };
+}
+
 /**
  * Sanitizes a path string by removing backslashes, leading/trailing slashes, and traversal sequences.
  *
@@ -308,7 +449,53 @@ export function getStorageStatus(siteId?: string) {
  * @returns Sanitized relative path string.
  */
 export function sanitizePath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").replace(/\.\./g, "");
+  const normalized = p.replace(/\\/g, "/").replaceAll("\0", "");
+  const segments = normalized
+    .split("/")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s !== "." && s !== "..");
+  return segments.join("/");
+}
+
+/**
+ * Resolves a logical media path into a tenant-scoped relative storage key (`sites/<siteId>/...`)
+ * and blocks cross-tenant access attempts targeting another `sites/<otherSiteId>` prefix.
+ */
+function scopeStoragePath(logicalPath: string, siteId?: string): string {
+  const clean = sanitizePath(logicalPath);
+  if (!siteId) return clean;
+
+  const tenantPrefix = `sites/${siteId}`;
+  if (!clean || clean === "sites") return tenantPrefix;
+  if (clean === tenantPrefix || clean.startsWith(`${tenantPrefix}/`)) {
+    return clean;
+  }
+  if (clean.startsWith("sites/")) {
+    throw new Error("FORBIDDEN_MEDIA_PATH");
+  }
+  return `${tenantPrefix}/${clean}`;
+}
+
+function unscopeStoragePath(physicalPath: string, siteId?: string): string {
+  const clean = sanitizePath(physicalPath);
+  if (!siteId) return clean;
+  const tenantPrefix = `sites/${siteId}`;
+  if (clean === tenantPrefix) return "";
+  if (clean.startsWith(`${tenantPrefix}/`)) {
+    return clean.slice(tenantPrefix.length + 1);
+  }
+  return clean;
+}
+
+function resolveContainedLocalPath(uploadDir: string, relativePath: string): string {
+  const root = path.resolve(/*turbopackIgnore: true*/ uploadDir);
+  const resolved = relativePath
+    ? path.resolve(/*turbopackIgnore: true*/ root, relativePath)
+    : root;
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error("INVALID_MEDIA_PATH");
+  }
+  return resolved;
 }
 
 /**
@@ -330,25 +517,31 @@ export async function uploadToStorage(
 ): Promise<UploadResult> {
   const config = getStorageConfig(siteId);
   const cleanFolder = sanitizePath(targetFolder);
+  if (siteId && cleanFolder.startsWith("sites/") && !cleanFolder.startsWith(`sites/${siteId}`)) {
+    throw new Error("FORBIDDEN_MEDIA_PATH");
+  }
 
   const ext = path.extname(originalFilename).toLowerCase();
-  const baseName = path
-    .basename(originalFilename, ext)
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+  const baseName =
+    path
+      .basename(originalFilename, ext)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "asset";
 
   const timestamp = Date.now();
   const rawFilename = `${baseName}-${timestamp}${ext}`;
-  const relativePath = cleanFolder ? `${cleanFolder}/${rawFilename}` : rawFilename;
+  const scopedBase = scopeStoragePath(cleanFolder, siteId);
+  const physicalPath = scopedBase ? `${scopedBase}/${rawFilename}` : rawFilename;
+  const logicalPath = unscopeStoragePath(physicalPath, siteId);
 
   if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
     const s3 = getS3Client(config);
 
     const command = new PutObjectCommand({
       Bucket: config.bucket,
-      Key: relativePath,
+      Key: physicalPath,
       Body: buffer,
       ContentType: contentType,
     });
@@ -357,31 +550,28 @@ export async function uploadToStorage(
 
     let fileUrl: string;
     if (config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")) {
-      fileUrl = `${config.publicUrl}/${relativePath}`;
+      fileUrl = `${config.publicUrl}/${physicalPath}`;
     } else {
-      fileUrl = `/api/uploads/${relativePath}`;
+      fileUrl = `/api/uploads/${physicalPath}`;
     }
 
     return {
       url: fileUrl,
       filename: rawFilename,
-      path: relativePath,
+      path: logicalPath,
       size: buffer.length,
       mimeType: contentType,
     };
   }
 
-  const baseUploadDir = config.uploadDir;
-  const targetDir = cleanFolder ? path.join(/*turbopackIgnore: true*/ baseUploadDir, cleanFolder) : baseUploadDir;
-  ensureDir(targetDir);
-
-  const destinationPath = path.join(/*turbopackIgnore: true*/ targetDir, rawFilename);
+  const destinationPath = resolveContainedLocalPath(config.uploadDir, physicalPath);
+  ensureDir(path.dirname(destinationPath));
   await fs.writeFile(/*turbopackIgnore: true*/ destinationPath, buffer);
 
   return {
-    url: `/api/uploads/${relativePath}`,
+    url: `/api/uploads/${physicalPath}`,
     filename: rawFilename,
-    path: relativePath,
+    path: logicalPath,
     size: buffer.length,
     mimeType: contentType,
   };
@@ -408,8 +598,9 @@ export async function createFolder(
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 
-  if (!cleanName) return false;
-  const folderPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
+  if (!cleanName || cleanName === "sites") return false;
+  const logicalFolder = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
+  const folderPath = scopeStoragePath(logicalFolder, siteId);
 
   const config = getStorageConfig(siteId);
 
@@ -431,7 +622,7 @@ export async function createFolder(
   }
 
   try {
-    const fullPath = path.join(config.uploadDir, folderPath);
+    const fullPath = resolveContainedLocalPath(config.uploadDir, folderPath);
     ensureDir(fullPath);
     return true;
   } catch {
@@ -452,10 +643,17 @@ export async function moveMediaItem(
   targetFolder: string,
   siteId?: string
 ): Promise<boolean> {
-  const cleanItem = sanitizePath(itemPath);
-  const cleanTarget = sanitizePath(targetFolder);
+  let cleanItem: string;
+  let scopedTarget: string;
+  try {
+    cleanItem = scopeStoragePath(itemPath, siteId);
+    scopedTarget = scopeStoragePath(targetFolder, siteId);
+  } catch {
+    return false;
+  }
   const filename = path.basename(cleanItem);
-  const newPath = cleanTarget ? `${cleanTarget}/${filename}` : filename;
+  if (!filename) return false;
+  const newPath = scopedTarget ? `${scopedTarget}/${filename}` : filename;
 
   if (cleanItem === newPath) return true;
 
@@ -487,9 +685,8 @@ export async function moveMediaItem(
   }
 
   try {
-    const baseUploadDir = config.uploadDir;
-    const sourceFullPath = path.join(baseUploadDir, cleanItem);
-    const targetDir = cleanTarget ? path.join(baseUploadDir, cleanTarget) : baseUploadDir;
+    const sourceFullPath = resolveContainedLocalPath(config.uploadDir, cleanItem);
+    const targetDir = resolveContainedLocalPath(config.uploadDir, scopedTarget);
     ensureDir(targetDir);
     const destFullPath = path.join(targetDir, filename);
 
@@ -516,8 +713,13 @@ export async function deleteFromStorage(
   isFolder = false,
   siteId?: string
 ): Promise<boolean> {
-  const cleanItem = sanitizePath(itemPath);
-  if (!cleanItem) return false;
+  let scopedItem: string;
+  try {
+    scopedItem = scopeStoragePath(itemPath, siteId);
+  } catch {
+    return false;
+  }
+  if (!scopedItem || (siteId && scopedItem === `sites/${siteId}`)) return false;
 
   const config = getStorageConfig(siteId);
 
@@ -526,7 +728,7 @@ export async function deleteFromStorage(
       const s3 = getS3Client(config);
 
       if (isFolder) {
-        const prefix = `${cleanItem}/`;
+        const prefix = `${scopedItem}/`;
         const listRes = await s3.send(
           new ListObjectsV2Command({
             Bucket: config.bucket,
@@ -550,7 +752,7 @@ export async function deleteFromStorage(
         await s3.send(
           new DeleteObjectCommand({
             Bucket: config.bucket,
-            Key: cleanItem,
+            Key: scopedItem,
           })
         );
       }
@@ -561,7 +763,7 @@ export async function deleteFromStorage(
   }
 
   try {
-    const fullPath = path.join(config.uploadDir, cleanItem);
+    const fullPath = resolveContainedLocalPath(config.uploadDir, scopedItem);
     if (!existsSync(fullPath)) return false;
 
     if (isFolder) {
@@ -586,12 +788,13 @@ export async function listMediaFiles(
   folder = "",
   siteId?: string
 ): Promise<MediaListingResult> {
-  const cleanFolder = sanitizePath(folder);
+  const cleanLogicalFolder = unscopeStoragePath(sanitizePath(folder), siteId);
+  const scopedFolder = scopeStoragePath(cleanLogicalFolder, siteId);
   const config = getStorageConfig(siteId);
 
   let parentFolder: string | null = null;
-  if (cleanFolder) {
-    const segments = cleanFolder.split("/");
+  if (cleanLogicalFolder) {
+    const segments = cleanLogicalFolder.split("/");
     segments.pop();
     parentFolder = segments.join("/");
   }
@@ -599,7 +802,7 @@ export async function listMediaFiles(
   if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
     try {
       const s3 = getS3Client(config);
-      const prefix = cleanFolder ? `${cleanFolder}/` : "";
+      const prefix = scopedFolder ? `${scopedFolder}/` : "";
 
       const res = await s3.send(
         new ListObjectsV2Command({
@@ -615,7 +818,7 @@ export async function listMediaFiles(
         const folderName = path.basename(folderFullPath);
         return {
           name: folderName,
-          path: folderFullPath,
+          path: unscopeStoragePath(folderFullPath, siteId),
         };
       });
 
@@ -625,43 +828,42 @@ export async function listMediaFiles(
         (res.Contents || [])
           .filter((obj) => obj.Key && !obj.Key.endsWith("/") && !obj.Key.endsWith(".keep"))
           .map(async (obj) => {
-            const filePath = obj.Key!;
-            const filename = path.basename(filePath);
-            
+            const physicalPath = obj.Key!;
+            const filename = path.basename(physicalPath);
+
             let url: string;
             if (publicUrlBase && !publicUrlBase.includes("r2.cloudflarestorage.com")) {
-              url = `${publicUrlBase}/${filePath}`;
+              url = `${publicUrlBase}/${physicalPath}`;
             } else {
-              url = `/api/uploads/${filePath}`;
+              url = `/api/uploads/${physicalPath}`;
             }
 
             return {
               filename,
-              path: filePath,
+              path: unscopeStoragePath(physicalPath, siteId),
               url,
               size: obj.Size || 0,
               updatedAt: obj.LastModified || new Date(),
-              folder: cleanFolder,
+              folder: cleanLogicalFolder,
             };
           })
       );
 
       return {
-        currentFolder: cleanFolder,
+        currentFolder: cleanLogicalFolder,
         parentFolder,
         folders,
         files: files.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
       };
     } catch {
-      return { currentFolder: cleanFolder, parentFolder, folders: [], files: [] };
+      return { currentFolder: cleanLogicalFolder, parentFolder, folders: [], files: [] };
     }
   }
 
-  const baseUploadDir = config.uploadDir;
-  const currentDir = cleanFolder ? path.join(baseUploadDir, cleanFolder) : baseUploadDir;
+  const currentDir = resolveContainedLocalPath(config.uploadDir, scopedFolder);
 
   if (!existsSync(currentDir)) {
-    return { currentFolder: cleanFolder, parentFolder, folders: [], files: [] };
+    return { currentFolder: cleanLogicalFolder, parentFolder, folders: [], files: [] };
   }
 
   try {
@@ -671,34 +873,254 @@ export async function listMediaFiles(
 
     for (const entry of dirEntries) {
       if (entry.isDirectory()) {
-        const subPath = cleanFolder ? `${cleanFolder}/${entry.name}` : entry.name;
+        const subLogicalPath = cleanLogicalFolder ? `${cleanLogicalFolder}/${entry.name}` : entry.name;
         folders.push({
           name: entry.name,
-          path: subPath,
+          path: subLogicalPath,
         });
       } else if (entry.isFile() && !entry.name.startsWith(".")) {
         const fileFullPath = path.join(currentDir, entry.name);
         const stat = await fs.stat(fileFullPath);
-        const relativeFilePath = cleanFolder ? `${cleanFolder}/${entry.name}` : entry.name;
+        const relativeLogical = cleanLogicalFolder ? `${cleanLogicalFolder}/${entry.name}` : entry.name;
+        const physicalFilePath = scopedFolder ? `${scopedFolder}/${entry.name}` : entry.name;
 
         files.push({
           filename: entry.name,
-          path: relativeFilePath,
-          url: `/api/uploads/${relativeFilePath}`,
+          path: relativeLogical,
+          url: `/api/uploads/${physicalFilePath}`,
           size: stat.size,
           updatedAt: stat.mtime,
-          folder: cleanFolder,
+          folder: cleanLogicalFolder,
         });
       }
     }
 
     return {
-      currentFolder: cleanFolder,
+      currentFolder: cleanLogicalFolder,
       parentFolder,
       folders,
       files: files.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
     };
   } catch {
-    return { currentFolder: cleanFolder, parentFolder, folders: [], files: [] };
+    return { currentFolder: cleanLogicalFolder, parentFolder, folders: [], files: [] };
   }
+}
+
+interface StoredObjectDescriptor {
+  physicalPath: string;
+  logicalPath: string;
+  size: number;
+  mtimeMs: number;
+}
+
+async function listAllTenantObjects(siteId: string): Promise<{
+  config: StorageConfig;
+  objects: StoredObjectDescriptor[];
+}> {
+  const config = getStorageConfig(siteId);
+  const tenantPrefix = `sites/${siteId}/`;
+  const objects: StoredObjectDescriptor[] = [];
+
+  if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
+    try {
+      const s3 = getS3Client(config);
+      let continuationToken: string | undefined;
+      do {
+        const res = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: config.bucket,
+            Prefix: tenantPrefix,
+            ContinuationToken: continuationToken,
+          })
+        );
+        for (const obj of res.Contents || []) {
+          if (!obj.Key || obj.Key.endsWith("/") || obj.Key.endsWith(".keep")) continue;
+          const normalized = sanitizePath(obj.Key);
+          objects.push({
+            physicalPath: normalized,
+            logicalPath: unscopeStoragePath(normalized, siteId),
+            size: obj.Size || 0,
+            mtimeMs: obj.LastModified ? obj.LastModified.getTime() : 0,
+          });
+        }
+        continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+      } while (continuationToken);
+    } catch {
+      return { config, objects };
+    }
+    return { config, objects };
+  }
+
+  const rootDir = resolveContainedLocalPath(config.uploadDir, `sites/${siteId}`);
+  if (!existsSync(rootDir)) {
+    return { config, objects };
+  }
+
+  async function walk(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(fullPath);
+        const rel = sanitizePath(path.relative(rootDir, fullPath));
+        objects.push({
+          physicalPath: `sites/${siteId}/${rel}`,
+          logicalPath: rel,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+        });
+      }
+    }
+  }
+
+  await walk(rootDir);
+  return { config, objects };
+}
+
+/**
+ * Calculates total storage bytes currently consumed by media assets under a tenant prefix (`sites/<siteId>/`).
+ *
+ * @param siteId - Tenant site identifier.
+ * @returns Total byte usage across all stored files for the tenant.
+ */
+export async function getSiteStorageUsageBytes(siteId: string): Promise<number> {
+  if (!siteId) return 0;
+  const { objects } = await listAllTenantObjects(siteId);
+  return objects.reduce((sum, item) => sum + item.size, 0);
+}
+
+function collectReferencedMediaPaths(siteId: string): Set<string> {
+  const referenced = new Set<string>();
+  const db = getDb();
+
+  const recordText = (value?: string | null) => {
+    if (!value) return;
+    const regex = /(?:\/api)?\/uploads\/([^\s"'`<>)?#]+)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(value)) !== null) {
+      if (!match[1]) continue;
+      try {
+        const decoded = sanitizePath(decodeURIComponent(match[1]));
+        referenced.add(decoded);
+        referenced.add(unscopeStoragePath(decoded, siteId));
+      } catch {
+        const raw = sanitizePath(match[1]);
+        referenced.add(raw);
+        referenced.add(unscopeStoragePath(raw, siteId));
+      }
+    }
+  };
+
+  const siteRow = db
+    .select({ logoUrl: sites.logoUrl, faviconUrl: sites.faviconUrl })
+    .from(sites)
+    .where(eq(sites.id, siteId))
+    .get();
+  if (siteRow) {
+    recordText(siteRow.logoUrl);
+    recordText(siteRow.faviconUrl);
+  }
+
+  const userRows = db
+    .select({ avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.siteId, siteId))
+    .all();
+  for (const row of userRows) {
+    recordText(row.avatarUrl);
+  }
+
+  const postRows = db
+    .select({
+      coverImage: posts.coverImage,
+      contentHtml: posts.contentHtml,
+      contentMd: posts.contentMd,
+    })
+    .from(posts)
+    .where(eq(posts.siteId, siteId))
+    .all();
+  for (const row of postRows) {
+    recordText(row.coverImage);
+    recordText(row.contentHtml);
+    recordText(row.contentMd);
+  }
+
+  const pageRows = db
+    .select({
+      coverImage: pages.coverImage,
+      contentHtml: pages.contentHtml,
+      contentMd: pages.contentMd,
+    })
+    .from(pages)
+    .where(eq(pages.siteId, siteId))
+    .all();
+  for (const row of pageRows) {
+    recordText(row.coverImage);
+    recordText(row.contentHtml);
+    recordText(row.contentMd);
+  }
+
+  const settingRows = db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(eq(settings.siteId, siteId))
+    .all();
+  for (const row of settingRows) {
+    recordText(row.value);
+  }
+
+  return referenced;
+}
+
+/** Result summary returned after cleaning up unreferenced tenant media objects. */
+export interface OrphanCleanupResult {
+  deletedCount: number;
+  freedBytes: number;
+  deletedPaths: string[];
+}
+
+/**
+ * Deletes tenant-scoped media files that are no longer referenced by any post, page, site asset, user avatar, or setting
+ * and whose age exceeds `gracePeriodMs` (protecting in-flight uploads during editing).
+ *
+ * @param siteId - Tenant site identifier.
+ * @param options - Optional grace period configuration (defaults to 60,000 ms).
+ * @returns Deletion counts, reclaimed bytes, and deleted logical paths.
+ */
+export async function cleanupOrphanMedia(
+  siteId: string,
+  options: { gracePeriodMs?: number } = {}
+): Promise<OrphanCleanupResult> {
+  if (!siteId) {
+    return { deletedCount: 0, freedBytes: 0, deletedPaths: [] };
+  }
+
+  const gracePeriodMs = options.gracePeriodMs ?? 60_000;
+  const cutoffMs = Date.now() - Math.max(0, gracePeriodMs);
+  const referenced = collectReferencedMediaPaths(siteId);
+  const { objects } = await listAllTenantObjects(siteId);
+
+  const deletedPaths: string[] = [];
+  let freedBytes = 0;
+
+  for (const obj of objects) {
+    if (obj.mtimeMs > cutoffMs) continue;
+    if (referenced.has(obj.physicalPath) || referenced.has(obj.logicalPath)) {
+      continue;
+    }
+    const deleted = await deleteFromStorage(obj.logicalPath, false, siteId);
+    if (deleted) {
+      deletedPaths.push(obj.logicalPath);
+      freedBytes += obj.size;
+    }
+  }
+
+  return {
+    deletedCount: deletedPaths.length,
+    freedBytes,
+    deletedPaths,
+  };
 }

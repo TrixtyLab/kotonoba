@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { SlidersHorizontal, Plus, Trash2, CheckCircle, ArrowRight } from "lucide-react";
+import { SlidersHorizontal, Plus, Trash2, ArrowRight } from "lucide-react";
 import { createSegmentAction, deleteSegmentAction } from "@/actions/analytics";
 
 export interface SegmentItem {
@@ -42,7 +42,7 @@ export function SegmentsManagerClient({
   // Extract current filters from searchParams
   const activeFilters: Record<string, string> = {};
   for (const key of ["country", "browser", "device", "os"]) {
-    const val = searchParams.get(key);
+    const val = (searchParams ?? new URLSearchParams()).get(key);
     if (val) activeFilters[key] = val;
   }
   const hasActiveFilters = Object.keys(activeFilters).length > 0;

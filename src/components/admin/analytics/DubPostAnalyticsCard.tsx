@@ -39,13 +39,10 @@ export function DubPostAnalyticsCard({
   postId,
   siteDomain,
   slug,
-  title,
-  locale,
   existingShortUrl,
   dubInfo,
 }: DubPostAnalyticsCardProps) {
   const t = useTranslations("analytics");
-  const tc = useTranslations("common");
   const toast = useToast();
   const [copied, setCopied] = useState<boolean>(false);
   const [isGenerating, startTransition] = useTransition();

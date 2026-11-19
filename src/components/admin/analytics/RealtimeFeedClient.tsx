@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { Radio, Users, Eye, Globe, Monitor, Clock } from "lucide-react";
+import { Radio, Eye, Monitor, Clock } from "lucide-react";
 import type { RealtimeDataResponse } from "@/lib/analytics/realtime";
 import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
 

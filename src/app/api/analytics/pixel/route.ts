@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { analytics, sites } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { getClientIp } from "@/lib/http/request";
 import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
 import crypto from "crypto";
 
@@ -23,7 +24,7 @@ const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|tel
  * @returns {Promise<NextResponse>} 1x1 GIF binary response with non-caching HTTP headers.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const gifResponse = new NextResponse(TRANSPARENT_GIF_BUFFER, {
+  const gifResponse = new NextResponse(new Uint8Array(TRANSPARENT_GIF_BUFFER), {
     status: 200,
     headers: {
       "Content-Type": "image/gif",
@@ -42,10 +43,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return gifResponse;
   }
 
-  const rawIp =
-    req.headers.get("x-real-ip")?.trim() ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "0.0.0.0";
+  const rawIp = getClientIp(req.headers);
   const rateLimitKey = `analytics:pixel:${rawIp}`;
   const rate = checkRateLimit(rateLimitKey, RATE_LIMITS.analytics);
 

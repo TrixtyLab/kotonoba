@@ -1,9 +1,11 @@
-import { BskyAgent, RichText } from "@atproto/api";
+import { BskyAgent, RichText, type AppBskyEmbedExternal, type BlobRef } from "@atproto/api";
 import { getDb } from "@/lib/db";
 import { settings, sites, postTags, tags } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { getLocalizedText } from "@/lib/utils/localization";
-import { normalizeMediaUrl } from "@/lib/storage";
+import { normalizeMediaUrl } from "@/lib/utils/media";
+import { decryptSecretOrLegacyPlaintext } from "@/lib/security/crypto";
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/security/ssrf";
+import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 
 /**
  * Configuration credentials and endpoint options for connecting to Bluesky.
@@ -58,7 +60,16 @@ export async function testBlueskyConnection(creds: BlueskyCredentials): Promise<
 }> {
   const identifier = creds.identifier?.trim();
   const password = creds.appPassword?.trim();
-  const service = creds.serviceUrl?.trim() || "https://bsky.social";
+  const rawService = creds.serviceUrl?.trim() || "https://bsky.social";
+  const service = /^https?:\/\//i.test(rawService) ? rawService : `https://${rawService}`;
+
+  const serviceCheck = await validateOutboundUrl(service);
+  if (!serviceCheck.valid) {
+    return {
+      success: false,
+      error: `Invalid Bluesky PDS URL: ${serviceCheck.error}`,
+    };
+  }
 
   if (!identifier || !password) {
     return {
@@ -68,7 +79,7 @@ export async function testBlueskyConnection(creds: BlueskyCredentials): Promise<
   }
 
   try {
-    const agent = new BskyAgent({ service });
+    const agent = new BskyAgent({ service: serviceCheck.url.toString() });
     const sessionRes = await agent.login({
       identifier,
       password,
@@ -126,8 +137,9 @@ export async function sendBlueskyPostNotification(
 
     const enabled = configMap.bluesky_enabled === "true";
     const identifier = configMap.bluesky_identifier?.trim();
-    const appPassword = configMap.bluesky_app_password?.trim();
-    const serviceUrl = configMap.bluesky_service_url?.trim() || "https://bsky.social";
+    const appPassword = decryptSecretOrLegacyPlaintext(configMap.bluesky_app_password).trim();
+    const rawServiceUrl = configMap.bluesky_service_url?.trim() || "https://bsky.social";
+    const serviceUrl = /^https?:\/\//i.test(rawServiceUrl) ? rawServiceUrl : `https://${rawServiceUrl}`;
     const includeTags = configMap.bluesky_include_tags !== "false";
     const includeTitle = configMap.bluesky_include_title !== "false";
     const includeDescription = configMap.bluesky_include_description !== "false";
@@ -136,7 +148,12 @@ export async function sendBlueskyPostNotification(
       return false;
     }
 
-    const agent = new BskyAgent({ service: serviceUrl });
+    const serviceCheck = await validateOutboundUrl(serviceUrl);
+    if (!serviceCheck.valid) {
+      return false;
+    }
+
+    const agent = new BskyAgent({ service: serviceCheck.url.toString() });
     await agent.login({
       identifier,
       password: appPassword,
@@ -145,9 +162,7 @@ export async function sendBlueskyPostNotification(
     const site = db.select().from(sites).where(eq(sites.id, siteId)).get();
     const postLocale = post.locale || site?.locale || "en";
     const siteDomain = site?.domain || "localhost:3000";
-    const baseUrl = siteDomain.includes("localhost")
-      ? `http://${siteDomain}`
-      : `https://${siteDomain}`;
+    const baseUrl = buildSiteBaseUrl(siteDomain);
 
     const canonicalPostUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
     const postUrl = post.shortUrl || canonicalPostUrl;
@@ -219,8 +234,7 @@ export async function sendBlueskyPostNotification(
     const rt = new RichText({ text: postText });
     await rt.detectFacets(agent);
 
-    let embed: any = undefined;
-    let thumbBlob: any = undefined;
+    let thumbBlob: BlobRef | undefined = undefined;
 
     if (post.coverImage) {
       try {
@@ -229,11 +243,15 @@ export async function sendBlueskyPostNotification(
           ? cleanCover
           : `${baseUrl}${cleanCover.startsWith("/") ? "" : "/"}${cleanCover}`;
 
-        const imgRes = await fetch(coverImageUrl);
+        const imgRes = await safeOutboundFetch(coverImageUrl, {}, { timeoutMs: 8000 });
         if (imgRes.ok) {
+          const contentLength = Number.parseInt(imgRes.headers.get("content-length") || "0", 10);
+          if (contentLength > 2_000_000) {
+            throw new Error("Cover image exceeds size limit");
+          }
           const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
           const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          if (imgBuffer.length > 0 && imgBuffer.length < 1000000) {
+          if (imgBuffer.length > 0 && imgBuffer.length < 1_000_000 && contentType.startsWith("image/")) {
             const uploadRes = await agent.uploadBlob(imgBuffer, { encoding: contentType });
             thumbBlob = uploadRes.data.blob;
           }
@@ -243,7 +261,7 @@ export async function sendBlueskyPostNotification(
       }
     }
 
-    embed = {
+    const embed: AppBskyEmbedExternal.Main & { $type: "app.bsky.embed.external" } = {
       $type: "app.bsky.embed.external",
       external: {
         uri: postUrl,

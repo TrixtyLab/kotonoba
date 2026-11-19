@@ -17,12 +17,13 @@ type FilterKey = (typeof FILTER_KEYS)[number];
 export function FilterBar(): React.JSX.Element | null {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const query = searchParams ?? new URLSearchParams();
   const router = useRouter();
   const t = useTranslations("analytics");
 
   const activeFilters: { key: FilterKey; value: string }[] = [];
   for (const key of FILTER_KEYS) {
-    const val = searchParams.get(key);
+    const val = query.get(key);
     if (val) {
       activeFilters.push({ key, value: val });
     }
@@ -33,14 +34,14 @@ export function FilterBar(): React.JSX.Element | null {
   }
 
   const removeFilter = (key: FilterKey): void => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(query.toString());
     params.delete(key);
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   };
 
   const clearAllFilters = (): void => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(query.toString());
     for (const key of FILTER_KEYS) {
       params.delete(key);
     }

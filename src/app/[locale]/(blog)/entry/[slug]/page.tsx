@@ -1,8 +1,8 @@
-import { getActiveSite, getSiteForHost } from "@/lib/tenant";
+import { getPublicSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, users, categories, tags, postCategories, postTags } from "@/lib/db/schema";
 import { eq, and, desc, lt, gt, asc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicPostCondition } from "@/lib/db/scheduled";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils/date";
 import { ShareButtons } from "@/components/blog/ShareButtons";
@@ -16,8 +16,9 @@ import type { Metadata } from "next";
 
 import { renderPostContent } from "@/lib/utils/markdown";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/storage";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
 import { getSidebarBanners } from "@/lib/banners";
+import { SafeHtml } from "@/components/SafeHtml";
 
 /**
  * Generates OpenGraph, Twitter, and canonical SEO metadata tags for a published blog post.
@@ -31,7 +32,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const t = await getTranslations({ locale, namespace: "blog" });
   if (!site) return { title: t("noPosts") };
 
@@ -97,10 +98,9 @@ export default async function PostEntryPage({
   params: Promise<{ slug: string; locale: string }>;
 }) {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const site = await getPublicSite();
   if (!site) notFound();
 
-  await publishScheduledPosts(site.id);
   const t = await getTranslations({ locale, namespace: "blog" });
 
   const db = getDb();
@@ -111,6 +111,7 @@ export default async function PostEntryPage({
       slug: posts.slug,
       contentMd: posts.contentMd,
       contentHtml: posts.contentHtml,
+      contentFormat: posts.contentFormat,
       excerpt: posts.excerpt,
       coverImage: posts.coverImage,
       publishedAt: posts.publishedAt,
@@ -236,20 +237,19 @@ export default async function PostEntryPage({
         </div>
 
         {/* Body Content */}
-        <div
+        <SafeHtml
           className="prose-blog pt-2"
-          dangerouslySetInnerHTML={{
-            __html: renderPostContent(post.contentHtml || post.contentMd || "", {
-              utmSource:
-                site?.domain && !site.domain.includes("localhost")
-                  ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
-                  : typeof site?.name === "string" && site.name.trim()
-                  ? site.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-")
-                  : "myblog",
-              utmCampaign: post.slug,
-              utmMedium: "article_embed",
-            }),
-          }}
+          html={renderPostContent(post.contentHtml || post.contentMd || "", {
+            format: post.contentFormat,
+            utmSource:
+              site?.domain && !site.domain.includes("localhost")
+                ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
+                : typeof site?.name === "string" && site.name.trim()
+                ? site.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-")
+                : "myblog",
+            utmCampaign: post.slug,
+            utmMedium: "article_embed",
+          })}
         />
 
         {/* Mermaid Diagrams */}

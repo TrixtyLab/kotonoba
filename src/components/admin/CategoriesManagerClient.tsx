@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useToast } from "@/components/ui/Toast";
 import { Plus, Edit3, Trash2, Folder, Search } from "lucide-react";
 
@@ -123,18 +125,16 @@ export function CategoriesManagerClient({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-text tracking-tight">{tc("categories")}</h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            {t("categoriesSubtitle")}
-          </p>
-        </div>
-        <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-3.5 h-3.5" />}>
-          {t("newCategory")}
-        </Button>
-      </div>
+      <AdminPageHeader
+        title={tc("categories")}
+        subtitle={t("categoriesSubtitle")}
+        icon={<Folder className="w-5 h-5" />}
+        actions={
+          <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-3.5 h-3.5" />}>
+            {t("newCategory")}
+          </Button>
+        }
+      />
 
       {/* Search Bar */}
       <div className="bg-surface border border-border rounded-xl p-3 shadow-xs">
@@ -189,10 +189,7 @@ export function CategoriesManagerClient({
       </div>
 
       {filtered.length === 0 && (
-        <div className="p-10 text-center rounded-xl bg-surface border border-border text-xs text-text-muted space-y-1">
-          <Folder className="w-6 h-6 opacity-30 mx-auto" />
-          <p>{t("noCategories")}</p>
-        </div>
+        <EmptyState icon={<Folder className="w-6 h-6" />} title={t("noCategories")} />
       )}
 
       {/* Create/Edit Modal */}

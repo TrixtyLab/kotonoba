@@ -1,8 +1,8 @@
-import { getActiveSite, getSiteForHost } from "@/lib/tenant";
+import { getPublicSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
-import { posts, categories, users } from "@/lib/db/schema";
+import { posts, categories } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicPostCondition } from "@/lib/db/scheduled";
 import { formatDate } from "@/lib/utils/date";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { Link } from "@/i18n/routing";
@@ -11,8 +11,9 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/storage";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
 import { getSidebarBanners } from "@/lib/banners";
+import { getDefaultSiteUrl } from "@/lib/config/env";
 
 /**
  * Generates SEO metadata for the chronological blog archive.
@@ -26,10 +27,10 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
-  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/archive`;
   const title = `${t("archive")} — ${siteName}`;
   const description = t("archive");
@@ -72,13 +73,9 @@ export default async function ArchivePage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const site = await getPublicSite();
   const db = getDb();
   const t = await getTranslations({ locale, namespace: "blog" });
-
-  if (site) {
-    await publishScheduledPosts(site.id);
-  }
 
   const allPosts = site
     ? db

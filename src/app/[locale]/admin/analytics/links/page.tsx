@@ -1,10 +1,10 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { analytics } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
 import { sql, desc, eq, and, like } from "drizzle-orm";
-import { Link2, MousePointerClick, QrCode, ExternalLink, Tag } from "lucide-react";
+import { Link2, QrCode, ExternalLink, Tag } from "lucide-react";
 import { getDubAnalyticsSummary } from "@/lib/dub";
 import { PixelGeneratorCard } from "@/components/admin/analytics/PixelGeneratorCard";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
@@ -31,7 +31,7 @@ export default async function AnalyticsLinksPage({
 }: PageProps): Promise<React.JSX.Element> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const dubSummary = await getDubAnalyticsSummary(site.id);

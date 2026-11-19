@@ -14,7 +14,41 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  verify:
+    name: Verify quality gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, lint & test
+        run: pnpm check
+
+      - name: Build check
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: "1"
+          DB_PATH: /tmp/kotonoba-release-check.db
+          UPLOAD_DIR: /tmp/kotonoba-release-uploads
+        run: pnpm build
+
   release-and-publish:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -93,7 +127,7 @@ jobs:
           IS_PRERELEASE: ${{ steps.versioning.outputs.IS_PRERELEASE }}
         run: |
           echo "Processing GitHub Release for tag: ${TAG_NAME} (prerelease: ${IS_PRERELEASE})"
-          
+
           PRERELEASE_FLAG=""
           if [ "${IS_PRERELEASE}" = "true" ]; then
             PRERELEASE_FLAG="--prerelease"
@@ -110,6 +144,3 @@ jobs:
               --generate-notes \
               ${PRERELEASE_FLAG}
           fi
-
-
-

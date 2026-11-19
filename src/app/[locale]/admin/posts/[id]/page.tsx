@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { posts, postCategories, postTags } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -21,7 +21,7 @@ export default async function EditPostPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const db = getDb();

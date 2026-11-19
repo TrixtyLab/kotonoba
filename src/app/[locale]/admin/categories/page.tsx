@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getCategories } from "@/actions/categories";
 import { CategoriesManagerClient } from "@/components/admin/CategoriesManagerClient";
 import { notFound } from "next/navigation";
@@ -9,7 +9,7 @@ import { notFound } from "next/navigation";
  * @returns React JSX categories manager view.
  */
 export default async function AdminCategoriesPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const categories = await getCategories(site.id);

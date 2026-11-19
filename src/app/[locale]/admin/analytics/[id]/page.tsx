@@ -1,11 +1,10 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { analytics, posts, pages, users } from "@/lib/db/schema";
 import { eq, desc, sql, and, isNotNull, gte, or } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import {
-  BarChart3,
   TrendingUp,
   Eye,
   Globe,
@@ -18,15 +17,11 @@ import {
   Calendar,
   Layers,
   ArrowLeft,
-  FileText,
   ExternalLink,
   Edit3,
-  Link2,
-  QrCode,
   MousePointerClick,
   Clock,
   User,
-  Files,
 } from "lucide-react";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
@@ -72,7 +67,7 @@ export default async function IndividualAnalyticsPage({
   const tc = await getTranslations({ locale, namespace: "common" });
   const ta = await getTranslations({ locale, namespace: "admin" });
 
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const db = getDb();
