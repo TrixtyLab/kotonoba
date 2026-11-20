@@ -1,6 +1,6 @@
 # Kotonoba Configuration Guide
 
-Comprehensive reference for every environment variable (`src/lib/config/env.ts` & `secrets.ts`), valid values, defaults, storage backends, AI assistant endpoints, link shortening, multi-tenant domain routing, and backups.
+Comprehensive reference for every environment variable (`src/lib/config/env.ts` & `secrets.ts`), valid values, defaults, storage backends, AI assistant endpoints, link shortening, multi-tenant domain routing, and backups. Related guides: [Architecture & ADRs](architecture.md), [Operations & Recovery Runbook](operations.md), and [Docker Deployment](docker.md).
 
 > **Startup Fail-Closed Behavior:** On Node.js server boot ([`src/instrumentation.ts`](../src/instrumentation.ts)), when `NODE_ENV=production` (outside `next build`), Kotonoba validates mandatory security keys immediately and refuses to start if `JWT_SECRET` or `ENCRYPTION_KEY` is missing, shorter than 32 characters, or identical to each other.
 
@@ -15,7 +15,7 @@ Comprehensive reference for every environment variable (`src/lib/config/env.ts` 
 | `NODE_ENV` | `"development"` \| `"production"` \| `"test"` | `"development"` (`"production"` in Docker) | Switches fail-closed secret checks, secure cookie flags (`httpOnly` + `Secure` in prod), CSP strictness (`unsafe-eval` allowed only in dev), and default `/app/data/*` paths. |
 | `PORT` | TCP port string (`"1"`–`"65535"`) | `"3000"` | HTTP port bound by the Next.js server and healthcheck. |
 | `HOSTNAME` | Hostname / IP (`"0.0.0.0"` in Docker, `"localhost"` locally) | `"0.0.0.0"` (container) / Next default | Interface address bound by the server. Avoid `127.0.0.1` with Next.js middleware rewrites on dev/standalone because `NextURL` normalizes `127.0.0.1` to `localhost`. |
-| `APP_VERSION` | Arbitrary semver/build string (e.g. `"1.1.4"`) | Unset (falls back to `package.json` version) | Overrides the reported version string in [`/api/health`](../src/app/api/health/route.ts) and update status responses. |
+| `APP_VERSION` | Arbitrary semver/build string (e.g. `"1.2.0"`) | Unset (falls back to `package.json` version) | Overrides the installed version string used by update check status responses ([`src/actions/updates.ts`](../src/actions/updates.ts)). (`/api/health` intentionally omits version metadata.) |
 | `SITE_URL` | Full `http://` or `https://` origin (e.g. `"https://blog.example.com"`) | `NEXT_PUBLIC_APP_URL` or `"http://localhost:3000"` | Canonical fallback base URL for metadata (`metadataBase`), feeds, and sitemaps when no site host override applies. |
 | `NEXT_PUBLIC_APP_URL` | Full `http://` or `https://` origin | `"http://localhost:3000"` | Secondary fallback used by `getDefaultSiteUrl()` when `SITE_URL` is omitted. |
 | `ADMIN_DOMAIN` | Hostname without scheme (e.g. `"admin.example.com"`) or empty | Unset (`null`) | Isolates admin/auth routes (`/admin`, `/login`, `/setup`): non-local requests to those paths on other domains redirect to `ADMIN_DOMAIN`. |
@@ -73,7 +73,7 @@ Comprehensive reference for every environment variable (`src/lib/config/env.ts` 
 
 | Variable | Allowed Values / Format | Default | Purpose |
 | :--- | :--- | :--- | :--- |
-| `CRON_SECRET` | Random bearer token string (`16+` recommended) | Unset (`null`) | Required as `Authorization: Bearer <CRON_SECRET>` by `POST /api/cron/publish` (used by the Compose `scheduler` service). Unconfigured prod requests without a `super_admin` session fail closed with HTTP `503`. |
+| `CRON_SECRET` | Random bearer token string (`16+` recommended) | Unset (`null`) | Required as `Authorization: Bearer <CRON_SECRET>` by `POST /api/cron/publish` (used by the Compose `scheduler` service) and accepted by `GET /api/metrics`. Unconfigured prod requests without a `super_admin` session fail closed with HTTP `503` on `/api/cron/publish` and `401` on `/api/metrics`. |
 | `ANALYTICS_RETENTION_DAYS` | Non-negative integer (days; `0` disables pruning) | `365` | Deletes raw `analytics` rows older than this threshold during cron runs after summarizing counts into `analytics_daily` via `aggregateDailyAnalytics()`. |
 
 ---

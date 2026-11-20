@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import net from "net";
 import { getEnvConfig } from "@/lib/config/env";
 
@@ -170,4 +171,28 @@ export function isSameOriginRequest(headers: HeaderReadable): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Extracts a `Bearer` token from `Authorization` and verifies it in constant time
+ * against an expected server secret (`CRON_SECRET`).
+ *
+ * @param headers - Request header collection.
+ * @param expectedSecret - Configured server secret.
+ * @returns `true` only when the secret is non-empty and matches byte-for-byte.
+ */
+export function verifyBearerSecret(
+  headers: HeaderReadable,
+  expectedSecret: string | null | undefined
+): boolean {
+  if (!expectedSecret) return false;
+  const authHeader = headers.get("authorization") || "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return false;
+  const token = authHeader.slice(7).trim();
+  if (!token) return false;
+
+  const expectedBuf = Buffer.from(expectedSecret, "utf8");
+  const actualBuf = Buffer.from(token, "utf8");
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
 }

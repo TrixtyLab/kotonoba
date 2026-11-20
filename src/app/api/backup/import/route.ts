@@ -5,8 +5,9 @@ import { canManageBackups } from "@/lib/auth/roles";
 import { restoreSiteBackupZip } from "@/lib/backup/import";
 import { getEnvConfig } from "@/lib/config/env";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { getClientIp, isSameOriginRequest } from "@/lib/http/request";
+import { getClientIp, getRequestId, isSameOriginRequest } from "@/lib/http/request";
 import { recordAuditEvent } from "@/lib/security/audit";
+import { logError, logEvent } from "@/lib/observability/logger";
 
 /**
  * HTTP POST endpoint accepting multipart upload of an encrypted `.kotonoba-backup` archive.
@@ -36,6 +37,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   let requestedSiteId: string | null = null;
   let mode: "merge" | "replace" = "merge";
+  const startedAt = Date.now();
+  const requestId = getRequestId(req.headers);
 
   try {
     const formData = await req.formData();
@@ -102,6 +105,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ipAddress: clientIp,
         metadata: { mode, error: result.error },
       });
+      logEvent("warn", "backup.import.failed", {
+        route: "/api/backup/import",
+        requestId,
+        siteId: requestedSiteId,
+        mode,
+        durationMs: Date.now() - startedAt,
+      });
       return NextResponse.json({ error: result.error || "Failed to restore backup." }, { status: 400 });
     }
 
@@ -116,6 +126,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       status: "success",
       ipAddress: clientIp,
       metadata: { mode, stats: result.stats, hasPreRestoreSnapshot: Boolean(result.snapshotPath) },
+    });
+
+    logEvent("info", "backup.import.completed", {
+      route: "/api/backup/import",
+      requestId,
+      siteId: requestedSiteId,
+      mode,
+      durationMs: Date.now() - startedAt,
+      hasPreRestoreSnapshot: Boolean(result.snapshotPath),
     });
 
     return NextResponse.json({
@@ -135,6 +154,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       status: "failure",
       ipAddress: clientIp,
       metadata: { mode, error: message },
+    });
+    logError("backup.import.failed", err, {
+      route: "/api/backup/import",
+      requestId,
+      siteId: requestedSiteId ?? undefined,
+      mode,
+      durationMs: Date.now() - startedAt,
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }

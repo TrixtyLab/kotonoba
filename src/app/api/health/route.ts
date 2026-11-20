@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
+import { logError } from "@/lib/observability/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function GET(): Promise<NextResponse> {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("[health] Readiness probe failed:", err instanceof Error ? err.message : err);
+    logError("health.check.failed", err, { route: "/api/health" });
     return NextResponse.json(
       { status: "unhealthy", db: "error" },
       { status: 503 }

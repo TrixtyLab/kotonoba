@@ -69,9 +69,9 @@ export function revalidateUsersAdmin(): void {
  * Revalidates analytics dashboards after data reset or segment mutations.
  */
 export function revalidateAnalyticsPaths(): void {
-  revalidatePath("/admin/analytics", "layout");
-  revalidatePath("/admin/analytics/segments", "page");
-  revalidatePath("/admin");
-  revalidatePath("/admin/posts");
-  revalidatePath("/admin/pages");
+  revalidatePath("/[locale]/admin/analytics", "layout");
+  revalidatePath("/[locale]/admin/analytics/segments", "page");
+  revalidatePath("/[locale]/admin", "page");
+  revalidatePath("/[locale]/admin/posts", "page");
+  revalidatePath("/[locale]/admin/pages", "page");
 }

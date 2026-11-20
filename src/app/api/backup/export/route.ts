@@ -4,8 +4,9 @@ import { canAccessSite } from "@/lib/auth/site-access";
 import { canManageBackups } from "@/lib/auth/roles";
 import { createSiteBackupZip } from "@/lib/backup/export";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { getClientIp } from "@/lib/http/request";
+import { getClientIp, getRequestId } from "@/lib/http/request";
 import { recordAuditEvent } from "@/lib/security/audit";
+import { logError, logEvent } from "@/lib/observability/logger";
 
 /**
  * HTTP GET endpoint streaming an encrypted backup archive containing the tenant site's
@@ -49,6 +50,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const startedAt = Date.now();
+  const requestId = getRequestId(req.headers);
+
   try {
     const { buffer, filename, manifest } = await createSiteBackupZip(siteId);
 
@@ -63,6 +67,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       status: "success",
       ipAddress: clientIp,
       metadata: { filename, counts: manifest.counts },
+    });
+
+    logEvent("info", "backup.export.completed", {
+      route: "/api/backup/export",
+      requestId,
+      siteId,
+      durationMs: Date.now() - startedAt,
+      sizeBytes: buffer.length,
     });
 
     return new NextResponse(new Uint8Array(buffer), {
@@ -87,6 +99,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       status: "failure",
       ipAddress: clientIp,
       metadata: { error: message },
+    });
+    logError("backup.export.failed", err, {
+      route: "/api/backup/export",
+      requestId,
+      siteId,
+      durationMs: Date.now() - startedAt,
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }

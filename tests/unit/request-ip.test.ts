@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getClientIp, getRequestHost } from "@/lib/http/request";
+import { getClientIp, getRequestHost, verifyBearerSecret } from "@/lib/http/request";
 
 function headers(values: Record<string, string>): Headers {
   return new Headers(values);
@@ -77,5 +77,15 @@ describe("trusted proxy IP and host resolution", () => {
         })
       )
     ).toBe("blog.example.com");
+  });
+
+  it("verifies bearer secrets in constant time and fails closed on missing credentials", () => {
+    expect(verifyBearerSecret(headers({ authorization: "Bearer super-cron-secret" }), "super-cron-secret")).toBe(true);
+    expect(verifyBearerSecret(headers({ authorization: "bearer super-cron-secret" }), "super-cron-secret")).toBe(true);
+    expect(verifyBearerSecret(headers({ authorization: "Bearer wrong-cron-secret" }), "super-cron-secret")).toBe(false);
+    expect(verifyBearerSecret(headers({ authorization: "Bearer short" }), "super-cron-secret")).toBe(false);
+    expect(verifyBearerSecret(headers({ authorization: "Basic dXNlcjpwYXNz" }), "super-cron-secret")).toBe(false);
+    expect(verifyBearerSecret(headers({ authorization: "Bearer super-cron-secret" }), "")).toBe(false);
+    expect(verifyBearerSecret(headers({ authorization: "Bearer super-cron-secret" }), null)).toBe(false);
   });
 });
