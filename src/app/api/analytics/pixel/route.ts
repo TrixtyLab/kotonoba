@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { analytics, sites } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { analytics } from "@/lib/db/schema";
+import {
+  checkAnalyticsIpRateLimit,
+  checkAnalyticsSiteRateLimit,
+  hashAnalyticsVisitor,
+  resolveAnalyticsSite,
+  sanitizeCampaignToken,
+} from "@/lib/analytics/ingest";
 import { getClientIp } from "@/lib/http/request";
 import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
-import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +23,9 @@ const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|tel
 
 /**
  * Serves a 1x1 transparent tracking GIF while recording campaign impression telemetry.
+ *
+ * The target site must match the request host; invalid or cross-tenant requests still
+ * return the GIF so tracking pixels never expose tenant existence to third parties.
  *
  * @param {NextRequest} req - Inbound HTTP request containing query parameters `sid` (siteId) and optional `src` (campaign tag).
  * @returns {Promise<NextResponse>} 1x1 GIF binary response with non-caching HTTP headers.
@@ -36,18 +43,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   });
 
   const { searchParams } = new URL(req.url);
-  const siteId = searchParams.get("sid")?.trim();
-  const campaignSource = searchParams.get("src")?.trim() || "newsletter";
+  const siteId = searchParams.get("sid")?.trim() || "";
 
-  if (!siteId) {
+  if (!siteId || siteId.length > 128) {
     return gifResponse;
   }
 
   const rawIp = getClientIp(req.headers);
-  const rateLimitKey = `analytics:pixel:${rawIp}`;
-  const rate = checkRateLimit(rateLimitKey, RATE_LIMITS.analytics);
-
-  if (!rate.allowed) {
+  const ipRate = checkAnalyticsIpRateLimit("pixel", rawIp);
+  if (!ipRate.allowed) {
     return gifResponse;
   }
 
@@ -56,22 +60,29 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return gifResponse;
   }
 
-  try {
-    const db = getDb();
-    const siteExists = db.select({ id: sites.id }).from(sites).where(eq(sites.id, siteId)).get();
-    if (!siteExists) {
-      return gifResponse;
-    }
+  const resolution = await resolveAnalyticsSite(siteId);
+  if (!resolution.ok) {
+    return gifResponse;
+  }
 
-    const ipHash = crypto.createHash("sha256").update(`${rawIp}-${userAgent}`).digest("hex").slice(0, 16);
+  const siteRate = checkAnalyticsSiteRateLimit("pixel", rawIp, resolution.siteId);
+  if (!siteRate.allowed) {
+    return gifResponse;
+  }
+
+  const campaignSource = sanitizeCampaignToken(searchParams.get("src"));
+
+  try {
+    const ipHash = hashAnalyticsVisitor(rawIp, userAgent);
     const country = req.headers.get("cf-ipcountry") || req.headers.get("x-vercel-ip-country") || undefined;
     const { device, browser, os } = parseDeviceAndBrowser(userAgent);
 
-    db.insert(analytics)
+    getDb()
+      .insert(analytics)
       .values({
-        siteId,
+        siteId: resolution.siteId,
         path: `/pixel/${campaignSource}`,
-        referrer: req.headers.get("referer") || "Email / Newsletter",
+        referrer: (req.headers.get("referer") || "Email / Newsletter").slice(0, 500),
         userAgent: userAgent.slice(0, 500),
         country,
         device,
@@ -79,7 +90,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         os,
         utmSource: "pixel",
         utmMedium: "email",
-        utmCampaign: campaignSource.slice(0, 100),
+        utmCampaign: campaignSource,
         ipHash,
         createdAt: new Date(),
       })

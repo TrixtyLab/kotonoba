@@ -1,22 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { analytics, posts, pages, sites } from "@/lib/db/schema";
+import { analytics, posts, pages } from "@/lib/db/schema";
 import { eq, and, gt, sql } from "drizzle-orm";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
 import { getClientIp } from "@/lib/http/request";
-import { getSiteForHost } from "@/lib/tenant";
 import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
 import { verifyToken } from "@/lib/auth/jwt";
-import crypto from "crypto";
+import {
+  checkAnalyticsIpRateLimit,
+  checkAnalyticsSiteRateLimit,
+  hashAnalyticsVisitor,
+  resolveAnalyticsSite,
+} from "@/lib/analytics/ingest";
 
 const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegram|discordbot|headless|lighthouse|pingdom|uptimerobot|preview|google-read-aloud/i;
+
+const pathSchema = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((value) => value.startsWith("/") && !value.startsWith("//"), {
+    message: "Path must be an absolute same-origin path",
+  });
 
 const hitPayloadSchema = z.object({
   siteId: z.string().min(1).max(128),
   postId: z.string().min(1).max(128).optional().nullable(),
   pageId: z.string().min(1).max(128).optional().nullable(),
-  path: z.string().min(1).max(500),
+  path: pathSchema,
   utm_source: z.string().max(100).optional().nullable(),
   utm_medium: z.string().max(100).optional().nullable(),
   utm_campaign: z.string().max(100).optional().nullable(),
@@ -85,10 +96,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const ip = getClientIp(req.headers);
-  const rateLimitKey = `analytics:${ip}`;
-  const rate = checkRateLimit(rateLimitKey, RATE_LIMITS.analytics);
-
-  if (!rate.allowed) {
+  const ipRate = checkAnalyticsIpRateLimit("hit", ip);
+  if (!ipRate.allowed) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }
 
@@ -105,7 +114,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const {
-      siteId,
+      siteId: requestedSiteId,
       postId,
       pageId,
       path,
@@ -121,17 +130,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       screenHeight: rawScreenHeight,
     } = parsed.data;
 
+    const resolution = await resolveAnalyticsSite(requestedSiteId);
+    if (!resolution.ok) {
+      return NextResponse.json({ error: resolution.error }, { status: resolution.status });
+    }
+
+    const siteId = resolution.siteId;
+    const siteRate = checkAnalyticsSiteRateLimit("hit", ip, siteId);
+    if (!siteRate.allowed) {
+      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
+    }
+
     const db = getDb();
-    const hostSite = await getSiteForHost();
-    if (hostSite && hostSite.id !== siteId) {
-      return NextResponse.json({ error: "Site mismatch for request host" }, { status: 403 });
-    }
-
-    const targetSite = hostSite || db.select({ id: sites.id }).from(sites).where(eq(sites.id, siteId)).get();
-    if (!targetSite) {
-      return NextResponse.json({ error: "Unknown site" }, { status: 404 });
-    }
-
     let resolvedPostId: string | null = null;
     let resolvedPageId: string | null = null;
 
@@ -189,7 +199,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const ipHash = crypto.createHash("sha256").update(`${ip}-${userAgent}`).digest("hex").slice(0, 16);
+    const ipHash = hashAnalyticsVisitor(ip, userAgent);
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
     const recentVisit = db

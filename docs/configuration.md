@@ -21,7 +21,7 @@ Comprehensive reference for every environment variable (`src/lib/config/env.ts` 
 | `ADMIN_DOMAIN` | Hostname without scheme (e.g. `"admin.example.com"`) or empty | Unset (`null`) | Isolates admin/auth routes (`/admin`, `/login`, `/setup`): non-local requests to those paths on other domains redirect to `ADMIN_DOMAIN`. |
 | `SINGLE_TENANT_FALLBACK` | `"true"` \| `"false"` | `"false"` | When `"true"`, unknown non-local `Host` headers fall back to the first site in SQLite. Keep `"false"` in multi-tenant production so unknown hosts fail closed (`404`). |
 | `CSP_MODE` | `"report-only"` \| `"enforce"` | `"report-only"` | Emits `Content-Security-Policy-Report-Only` during staging rollout (`"report-only"`) or enforcing `Content-Security-Policy` with per-request nonces (`"enforce"`). |
-| `TRUSTED_PROXY_IPS` | Comma-separated IPv4/IPv6 addresses or IPv4 CIDRs (e.g. `"172.18.0.0/16,10.0.0.5"`) | `""` | Reverse-proxy allowlist required before trusting `x-forwarded-for` / `x-forwarded-host`. When empty, proxy resolution falls back safely to `x-real-ip` and `host`. |
+| `TRUSTED_PROXY_IPS` | Comma-separated IPv4/IPv6 addresses or IPv4 CIDRs (e.g. `"172.18.0.0/16,10.0.0.5"`) | `""` | Reverse-proxy allowlist required before trusting `x-forwarded-for` / `x-forwarded-host`. When empty, `x-forwarded-for` is ignored to prevent client spoofing; rate limiting and analytics use only `x-real-ip`, which the bundled nginx config overwrites, plus `host`. Never expose the app port directly to the internet. |
 
 ---
 

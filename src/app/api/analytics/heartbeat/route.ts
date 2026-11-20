@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { analytics, sites } from "@/lib/db/schema";
+import { analytics } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
 import { getClientIp } from "@/lib/http/request";
-import { getSiteForHost } from "@/lib/tenant";
+import {
+  checkAnalyticsIpRateLimit,
+  checkAnalyticsSiteRateLimit,
+  resolveAnalyticsSite,
+} from "@/lib/analytics/ingest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,7 +16,13 @@ export const runtime = "nodejs";
 const heartbeatSchema = z.object({
   siteId: z.string().min(1).max(128),
   sessionId: z.string().min(1).max(64),
-  path: z.string().min(1).max(500),
+  path: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((value) => value.startsWith("/") && !value.startsWith("//"), {
+      message: "Path must be an absolute same-origin path",
+    }),
   timeOnPage: z.number().finite().positive().max(86400),
 });
 
@@ -41,10 +50,8 @@ export async function OPTIONS(): Promise<NextResponse> {
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const clientIp = getClientIp(req.headers);
-  const rateLimitKey = `analytics:heartbeat:${clientIp}`;
-  const rate = checkRateLimit(rateLimitKey, RATE_LIMITS.analytics);
-
-  if (!rate.allowed) {
+  const ipRate = checkAnalyticsIpRateLimit("heartbeat", clientIp);
+  if (!ipRate.allowed) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }
 
@@ -64,19 +71,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Invalid heartbeat payload" }, { status: 400 });
     }
 
-    const { siteId, sessionId, path, timeOnPage } = parsed.data;
+    const { siteId: requestedSiteId, sessionId, path, timeOnPage } = parsed.data;
 
-    const hostSite = await getSiteForHost();
-    if (hostSite && hostSite.id !== siteId) {
-      return NextResponse.json({ error: "Site mismatch for request host" }, { status: 403 });
+    const resolution = await resolveAnalyticsSite(requestedSiteId);
+    if (!resolution.ok) {
+      return NextResponse.json({ error: resolution.error }, { status: resolution.status });
+    }
+
+    const siteId = resolution.siteId;
+    const siteRate = checkAnalyticsSiteRateLimit("heartbeat", clientIp, siteId);
+    if (!siteRate.allowed) {
+      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
     }
 
     const db = getDb();
-    const targetSite = hostSite || db.select({ id: sites.id }).from(sites).where(eq(sites.id, siteId)).get();
-    if (!targetSite) {
-      return NextResponse.json({ error: "Unknown site" }, { status: 404 });
-    }
-
     const clampedDuration = Math.min(Math.round(timeOnPage), 7200);
 
     const existingRecord = db

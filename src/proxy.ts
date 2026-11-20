@@ -60,6 +60,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       STATIC_ASSET_EXT_REGEX.test(pathname));
 
   const nonce = btoa(crypto.randomUUID());
+  const requestId = crypto.randomUUID();
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase() || "";
   const isHttps = forwardedProto === "https" || request.nextUrl.protocol === "https:";
   const cspValue = buildContentSecurityPolicy({
@@ -69,9 +70,16 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   });
   const cspHeaderName = getCspHeaderName(getCspModeEnv());
 
-  if (isApiOrInternal || isPublicStaticPath) {
-    const response = NextResponse.next();
+  const withCommonHeaders = (response: NextResponse): NextResponse => {
     applySecurityHeaders(response.headers, { headerName: cspHeaderName, value: cspValue });
+    response.headers.set("x-request-id", requestId);
+    return response;
+  };
+
+  if (isApiOrInternal || isPublicStaticPath) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-request-id", requestId);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
     if (
       pathname.startsWith("/api") &&
       !pathname.startsWith("/api/health") &&
@@ -80,7 +88,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     ) {
       response.headers.set("Cache-Control", "no-store");
     }
-    return response;
+    return withCommonHeaders(response);
   }
 
   // If a dedicated ADMIN_DOMAIN is configured, redirect admin/auth routes from blog domains to ADMIN_DOMAIN.
@@ -106,8 +114,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       const protocol = isHttps ? "https:" : "http:";
       const targetUrl = new URL(`${protocol}//${adminDomain}${pathname}${request.nextUrl.search}`);
       const redirectRes = NextResponse.redirect(targetUrl);
-      applySecurityHeaders(redirectRes.headers, { headerName: cspHeaderName, value: cspValue });
-      return redirectRes;
+      return withCommonHeaders(redirectRes);
     }
   }
 
@@ -121,13 +128,13 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("redirect", pathname);
       const loginRedirect = NextResponse.redirect(loginUrl);
-      applySecurityHeaders(loginRedirect.headers, { headerName: cspHeaderName, value: cspValue });
-      return loginRedirect;
+      return withCommonHeaders(loginRedirect);
     }
   }
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-request-id", requestId);
   requestHeaders.set(cspHeaderName, cspValue);
 
   const requestWithCsp = new NextRequest(request.url, {
@@ -143,8 +150,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     intlResponse.headers.set("Expires", "0");
   }
 
-  applySecurityHeaders(intlResponse.headers, { headerName: cspHeaderName, value: cspValue });
-  return intlResponse;
+  return withCommonHeaders(intlResponse);
 }
 
 export const config = {

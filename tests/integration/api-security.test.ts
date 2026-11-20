@@ -38,6 +38,7 @@ import { GET as exportBackup } from "@/app/api/backup/export/route";
 import { POST as importBackup } from "@/app/api/backup/import/route";
 import { GET as getRealtimeAnalytics } from "@/app/api/analytics/realtime/route";
 import { POST as postAnalyticsHit } from "@/app/api/analytics/hit/route";
+import { GET as getAnalyticsPixel } from "@/app/api/analytics/pixel/route";
 
 const VALID_PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
@@ -467,6 +468,54 @@ describe("HTTP API endpoint security, tenant isolation, uploads, backups & analy
     expect(replayHit.status).toBe(200);
     const replayJson = await replayHit.json();
     expect(replayJson.ignored).toBe("duplicate_window");
+  });
+
+  it("binds tracking pixels to the request host and sanitizes campaign tokens", async () => {
+    const db = setupFixtures();
+
+    // Cross-tenant pixel still returns a GIF but records nothing for Site B.
+    const crossPixel = await getAnalyticsPixel(
+      new NextRequest("https://site-a.test/api/analytics/pixel?sid=site-b&src=newsletter")
+    );
+    expect(crossPixel.status).toBe(200);
+    expect(crossPixel.headers.get("content-type")).toBe("image/gif");
+    expect(db.select().from(analytics).all()).toHaveLength(0);
+
+    // Campaign tokens are reduced to a safe path segment.
+    const validPixel = await getAnalyticsPixel(
+      new NextRequest(
+        "https://site-a.test/api/analytics/pixel?sid=site-a&src=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+      )
+    );
+    expect(validPixel.status).toBe(200);
+
+    const rows = db.select().from(analytics).where(eq(analytics.siteId, "site-a")).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].path).toBe("/pixel/scriptalert1script");
+    expect(rows[0].utmCampaign).toBe("scriptalert1script");
+    expect(rows[0].path).not.toContain("<");
+  });
+
+  it("fails analytics ingestion closed for unknown hosts in production", async () => {
+    const db = setupFixtures();
+    vi.stubEnv("NODE_ENV", "production");
+    mockAuthState.host = "unknown.test";
+
+    const res = await postAnalyticsHit(
+      new NextRequest("https://unknown.test/api/analytics/hit", {
+        method: "POST",
+        headers: {
+          host: "unknown.test",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+          "content-type": "application/json",
+          "x-real-ip": "203.0.113.44",
+        },
+        body: JSON.stringify({ siteId: "site-a", path: "/entry/post-a" }),
+      })
+    );
+
+    expect(res.status).toBe(404);
+    expect(db.select().from(analytics).all()).toHaveLength(0);
   });
 
   it("proxies R2/S3 assets on /api/uploads/* and /api/favicon directly without 307 redirects", async () => {

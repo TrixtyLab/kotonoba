@@ -17,6 +17,8 @@ import {
 import { eq, and } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
 import { ensureDir } from "@/lib/utils/fs";
 import { generateId } from "@/lib/utils/slug";
 import { getEnvConfig, getRuntimeUploadDir } from "@/lib/config/env";
@@ -245,6 +247,107 @@ function isSafeArchiveEntryPath(entryPath: string): boolean {
   return segments.every((seg) => seg !== ".." && seg !== ".");
 }
 
+/** Maximum number of automatic pre-restore snapshots retained per site. */
+const MAX_PRE_RESTORE_SNAPSHOTS = 5;
+
+/** Media entry staged on disk before the database transaction is attempted. */
+interface StagedMediaFile {
+  relPath: string;
+  tempPath: string;
+  destPath: string;
+  size: number;
+}
+
+/** Media file already moved into place, tracked so it can be rolled back. */
+interface AppliedMediaFile {
+  destPath: string;
+  backupPath: string | null;
+}
+
+/**
+ * Reads an entry's declared uncompressed size from the ZIP central directory.
+ *
+ * JSZip exposes the value on its internal data descriptor, which lets the importer
+ * reject oversized archives before decompressing any media payload.
+ *
+ * @param entry - Loaded ZIP entry.
+ * @returns Declared byte size, or `null` when metadata is unavailable.
+ */
+function getZipEntryUncompressedSize(entry: JSZip.JSZipObject): number | null {
+  const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+  return typeof data?.uncompressedSize === "number" && Number.isFinite(data.uncompressedSize)
+    ? data.uncompressedSize
+    : null;
+}
+
+async function removeDirectoryQuietly(dir: string): Promise<void> {
+  try {
+    await fs.rm(/*turbopackIgnore: true*/ dir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup of temporary restore directories.
+  }
+}
+
+/**
+ * Restores every media destination touched before a failed database transaction.
+ *
+ * @param applied - Files moved into their final destination.
+ * @param backupRoot - Directory holding originals that were replaced.
+ * @param stagingRoot - Directory holding remaining staged files.
+ */
+async function rollbackAppliedMedia(
+  applied: AppliedMediaFile[],
+  backupRoot: string,
+  stagingRoot: string
+): Promise<void> {
+  for (const file of [...applied].reverse()) {
+    try {
+      await fs.rm(/*turbopackIgnore: true*/ file.destPath, { force: true });
+      if (file.backupPath) {
+        ensureDir(path.dirname(file.destPath));
+        await fs.rename(/*turbopackIgnore: true*/ file.backupPath, file.destPath);
+      }
+    } catch {
+      // Keep restoring remaining files even if one rollback step fails.
+    }
+  }
+  await removeDirectoryQuietly(backupRoot);
+  await removeDirectoryQuietly(stagingRoot);
+}
+
+/**
+ * Deletes the oldest automatic pre-restore snapshots, keeping a bounded history.
+ *
+ * @param snapshotDir - Directory containing `.kotonoba-backup` safety snapshots.
+ * @param siteKey - Filesystem-safe site identifier used in snapshot names.
+ */
+async function prunePreRestoreSnapshots(snapshotDir: string, siteKey: string): Promise<void> {
+  try {
+    const prefix = `pre-restore-${siteKey}-`;
+    const names = (await fs.readdir(/*turbopackIgnore: true*/ snapshotDir)).filter(
+      (name) => name.startsWith(prefix) && name.endsWith(".kotonoba-backup")
+    );
+    if (names.length <= MAX_PRE_RESTORE_SNAPSHOTS) return;
+
+    const dated = await Promise.all(
+      names.map(async (name) => {
+        const fullPath = path.join(/*turbopackIgnore: true*/ snapshotDir, name);
+        const stat = await fs.stat(/*turbopackIgnore: true*/ fullPath);
+        return { fullPath, mtimeMs: stat.mtimeMs };
+      })
+    );
+
+    dated.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    await Promise.all(
+      dated.slice(MAX_PRE_RESTORE_SNAPSHOTS).map((entry) =>
+        fs.unlink(/*turbopackIgnore: true*/ entry.fullPath)
+      )
+    );
+  } catch {
+    // Retention is best-effort and must never fail a successful restore.
+  }
+}
+
 /**
  * Restores a tenant site's database records and media assets from an encrypted Kotonoba backup archive.
  * Enforces ZIP size/entry limits, manifest checksum checks, symlink/zip-slip guards, automatic
@@ -391,12 +494,39 @@ export async function restoreSiteBackupZip(
     };
   }
 
-  // Stage and measure every media file before mutating the database to enforce uncompressed quotas.
+  // Reject archives whose declared uncompressed size already exceeds the budget.
+  let declaredUncompressedBytes = 0;
+  for (const entryPath of allEntryNames) {
+    const entry = zip.files[entryPath];
+    if (!entry || entry.dir) continue;
+
+    const declaredSize = getZipEntryUncompressedSize(entry);
+    if (declaredSize === null) continue;
+    if (!Number.isSafeInteger(declaredSize) || declaredSize < 0) {
+      return {
+        success: false,
+        stats: emptyStats(),
+        error: `Invalid ZIP entry size metadata: ${entryPath}`,
+      };
+    }
+
+    declaredUncompressedBytes += declaredSize;
+    if (declaredUncompressedBytes > envCfg.maxBackupUncompressedBytes) {
+      return {
+        success: false,
+        stats: emptyStats(),
+        error: "Expanded backup archive exceeds maximum allowed uncompressed size.",
+      };
+    }
+  }
+
   const uploadDir = getRuntimeUploadDir();
   const siteUploadDir = path.resolve(/*turbopackIgnore: true*/ uploadDir, "sites", targetSiteId);
-  const stagedMedia: Array<{ destPath: string; buffer: Buffer }> = [];
-  let totalUncompressedBytes = dataBuffer.length;
   const sourceSiteId = rawData.site?.id;
+  const stagingRoot = path.join(siteUploadDir, `.restore-staging-${crypto.randomUUID()}`);
+  const backupRoot = path.join(siteUploadDir, `.restore-backup-${crypto.randomUUID()}`);
+  const pendingMedia: Array<{ zipEntry: JSZip.JSZipObject; relPath: string; destPath: string }> = [];
+  const seenDestinations = new Set<string>();
 
   for (const entryPath of allEntryNames) {
     const zipEntry = zip.files[entryPath];
@@ -417,28 +547,33 @@ export async function restoreSiteBackupZip(
       };
     }
 
-    const fileBuffer = await zipEntry.async("nodebuffer");
-    totalUncompressedBytes += fileBuffer.length;
-    if (totalUncompressedBytes > envCfg.maxBackupUncompressedBytes) {
+    const destKey = process.platform === "win32" ? destPath.toLowerCase() : destPath;
+    if (seenDestinations.has(destKey)) {
       return {
         success: false,
         stats: emptyStats(),
-        error: "Expanded backup archive exceeds maximum allowed uncompressed size.",
+        error: `Duplicate media destination path in backup: ${relPath}`,
       };
     }
-    stagedMedia.push({ destPath, buffer: fileBuffer });
+    seenDestinations.add(destKey);
+    pendingMedia.push({ zipEntry, relPath, destPath });
   }
 
-  // Create automatic safety snapshot before destructive replace operations.
+  // Create the automatic safety snapshot before staging or modifying any media.
   let snapshotPath: string | undefined;
   if (options.mode === "replace") {
     try {
       const snapshot = await createSiteBackupZip(targetSiteId);
       const snapshotDir = path.join(/*turbopackIgnore: true*/ path.dirname(envCfg.dbPath), "snapshots");
       ensureDir(snapshotDir);
-      const filePath = path.join(/*turbopackIgnore: true*/ snapshotDir, `pre-restore-${targetSiteId}-${Date.now()}.kotonoba-backup`);
+      const siteKey = targetSiteId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "site";
+      const filePath = path.join(
+        /*turbopackIgnore: true*/ snapshotDir,
+        `pre-restore-${siteKey}-${Date.now()}.kotonoba-backup`
+      );
       await fs.writeFile(/*turbopackIgnore: true*/ filePath, snapshot.buffer);
       snapshotPath = filePath;
+      await prunePreRestoreSnapshots(snapshotDir, siteKey);
     } catch {
       return {
         success: false,
@@ -446,6 +581,76 @@ export async function restoreSiteBackupZip(
         error: "Unable to create pre-restore safety snapshot before replace operation.",
       };
     }
+  }
+
+  // Stream every media entry to a temporary directory while enforcing actual sizes.
+  const stagedMedia: StagedMediaFile[] = [];
+  let actualMediaBytes = 0;
+
+  try {
+    for (const media of pendingMedia) {
+      const tempPath = path.join(stagingRoot, media.relPath);
+      ensureDir(path.dirname(tempPath));
+      await pipeline(media.zipEntry.nodeStream("nodebuffer"), createWriteStream(tempPath));
+
+      const stat = await fs.stat(/*turbopackIgnore: true*/ tempPath);
+      if (!stat.isFile()) {
+        throw new Error("Extracted media entry is not a regular file.");
+      }
+
+      actualMediaBytes += stat.size;
+      if (dataBuffer.length + actualMediaBytes > envCfg.maxBackupUncompressedBytes) {
+        throw new Error("EXPANDED_TOO_LARGE");
+      }
+
+      stagedMedia.push({
+        relPath: media.relPath,
+        tempPath,
+        destPath: media.destPath,
+        size: stat.size,
+      });
+    }
+  } catch (err) {
+    await removeDirectoryQuietly(stagingRoot);
+    return {
+      success: false,
+      stats: emptyStats(),
+      error:
+        err instanceof Error && err.message === "EXPANDED_TOO_LARGE"
+          ? "Expanded backup archive exceeds maximum allowed uncompressed size."
+          : "Failed to extract backup media safely.",
+    };
+  }
+
+  // Move media into place before the transaction; roll back if the transaction fails.
+  const appliedMedia: AppliedMediaFile[] = [];
+  try {
+    for (const file of stagedMedia) {
+      ensureDir(path.dirname(file.destPath));
+
+      let backupPath: string | null = null;
+      try {
+        const existing = await fs.lstat(/*turbopackIgnore: true*/ file.destPath);
+        if (existing.isDirectory() || existing.isSymbolicLink()) {
+          throw new Error("Media destination conflicts with an existing directory or symlink.");
+        }
+        backupPath = path.join(backupRoot, file.relPath);
+        ensureDir(path.dirname(backupPath));
+        await fs.rename(/*turbopackIgnore: true*/ file.destPath, backupPath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+
+      await fs.rename(/*turbopackIgnore: true*/ file.tempPath, file.destPath);
+      appliedMedia.push({ destPath: file.destPath, backupPath });
+    }
+  } catch {
+    await rollbackAppliedMedia(appliedMedia, backupRoot, stagingRoot);
+    return {
+      success: false,
+      stats: emptyStats(),
+      error: "Failed to write restored media files; no changes were committed.",
+    };
   }
 
   const importedCategories = Array.isArray(rawData.categories) ? rawData.categories : [];
@@ -460,7 +665,8 @@ export async function restoreSiteBackupZip(
 
   const stats = emptyStats();
 
-  db.transaction((tx) => {
+  try {
+    db.transaction((tx) => {
     if (options.mode === "replace") {
       tx.delete(analytics).where(eq(analytics.siteId, targetSiteId)).run();
       tx.delete(analyticsSegments).where(eq(analyticsSegments.siteId, targetSiteId)).run();
@@ -875,17 +1081,23 @@ export async function restoreSiteBackupZip(
         // Skip invalid analytics records without aborting the entire restore transaction
       }
     }
-  });
-
-  // Persist staged media only after the SQLite transaction has committed cleanly.
-  if (stagedMedia.length > 0) {
-    ensureDir(siteUploadDir);
-    for (const file of stagedMedia) {
-      ensureDir(path.dirname(file.destPath));
-      await fs.writeFile(/*turbopackIgnore: true*/ file.destPath, file.buffer);
-      stats.media++;
-    }
+    });
+  } catch (err) {
+    console.error(
+      "[backup/import] Database transaction failed; restoring previous media:",
+      err instanceof Error ? err.message : err
+    );
+    await rollbackAppliedMedia(appliedMedia, backupRoot, stagingRoot);
+    return {
+      success: false,
+      stats: emptyStats(),
+      error: "Failed to restore backup transaction; no database or media changes were committed.",
+    };
   }
+
+  await removeDirectoryQuietly(stagingRoot);
+  await removeDirectoryQuietly(backupRoot);
+  stats.media = stagedMedia.length;
 
   return {
     success: true,

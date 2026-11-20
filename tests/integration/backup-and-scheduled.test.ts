@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import JSZip from "jszip";
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { createTempDb, type TempDbContext } from "../helpers/db";
 import { sites, users, posts, settings, notificationOutbox } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -18,6 +18,7 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
   const origUploadDir = process.env.UPLOAD_DIR;
   const origBackupKey = process.env.BACKUP_ENCRYPTION_KEY;
   const origEncKey = process.env.ENCRYPTION_KEY;
+  const origMaxUncompressed = process.env.MAX_BACKUP_UNCOMPRESSED_BYTES;
 
   afterEach(() => {
     ctx?.cleanup();
@@ -32,6 +33,8 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
     else delete process.env.BACKUP_ENCRYPTION_KEY;
     if (origEncKey !== undefined) process.env.ENCRYPTION_KEY = origEncKey;
     else delete process.env.ENCRYPTION_KEY;
+    if (origMaxUncompressed !== undefined) process.env.MAX_BACKUP_UNCOMPRESSED_BYTES = origMaxUncompressed;
+    else delete process.env.MAX_BACKUP_UNCOMPRESSED_BYTES;
   });
 
   it("exports strictly tenant-scoped media and round-trips encrypted backups transactionally", async () => {
@@ -149,6 +152,70 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
     });
     expect(res.success).toBe(false);
     expect(res.error).toContain("Unsafe archive entry path");
+  });
+
+  it("rejects archives whose declared uncompressed metadata exceeds the budget before restoring", async () => {
+    ctx = createTempDb("kotonoba-size-int");
+    process.env.BACKUP_ENCRYPTION_KEY = Buffer.alloc(32, 0x44).toString("base64");
+    process.env.MAX_BACKUP_UNCOMPRESSED_BYTES = "256";
+
+    const { db } = ctx;
+    const now = new Date();
+    db.insert(sites).values({ id: "s1", domain: "s1.test", name: "S1", createdAt: now, updatedAt: now }).run();
+
+    const zip = new JSZip();
+    zip.file("data.json", JSON.stringify({ site: { id: "s1" }, posts: [] }));
+    zip.file("uploads/huge.bin", Buffer.alloc(2048, 0x41));
+    const encrypted = encryptBackupArchive(await zip.generateAsync({ type: "nodebuffer" }));
+
+    const res = await restoreSiteBackupZip(encrypted.buffer, "s1", {
+      mode: "merge",
+      currentUserId: "u1",
+    });
+
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("uncompressed size");
+    expect(db.select().from(posts).all()).toHaveLength(0);
+  });
+
+  it("rolls back media and database changes when the restore transaction fails", async () => {
+    ctx = createTempDb("kotonoba-rollback-int");
+    uploadTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kotonoba-rollback-uploads-"));
+    process.env.UPLOAD_DIR = uploadTmpDir;
+    process.env.BACKUP_ENCRYPTION_KEY = Buffer.alloc(32, 0x45).toString("base64");
+    process.env.ENCRYPTION_KEY = "test-dedicated-encryption-key-32-chars-min";
+
+    const { db } = ctx;
+    const now = new Date();
+    db.insert(sites)
+      .values([
+        { id: "site-a", domain: "a.test", name: "Site A", createdAt: now, updatedAt: now },
+        { id: "site-b", domain: "b.test", name: "Site B", createdAt: now, updatedAt: now },
+      ])
+      .run();
+
+    const dirA = path.join(uploadTmpDir, "sites", "site-a");
+    const dirB = path.join(uploadTmpDir, "sites", "site-b");
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+    fs.writeFileSync(path.join(dirA, "existing.png"), "replacement-content");
+    fs.writeFileSync(path.join(dirB, "existing.png"), "original-content");
+
+    const exported = await createSiteBackupZip("site-a");
+    const transactionSpy = vi.spyOn(db, "transaction").mockImplementation((() => {
+      throw new Error("injected transaction failure");
+    }) as never);
+
+    const res = await restoreSiteBackupZip(exported.buffer, "site-b", {
+      mode: "merge",
+      currentUserId: "u1",
+    });
+    transactionSpy.mockRestore();
+
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("transaction");
+    expect(fs.readFileSync(path.join(dirB, "existing.png"), "utf8")).toBe("original-content");
+    expect(db.select().from(posts).all()).toHaveLength(0);
   });
 
   it("publishes due scheduled content and deduplicates outbox notifications per (postId, channel)", async () => {

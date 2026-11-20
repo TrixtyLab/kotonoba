@@ -19,7 +19,7 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { getCurrentVersion } from "@/actions/updates";
-import { getRuntimeUploadDir } from "@/lib/config/env";
+import { getEnvConfig, getRuntimeUploadDir } from "@/lib/config/env";
 import { encryptBackupArchive } from "./crypto";
 
 /**
@@ -72,7 +72,7 @@ async function collectMediaFiles(
   try {
     const entries = await fs.readdir(/*turbopackIgnore: true*/ dir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         const subResults = await collectMediaFiles(fullPath, baseDir);
@@ -99,6 +99,7 @@ async function collectMediaFiles(
  */
 export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buffer; filename: string; manifest: BackupManifest }> {
   const db = getDb();
+  const envCfg = getEnvConfig();
 
   const siteRecord = db.select().from(sites).where(eq(sites.id, siteId)).get();
   if (!siteRecord) {
@@ -141,15 +142,29 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
   const uploadDir = getRuntimeUploadDir();
   const tenantUploadDir = path.join(/*turbopackIgnore: true*/ uploadDir, "sites", siteId);
   let mediaCount = 0;
+  let totalMediaBytes = 0;
 
   if (uploadsFolder && existsSync(/*turbopackIgnore: true*/ tenantUploadDir)) {
     const mediaFiles = await collectMediaFiles(tenantUploadDir, tenantUploadDir);
+
     for (const file of mediaFiles) {
       try {
+        const stat = await fs.stat(/*turbopackIgnore: true*/ file.absolutePath);
+        if (!stat.isFile()) continue;
+        if (mediaCount >= envCfg.maxBackupFiles) {
+          throw new Error("Backup exceeds the maximum permitted media file count.");
+        }
+
+        totalMediaBytes += stat.size;
+        if (totalMediaBytes > envCfg.maxBackupUncompressedBytes) {
+          throw new Error("Backup media exceeds the maximum permitted uncompressed size.");
+        }
+
         const fileData = await fs.readFile(/*turbopackIgnore: true*/ file.absolutePath);
         uploadsFolder.file(file.relativePath, fileData);
         mediaCount++;
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("Backup ")) throw err;
         // Skip unreadable files
       }
     }
@@ -180,12 +195,22 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
         if (abs.startsWith(rootResolved + path.sep) && existsSync(/*turbopackIgnore: true*/ abs)) {
           const stat = await fs.stat(/*turbopackIgnore: true*/ abs);
           if (stat.isFile()) {
+            if (mediaCount >= envCfg.maxBackupFiles) {
+              throw new Error("Backup exceeds the maximum permitted media file count.");
+            }
+
+            totalMediaBytes += stat.size;
+            if (totalMediaBytes > envCfg.maxBackupUncompressedBytes) {
+              throw new Error("Backup media exceeds the maximum permitted uncompressed size.");
+            }
+
             const fileData = await fs.readFile(/*turbopackIgnore: true*/ abs);
             uploadsFolder.file(rel, fileData);
             mediaCount++;
           }
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("Backup ")) throw err;
         // Skip inaccessible legacy asset
       }
     }
@@ -208,6 +233,9 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
   };
 
   const dataJson = JSON.stringify(databaseDump, null, 2);
+  if (Buffer.byteLength(dataJson, "utf8") > envCfg.maxBackupJsonBytes) {
+    throw new Error("Backup data exceeds the maximum permitted data.json size.");
+  }
   const checksum = crypto.createHash("sha256").update(dataJson, "utf8").digest("hex");
 
   const manifest: BackupManifest = {
@@ -242,6 +270,9 @@ export async function createSiteBackupZip(siteId: string): Promise<{ buffer: Buf
     compressionOptions: { level: 6 },
   });
   const encrypted = encryptBackupArchive(zipBuffer);
+  if (encrypted.buffer.length > envCfg.maxBackupSize) {
+    throw new Error("Encrypted backup exceeds the maximum permitted archive size.");
+  }
 
   const dateSlug = new Date().toISOString().slice(0, 10);
   const safeSiteName = siteRecord.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
