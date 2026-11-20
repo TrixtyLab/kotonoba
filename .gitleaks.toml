@@ -1,0 +1,11 @@
+title = "Kotonoba Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic dummy test credentials used in unit, integration, and E2E suites"
+regexTarget = "secret"
+regexes = [
+  '''^(?:e2e-cron-secret-key-123456|test-dedicated-encryption-key-32-chars-min|jwt-secret-must-be-at-least-32-characters-long-aaa)$''',
+]
