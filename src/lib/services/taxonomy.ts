@@ -2,7 +2,7 @@ import { getDb } from "@/lib/db";
 import { categories, tags } from "@/lib/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { generateId, generateSlug } from "@/lib/utils/slug";
-import type { CategoryInput, TagInput } from "@/lib/security/validate";
+import type { CategoryInput, TagInput } from "@/lib/contracts";
 
 /** Result payload returned from category mutations. */
 export type CategoryMutationResponse =

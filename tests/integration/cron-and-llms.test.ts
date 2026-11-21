@@ -1,7 +1,9 @@
+import dns from "dns/promises";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createTempDb, type TempDbContext } from "../helpers/db";
-import { sites, users, posts, analytics, settings } from "@/lib/db/schema";
+import { sites, users, posts, analytics, settings, notificationOutbox } from "@/lib/db/schema";
+import { encryptSecret } from "@/lib/security/crypto";
 import { eq } from "drizzle-orm";
 
 const mockState = vi.hoisted(() => ({
@@ -18,6 +20,7 @@ vi.mock("next/headers", () => ({
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
+  unstable_cache: <T extends (...args: never[]) => unknown>(fn: T) => fn,
 }));
 
 import { POST as postCronPublish } from "@/app/api/cron/publish/route";
@@ -28,6 +31,7 @@ describe("Cron publish endpoint authorization, retention pruning & LLMs feeds", 
   let ctx: TempDbContext | null = null;
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     mockState.host = "llms.test";
     ctx?.cleanup();
@@ -136,6 +140,108 @@ describe("Cron publish endpoint authorization, retention pruning & LLMs feeds", 
     expect(db.select().from(posts).where(eq(posts.id, "future-1")).get()?.status).toBe("scheduled");
     expect(db.select().from(analytics).where(eq(analytics.ipHash, "hash-stale")).get()).toBeUndefined();
     expect(db.select().from(analytics).where(eq(analytics.ipHash, "hash-fresh")).get()).toBeDefined();
+  });
+
+  it("dispatches encrypted Discord webhook notifications via outbox and prevents duplicate sends", async () => {
+    ctx = createTempDb("kotonoba-cron-outbox");
+    const { db } = ctx;
+    const now = new Date();
+    const past = new Date(now.getTime() - 120_000);
+
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("CRON_SECRET", "super-secret-cron-token-123");
+    vi.stubEnv("ENCRYPTION_KEY", "test-encryption-key-at-least-32-chars!!");
+
+    db.insert(sites)
+      .values({ id: "s1", domain: "cron.test", name: "Cron Blog", createdAt: now, updatedAt: now })
+      .run();
+    db.insert(users)
+      .values({
+        id: "u1",
+        email: "admin@cron.test",
+        passwordHash: "hash",
+        displayName: "Admin",
+        role: "super_admin",
+        siteId: null,
+        tokenVersion: 1,
+        createdAt: now,
+      })
+      .run();
+    db.insert(settings)
+      .values([
+        { siteId: "s1", key: "discord_notifications_enabled", value: "true" },
+        {
+          siteId: "s1",
+          key: "discord_webhook_url",
+          value: encryptSecret("https://discord.com/api/webhooks/123456789/secret-token"),
+        },
+      ])
+      .run();
+    db.insert(posts)
+      .values({
+        id: "due-notif-1",
+        siteId: "s1",
+        authorId: "u1",
+        title: "Due Notification Article",
+        slug: "due-notification-article",
+        excerpt: "Published automatically by cron.",
+        status: "scheduled",
+        publishedAt: past,
+        createdAt: past,
+        updatedAt: past,
+      })
+      .run();
+
+    vi.spyOn(dns, "lookup").mockImplementation(
+      ((async () => [{ address: "162.159.135.232", family: 4 }]) as unknown) as typeof dns.lookup
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const firstRes = await postCronPublish(
+      new NextRequest("http://cron.test/api/cron/publish", {
+        method: "POST",
+        headers: { authorization: "Bearer super-secret-cron-token-123" },
+      })
+    );
+    expect(firstRes.status).toBe(200);
+    const firstJson = await firstRes.json();
+    expect(firstJson.publishedPostsCount).toBe(1);
+    expect(firstJson.notificationsSent).toBe(1);
+    expect(firstJson.notificationsFailed).toBe(0);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [webhookTarget, requestInit] = fetchSpy.mock.calls[0];
+    expect(String(webhookTarget)).toBe("https://discord.com/api/webhooks/123456789/secret-token");
+    expect(requestInit?.method).toBe("POST");
+    const parsedBody = JSON.parse(String(requestInit?.body)) as {
+      embeds?: Array<{ title?: string; url?: string }>;
+    };
+    expect(parsedBody.embeds?.[0]?.title).toBe("Due Notification Article");
+    expect(parsedBody.embeds?.[0]?.url).toContain("/entry/due-notification-article");
+
+    const outboxRow = db
+      .select()
+      .from(notificationOutbox)
+      .where(eq(notificationOutbox.postId, "due-notif-1"))
+      .get();
+    expect(outboxRow?.channel).toBe("discord");
+    expect(outboxRow?.status).toBe("sent");
+    expect(outboxRow?.attempts).toBe(1);
+
+    const secondRes = await postCronPublish(
+      new NextRequest("http://cron.test/api/cron/publish", {
+        method: "POST",
+        headers: { authorization: "Bearer super-secret-cron-token-123" },
+      })
+    );
+    expect(secondRes.status).toBe(200);
+    const secondJson = await secondRes.json();
+    expect(secondJson.publishedPostsCount).toBe(0);
+    expect(secondJson.notificationsSent).toBe(0);
+    expect(secondJson.notificationsFailed).toBe(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("enforces opt-in and anti-AI gates on /llms.txt and /llms-full.txt with clean canonical body extraction", async () => {

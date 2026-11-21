@@ -41,6 +41,65 @@ export interface SelectProps {
   className?: string;
 }
 
+function SelectOptionsDropdown({
+  options,
+  value,
+  onSelect,
+}: {
+  options: SelectOption[];
+  value: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface border border-border rounded-xl shadow-xl p-1 max-h-56 overflow-y-auto animate-slide-up">
+      {options.map((opt) => {
+        const isSelected = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onSelect(opt.value)}
+            className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg text-left transition-colors cursor-pointer ${
+              isSelected
+                ? "bg-accent text-white font-medium shadow-xs"
+                : "text-text hover:bg-surface-hover"
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {opt.icon && (
+                <span className={`shrink-0 ${isSelected ? "text-white" : "text-accent"}`}>
+                  {opt.icon}
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className="truncate leading-tight">{opt.label}</p>
+                {opt.description && (
+                  <p className={`text-[10px] truncate mt-0.5 ${isSelected ? "text-white/80" : "text-text-muted"}`}>
+                    {opt.description}
+                  </p>
+                )}
+              </div>
+            </div>
+            {isSelected && <Check className="w-3.5 h-3.5 shrink-0 stroke-[3]" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function resolveSelectTriggerBorder(error: string | undefined, isOpen: boolean): string {
+  if (error) return "border-danger ring-1 ring-danger";
+  if (isOpen) return "border-accent ring-1 ring-accent";
+  return "border-border hover:border-border-hover";
+}
+
+function SelectFieldFeedback({ error, helperText }: { error?: string; helperText?: string }) {
+  if (error) return <p className="text-[11px] text-danger font-medium mt-0.5">{error}</p>;
+  if (helperText) return <p className="text-[11px] text-text-muted mt-0.5 leading-normal">{helperText}</p>;
+  return null;
+}
+
 /**
  * Accessible custom select dropdown component with keyboard interaction and outside click detection.
  *
@@ -60,7 +119,6 @@ export function Select({
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
   const selectedOption = options.find((opt) => opt.value === value);
 
   useEffect(() => {
@@ -69,44 +127,31 @@ export function Select({
         setIsOpen(false);
       }
     }
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    if (isOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
+
+  const borderClass = resolveSelectTriggerBorder(error, isOpen);
 
   return (
     <div className={`w-full space-y-1 text-left ${className}`} ref={containerRef}>
-      {label && (
-        <label className="block text-xs font-semibold text-text select-none">
-          {label}
-        </label>
-      )}
+      {label && <label className="block text-xs font-semibold text-text select-none">{label}</label>}
 
       <div className="relative">
         <button
           type="button"
           onClick={() => !disabled && setIsOpen(!isOpen)}
           disabled={disabled}
-          className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg border bg-input text-text transition-all select-none cursor-pointer ${
-            error
-              ? "border-danger ring-1 ring-danger"
-              : isOpen
-              ? "border-accent ring-1 ring-accent"
-              : "border-border hover:border-border-hover"
-          } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg border bg-input text-text transition-all select-none cursor-pointer ${borderClass} ${
+            disabled ? "opacity-50 cursor-not-allowed" : ""
+          }`}
         >
           <div className="flex items-center gap-2 min-w-0 truncate">
-            {selectedOption?.icon && (
-              <span className="shrink-0 text-accent">{selectedOption.icon}</span>
-            )}
+            {selectedOption?.icon && <span className="shrink-0 text-accent">{selectedOption.icon}</span>}
             <span className={`truncate ${selectedOption ? "font-medium" : "text-text-muted"}`}>
-              {selectedOption ? selectedOption.label : placeholder}
+              {selectedOption?.label ?? placeholder}
             </span>
           </div>
-
           <ChevronDown
             className={`w-3.5 h-3.5 text-text-muted shrink-0 transition-transform duration-150 ${
               isOpen ? "rotate-180 text-accent" : ""
@@ -115,49 +160,18 @@ export function Select({
         </button>
 
         {isOpen && (
-          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface border border-border rounded-xl shadow-xl p-1 max-h-56 overflow-y-auto animate-slide-up">
-            {options.map((opt) => {
-              const isSelected = opt.value === value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(opt.value);
-                    setIsOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg text-left transition-colors cursor-pointer ${
-                    isSelected
-                      ? "bg-accent text-white font-medium shadow-xs"
-                      : "text-text hover:bg-surface-hover"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {opt.icon && (
-                      <span className={`shrink-0 ${isSelected ? "text-white" : "text-accent"}`}>
-                        {opt.icon}
-                      </span>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate leading-tight">{opt.label}</p>
-                      {opt.description && (
-                        <p className={`text-[10px] truncate mt-0.5 ${isSelected ? "text-white/80" : "text-text-muted"}`}>
-                          {opt.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {isSelected && <Check className="w-3.5 h-3.5 shrink-0 stroke-[3]" />}
-                </button>
-              );
-            })}
-          </div>
+          <SelectOptionsDropdown
+            options={options}
+            value={value}
+            onSelect={(val) => {
+              onChange(val);
+              setIsOpen(false);
+            }}
+          />
         )}
       </div>
 
-      {error && <p className="text-[11px] text-danger font-medium mt-0.5">{error}</p>}
-      {helperText && !error && <p className="text-[11px] text-text-muted mt-0.5 leading-normal">{helperText}</p>}
+      <SelectFieldFeedback error={error} helperText={helperText} />
     </div>
   );
 }

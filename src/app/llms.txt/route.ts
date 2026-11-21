@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { posts, categories } from "@/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
-import { getPublicPostCondition } from "@/lib/db/scheduled";
 import { formatPostUrlForLocale, resolveLlmsContext } from "@/lib/feeds/llms";
+import { getCachedLlmsSummaryData } from "@/lib/queries/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -19,27 +16,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  const db = getDb();
-  const { site, siteName, siteDesc, baseUrl, customInstructions } = ctx;
-
-  const topPosts = db
-    .select({
-      title: posts.title,
-      slug: posts.slug,
-      locale: posts.locale,
-      excerpt: posts.excerpt,
-    })
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.views), desc(posts.publishedAt))
-    .limit(30)
-    .all();
-
-  const allCategories = db
-    .select({ name: categories.name, slug: categories.slug })
-    .from(categories)
-    .where(eq(categories.siteId, site.id))
-    .all();
+  const { site, siteName, siteDesc, baseUrl, host, customInstructions } = ctx;
+  const { topPosts, allCategories } = await getCachedLlmsSummaryData(site.id, host);
 
   let text = `# ${siteName}\n\n`;
   text += `> ${siteDesc}\n\n`;

@@ -39,6 +39,29 @@ function inIpv4Cidr(ip: string, base: string, prefix: number): boolean {
   return (ipv4ToInt(ip) & mask) === (ipv4ToInt(base) & mask);
 }
 
+const RESERVED_IPV4_CIDRS: Array<[string, number]> = [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+];
+
+function isPrivateIpv6(cleaned: string): boolean {
+  if (cleaned === "::" || cleaned === "::1") return true;
+  if (cleaned.startsWith("fc") || cleaned.startsWith("fd") || cleaned.startsWith("ff")) return true;
+  return cleaned.startsWith("fe8") || cleaned.startsWith("fe9") || cleaned.startsWith("fea") || cleaned.startsWith("feb");
+}
+
 /**
  * Determines whether an IPv4 or IPv6 literal belongs to a private, loopback,
  * link-local, metadata, carrier-grade NAT, or reserved non-routable range.
@@ -49,46 +72,11 @@ function inIpv4Cidr(ip: string, base: string, prefix: number): boolean {
 export function isPrivateOrReservedIp(ip: string): boolean {
   const cleaned = ip.trim().toLowerCase().replace(/^\[|\]$/g, "");
   if (!cleaned) return true;
-
-  if (cleaned.startsWith("::ffff:")) {
-    return isPrivateOrReservedIp(cleaned.slice(7));
-  }
+  if (cleaned.startsWith("::ffff:")) return isPrivateOrReservedIp(cleaned.slice(7));
 
   const version = net.isIP(cleaned);
-  if (version === 4) {
-    return (
-      inIpv4Cidr(cleaned, "0.0.0.0", 8) || // Current network
-      inIpv4Cidr(cleaned, "10.0.0.0", 8) || // RFC1918
-      inIpv4Cidr(cleaned, "100.64.0.0", 10) || // CGNAT
-      inIpv4Cidr(cleaned, "127.0.0.0", 8) || // Loopback
-      inIpv4Cidr(cleaned, "169.254.0.0", 16) || // Link-local & cloud metadata
-      inIpv4Cidr(cleaned, "172.16.0.0", 12) || // RFC1918
-      inIpv4Cidr(cleaned, "192.0.0.0", 24) || // IETF protocol assignments
-      inIpv4Cidr(cleaned, "192.0.2.0", 24) || // TEST-NET-1
-      inIpv4Cidr(cleaned, "192.168.0.0", 16) || // RFC1918
-      inIpv4Cidr(cleaned, "198.18.0.0", 15) || // Benchmarking
-      inIpv4Cidr(cleaned, "198.51.100.0", 24) || // TEST-NET-2
-      inIpv4Cidr(cleaned, "203.0.113.0", 24) || // TEST-NET-3
-      inIpv4Cidr(cleaned, "224.0.0.0", 4) || // Multicast
-      inIpv4Cidr(cleaned, "240.0.0.0", 4) // Reserved / broadcast
-    );
-  }
-
-  if (version === 6) {
-    if (cleaned === "::" || cleaned === "::1") return true;
-    if (cleaned.startsWith("fc") || cleaned.startsWith("fd")) return true; // fc00::/7 ULA
-    if (
-      cleaned.startsWith("fe8") ||
-      cleaned.startsWith("fe9") ||
-      cleaned.startsWith("fea") ||
-      cleaned.startsWith("feb")
-    ) {
-      return true; // fe80::/10 link-local
-    }
-    if (cleaned.startsWith("ff")) return true; // multicast
-    return false;
-  }
-
+  if (version === 4) return RESERVED_IPV4_CIDRS.some(([base, prefix]) => inIpv4Cidr(cleaned, base, prefix));
+  if (version === 6) return isPrivateIpv6(cleaned);
   return true;
 }
 
@@ -98,6 +86,45 @@ function matchesAllowedDomains(hostname: string, allowedDomains: string[]): bool
     const target = domain.trim().toLowerCase();
     return lower === target || lower.endsWith(`.${target}`);
   });
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  return !hostname || BLOCKED_HOSTNAMES.has(hostname) || hostname.endsWith(".local") || hostname.endsWith(".internal");
+}
+
+async function resolvePublicDnsIps(parsed: URL, hostname: string): Promise<OutboundUrlCheckResult> {
+  try {
+    const records = await dns.lookup(hostname, { all: true, verbatim: true });
+    if (!records || records.length === 0) {
+      return { valid: false, error: "Unable to resolve destination hostname" };
+    }
+    const ips = records.map((record) => record.address);
+    if (ips.some((ip) => isPrivateOrReservedIp(ip))) {
+      return { valid: false, error: "Destination resolves to a private or reserved IP range" };
+    }
+    return { valid: true, url: parsed, resolvedIps: ips };
+  } catch {
+    return { valid: false, error: "DNS lookup failed for destination hostname" };
+  }
+}
+
+function parsePermittedUrl(rawUrl: string, allowHttpInDev?: boolean): { url: URL } | { error: string } {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return { error: "URL is required" };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { error: "Invalid URL format" };
+  }
+
+  const allowHttp = Boolean(allowHttpInDev && !isProductionEnv());
+  if (parsed.protocol !== "https:" && !(allowHttp && parsed.protocol === "http:")) {
+    return { error: "Only HTTPS URLs are permitted" };
+  }
+  if (parsed.username || parsed.password) return { error: "Embedded URL credentials are not permitted" };
+  return { url: parsed };
 }
 
 /**
@@ -112,62 +139,23 @@ export async function validateOutboundUrl(
   rawUrl: string,
   options: OutboundUrlOptions = {}
 ): Promise<OutboundUrlCheckResult> {
-  const trimmed = rawUrl.trim();
-  if (!trimmed) {
-    return { valid: false, error: "URL is required" };
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return { valid: false, error: "Invalid URL format" };
-  }
-
-  const allowHttp = Boolean(options.allowHttpInDev && !isProductionEnv());
-  if (parsed.protocol !== "https:" && !(allowHttp && parsed.protocol === "http:")) {
-    return { valid: false, error: "Only HTTPS URLs are permitted" };
-  }
-
-  if (parsed.username || parsed.password) {
-    return { valid: false, error: "Embedded URL credentials are not permitted" };
-  }
+  const precheck = parsePermittedUrl(rawUrl, options.allowHttpInDev);
+  if ("error" in precheck) return { valid: false, error: precheck.error };
+  const parsed = precheck.url;
 
   const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, "");
-  if (!hostname || BLOCKED_HOSTNAMES.has(hostname) || hostname.endsWith(".local") || hostname.endsWith(".internal")) {
-    return { valid: false, error: "Destination hostname is not permitted" };
-  }
-
-  if (options.allowedDomains && options.allowedDomains.length > 0 && !matchesAllowedDomains(hostname, options.allowedDomains)) {
+  if (isBlockedHostname(hostname)) return { valid: false, error: "Destination hostname is not permitted" };
+  if (options.allowedDomains?.length && !matchesAllowedDomains(hostname, options.allowedDomains)) {
     return { valid: false, error: "Destination domain is not in the permitted allowlist" };
   }
 
   if (net.isIP(hostname.replace(/^\[|\]$/g, ""))) {
-    if (isPrivateOrReservedIp(hostname)) {
-      return { valid: false, error: "Private or reserved IP destinations are not permitted" };
-    }
-    return { valid: true, url: parsed, resolvedIps: [hostname] };
+    return isPrivateOrReservedIp(hostname)
+      ? { valid: false, error: "Private or reserved IP destinations are not permitted" }
+      : { valid: true, url: parsed, resolvedIps: [hostname] };
   }
-
-  if (options.skipDnsLookup) {
-    return { valid: true, url: parsed, resolvedIps: [] };
-  }
-
-  try {
-    const records = await dns.lookup(hostname, { all: true, verbatim: true });
-    if (!records || records.length === 0) {
-      return { valid: false, error: "Unable to resolve destination hostname" };
-    }
-
-    const ips = records.map((record) => record.address);
-    if (ips.some((ip) => isPrivateOrReservedIp(ip))) {
-      return { valid: false, error: "Destination resolves to a private or reserved IP range" };
-    }
-
-    return { valid: true, url: parsed, resolvedIps: ips };
-  } catch {
-    return { valid: false, error: "DNS lookup failed for destination hostname" };
-  }
+  if (options.skipDnsLookup) return { valid: true, url: parsed, resolvedIps: [] };
+  return resolvePublicDnsIps(parsed, hostname);
 }
 
 /**

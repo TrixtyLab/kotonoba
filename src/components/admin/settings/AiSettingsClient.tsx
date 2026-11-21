@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { useToast } from "@/components/ui/Toast";
-import { Sparkles, Save, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { SettingsForm } from "@/components/admin/settings/SettingsForm";
+import { Sparkles, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 
 /**
@@ -104,16 +105,15 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
   }
 
   return (
-    <div className="space-y-6">
-      <div className="pb-4 border-b border-border">
-        <h2 className="text-lg font-bold text-text flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-accent" />
-          <span>{t("ai")}</span>
-        </h2>
-        <p className="text-xs text-text-muted mt-0.5">{t("aiDesc")}</p>
-      </div>
-
-      <div className="space-y-5 max-w-2xl">
+    <SettingsForm
+      title={t("ai")}
+      description={t("aiDesc")}
+      icon={<Sparkles className="w-5 h-5 text-accent" />}
+      onSave={handleSave}
+      saveLabel={tc("save")}
+      isPending={isPending}
+    >
+      <div className="space-y-5">
         <Checkbox
           checked={aiEnabled}
           onChange={(val) => setAiEnabled(val)}
@@ -206,18 +206,6 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
           )}
         </div>
       </div>
-
-      <div className="pt-4 border-t border-border flex justify-end">
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          loading={isPending}
-          icon={<Save className="w-4 h-4" />}
-          className="text-xs"
-        >
-          {tc("save")}
-        </Button>
-      </div>
-    </div>
+    </SettingsForm>
   );
 }

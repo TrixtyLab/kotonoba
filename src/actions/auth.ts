@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { clearSessionCookies, issueSessionCookies } from "@/lib/auth/cookies";
 import { getClientIp } from "@/lib/http/request";
-import type { LoginInput } from "@/lib/security/validate";
+import type { LoginInput } from "@/lib/contracts";
 import {
   authenticateWithPasswordService,
   type AuthResponse,

@@ -3,7 +3,8 @@
 import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
 import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidatePostPaths } from "@/lib/cache/revalidate";
-import { postSchema, validate, type PostInput } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { postSchema, type PostInput } from "@/lib/contracts";
 import {
   createPostService,
   deletePostService,
@@ -26,7 +27,7 @@ export async function createPost(siteId: string, inputData: Partial<PostInput>):
 
   const { result, postSlug } = await createPostService(actor, siteId, validation.data);
   if (result.success) {
-    revalidatePostPaths(postSlug);
+    revalidatePostPaths(postSlug, null, siteId);
   }
   return result;
 }
@@ -46,7 +47,7 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
   const actor = await requireSiteAccess(existing.siteId, ROLE_ALL);
   const { result, postSlug } = await updatePostService(actor, existing, validation.data);
   if (result.success) {
-    revalidatePostPaths(postSlug, existing.slug);
+    revalidatePostPaths(postSlug, existing.slug, existing.siteId);
   }
   return result;
 }
@@ -54,8 +55,8 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
 /** Permanently removes a blog article, its Dub link, and its analytics rows. */
 export async function deletePost(postId: string): Promise<{ success: true }> {
   const { user } = await requireResourceAccess("post", postId, ROLE_PUBLISHERS);
-  const { deletedSlug } = await deletePostService(user, postId);
-  revalidatePostPaths(deletedSlug);
+  const { deletedSlug, siteId } = await deletePostService(user, postId);
+  revalidatePostPaths(deletedSlug, null, siteId);
   return { success: true };
 }
 

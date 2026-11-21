@@ -1,12 +1,78 @@
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
+
+/**
+ * Returns the tenant-scoped cache tag protecting public queries for a specific blog site.
+ *
+ * @param siteId - Owning site identifier.
+ * @returns Cache tag string isolated to that site.
+ */
+export function sitePostsCacheTag(siteId: string): string {
+  return `site:${siteId}:posts`;
+}
+
+/**
+ * Returns the shared cache tag covering host-to-tenant registry resolution (`sites` table).
+ *
+ * @returns Cache tag string invalidated on site/domain mutations.
+ */
+export function tenantRegistryCacheTag(): string {
+  return "tenant:registry";
+}
+
+function safeRevalidateTag(tag: string): void {
+  try {
+    if (typeof revalidateTag === "function") {
+      revalidateTag(tag, { expire: 0 });
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!msg.includes("staticGenerationStore") && !msg.includes("incrementalCache")) {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Executes a tenant-scoped read function behind Next.js `unstable_cache`, gracefully falling back
+ * to direct execution when invoked outside Next.js HTTP runtime (e.g. Vitest integration runs).
+ *
+ * @param fn - Asynchronous pure data loader (must not read `headers()`/`cookies()`).
+ * @param keyParts - Deterministic cache key components including `(siteId, locale, host)`.
+ * @param options - Cache tags and optional TTL seconds.
+ * @returns Cached or freshly evaluated query result.
+ */
+export async function runWithTenantCache<TResult>(
+  fn: () => Promise<TResult>,
+  keyParts: string[],
+  options: { tags: string[]; revalidate?: number }
+): Promise<TResult> {
+  if (typeof unstable_cache !== "function") {
+    return fn();
+  }
+  try {
+    const cachedFn = unstable_cache(fn, keyParts, options);
+    return await cachedFn();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("incrementalCache missing") || msg.includes("staticGenerationStore")) {
+      return fn();
+    }
+    throw error;
+  }
+}
 
 /**
  * Revalidates public, SEO, feed, and admin routes affected when a blog post is created, edited, deleted, or published.
  *
  * @param slug - Current post slug.
  * @param previousSlug - Prior post slug when renamed.
+ * @param siteId - Optional owning site identifier for surgical tenant cache invalidation.
  */
-export function revalidatePostPaths(slug?: string | null, previousSlug?: string | null): void {
+export function revalidatePostPaths(
+  slug?: string | null,
+  previousSlug?: string | null,
+  siteId?: string | null
+): void {
   revalidatePath("/[locale]/admin/posts", "page");
   revalidatePath("/[locale]/admin", "page");
   if (slug) {
@@ -17,6 +83,7 @@ export function revalidatePostPaths(slug?: string | null, previousSlug?: string 
   }
   revalidateFeedsAndSitemap();
   revalidatePath("/", "layout");
+  safeRevalidateTag(siteId ? sitePostsCacheTag(siteId) : "public-posts");
 }
 
 /**
@@ -24,8 +91,13 @@ export function revalidatePostPaths(slug?: string | null, previousSlug?: string 
  *
  * @param slug - Current page slug.
  * @param previousSlug - Prior page slug when renamed.
+ * @param siteId - Optional owning site identifier for surgical tenant cache invalidation.
  */
-export function revalidatePagePaths(slug?: string | null, previousSlug?: string | null): void {
+export function revalidatePagePaths(
+  slug?: string | null,
+  previousSlug?: string | null,
+  siteId?: string | null
+): void {
   revalidatePath("/[locale]/admin/pages", "page");
   if (slug) {
     revalidatePath(`/[locale]/p/${slug}`, "page");
@@ -35,11 +107,9 @@ export function revalidatePagePaths(slug?: string | null, previousSlug?: string 
   }
   revalidatePath("/sitemap.xml", "page");
   revalidatePath("/", "layout");
+  safeRevalidateTag(siteId ? sitePostsCacheTag(siteId) : "public-posts");
 }
 
-/**
- * Revalidates syndication feeds, AI discovery documents, and XML sitemaps.
- */
 function revalidateFeedsAndSitemap(): void {
   revalidatePath("/sitemap.xml", "page");
   revalidatePath("/feed.xml", "page");
@@ -49,12 +119,16 @@ function revalidateFeedsAndSitemap(): void {
 }
 
 /**
- * Revalidates site shell, taxonomy, branding, and settings routes across all locales.
+ * Revalidates site shell, host registry, taxonomy, branding, and settings routes across all locales.
+ *
+ * @param siteId - Optional owning site identifier for surgical tenant cache invalidation.
  */
-export function revalidateSiteShell(): void {
+export function revalidateSiteShell(siteId?: string | null): void {
   revalidatePath("/", "layout");
   revalidatePath("/[locale]", "layout");
   revalidateFeedsAndSitemap();
+  safeRevalidateTag(tenantRegistryCacheTag());
+  safeRevalidateTag(siteId ? sitePostsCacheTag(siteId) : "public-posts");
 }
 
 /**

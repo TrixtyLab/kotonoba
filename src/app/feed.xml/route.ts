@@ -1,130 +1,23 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { posts, settings } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { getPublicPostCondition } from "@/lib/db/scheduled";
-import { getPublicSite, getCanonicalBaseUrl } from "@/lib/tenant";
-import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/utils/media";
-import { sanitizeRichHtml } from "@/lib/security/sanitize";
+import { headers } from "next/headers";
+import { buildSiteRssFeedXml } from "@/lib/feeds/build";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Wraps arbitrary text in a CDATA section, escaping embedded terminators.
- *
- * @param value - Raw text to embed.
- * @returns Text safe to place inside `<![CDATA[ ... ]]>`.
- */
-function safeCdata(value: string): string {
-  return value.replace(/]]>/g, "]]]]><![CDATA[>");
-}
-
-/**
- * Escapes XML special characters within string literals.
- *
- * @param str - Raw string to sanitize.
- * @returns Escaped XML string.
- */
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-/**
  * Generates an RSS 2.0 XML document containing recent published articles for the active blog tenant.
  *
- * @returns {Promise<NextResponse>} Promise resolving to an XML formatted NextResponse stream.
+ * @returns Promise resolving to an XML-formatted NextResponse stream.
  */
 export async function GET(): Promise<NextResponse> {
-  const site = await getPublicSite();
+  const reqHeaders = await headers();
+  const result = await buildSiteRssFeedXml(reqHeaders);
 
-  if (!site) {
-    return new NextResponse("Blog site not found", { status: 404 });
+  if (!result.ok) {
+    return new NextResponse(result.message, { status: result.status });
   }
 
-  const db = getDb();
-  const siteSettings = db
-    .select()
-    .from(settings)
-    .where(eq(settings.siteId, site.id))
-    .all();
-
-  const configMap: Record<string, string> = {};
-  for (const s of siteSettings) {
-    configMap[s.key] = s.value;
-  }
-
-  if (configMap.rss_enabled === "false") {
-    return new NextResponse("RSS Feed is disabled for this blog.", { status: 404 });
-  }
-
-  const itemsLimit = Math.min(Math.max(parseInt(configMap.rss_items_count || "20", 10), 1), 100);
-  const includeFullContent = configMap.rss_full_content !== "false";
-
-  const baseUrl = await getCanonicalBaseUrl(site);
-
-  const publishedPosts = db
-    .select()
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.publishedAt), desc(posts.createdAt))
-    .limit(itemsLimit)
-    .all();
-
-  const siteLocale = site.locale || "en";
-  const lastBuildDate = publishedPosts[0]?.publishedAt
-    ? new Date(publishedPosts[0].publishedAt).toUTCString()
-    : new Date().toUTCString();
-
-  const itemsXml = publishedPosts
-    .map((post) => {
-      const postLocale = post.locale || siteLocale;
-      const postUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
-      const pubDate = post.publishedAt
-        ? new Date(post.publishedAt).toUTCString()
-        : new Date(post.createdAt).toUTCString();
-      const coverUrl = resolveAbsoluteUrl(post.coverImage, baseUrl);
-      const content = includeFullContent
-        ? sanitizeRichHtml(post.contentHtml || post.contentMd || post.excerpt || "")
-        : post.excerpt || "";
-
-      return `    <item>
-      <title><![CDATA[${safeCdata(post.title)}]]></title>
-      <link>${escapeXml(postUrl)}</link>
-      <guid isPermaLink="true">${escapeXml(postUrl)}</guid>
-      <pubDate>${pubDate}</pubDate>
-      <description><![CDATA[${safeCdata(post.excerpt || "")}]]></description>
-      <content:encoded><![CDATA[${safeCdata(content)}]]></content:encoded>
-      ${coverUrl ? `<enclosure url="${escapeXml(coverUrl)}" type="image/jpeg" length="0"/>` : ""}
-    </item>`;
-    })
-    .join("\n");
-
-  const channelTitle = getLocalizedText(site.name, siteLocale);
-  const channelDesc = getLocalizedText(site.subtitle || site.description || site.name, siteLocale);
-
-  const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" 
-  xmlns:dc="http://purl.org/dc/elements/1.1/" 
-  xmlns:content="http://purl.org/rss/1.0/modules/content/" 
-  xmlns:atom="http://www.w3.org/2005/Atom">
-  <channel>
-    <title><![CDATA[${safeCdata(channelTitle)}]]></title>
-    <link>${escapeXml(baseUrl)}</link>
-    <description><![CDATA[${safeCdata(channelDesc)}]]></description>
-    <language>${escapeXml(siteLocale)}</language>
-    <lastBuildDate>${lastBuildDate}</lastBuildDate>
-    <atom:link href="${escapeXml(`${baseUrl}/feed.xml`)}" rel="self" type="application/rss+xml"/>
-${itemsXml}
-  </channel>
-</rss>`;
-
-  return new NextResponse(rssXml, {
+  return new NextResponse(result.xml, {
     headers: {
       "Content-Type": "application/rss+xml; charset=utf-8",
       "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",

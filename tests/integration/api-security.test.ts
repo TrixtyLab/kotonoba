@@ -39,6 +39,8 @@ import { POST as importBackup } from "@/app/api/backup/import/route";
 import { GET as getRealtimeAnalytics } from "@/app/api/analytics/realtime/route";
 import { POST as postAnalyticsHit } from "@/app/api/analytics/hit/route";
 import { GET as getAnalyticsPixel } from "@/app/api/analytics/pixel/route";
+import { GET as getUpdates } from "@/app/api/updates/route";
+import * as categoryActions from "@/actions/categories";
 
 const VALID_PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
@@ -640,5 +642,62 @@ describe("HTTP API endpoint security, tenant isolation, uploads, backups & analy
     expect(Buffer.from(await faviconRes.arrayBuffer())).toEqual(VALID_PNG_BYTES);
 
     expect(sendSpy).toHaveBeenCalled();
+  });
+
+  it("requires authenticated admin session on GET /api/updates and does not expose unauthenticated category server actions", async () => {
+    ctx = createTempDb("kotonoba-updates-auth");
+    const { db } = ctx;
+    const now = new Date();
+
+    db.insert(sites)
+      .values({ id: "site-a", domain: "site-a.test", name: "Site A", createdAt: now, updatedAt: now })
+      .run();
+
+    db.insert(users)
+      .values([
+        {
+          id: "u-author",
+          email: "author@site-a.test",
+          passwordHash: "hash",
+          displayName: "Author",
+          role: "author",
+          siteId: "site-a",
+          tokenVersion: 1,
+          createdAt: now,
+        },
+        {
+          id: "u-admin",
+          email: "admin@site-a.test",
+          passwordHash: "hash",
+          displayName: "Admin",
+          role: "admin",
+          siteId: "site-a",
+          tokenVersion: 1,
+          createdAt: now,
+        },
+      ])
+      .run();
+
+    // Unauthenticated caller cannot fingerprint app version
+    const unauthRes = await getUpdates();
+    expect(unauthRes.status).toBe(401);
+
+    // Non-admin role (author) is denied 403
+    vi.stubEnv("JWT_SECRET", "test-jwt-secret-key-minimum-32-chars!!");
+    await loginAs("u-author", "author@site-a.test", "author", "site-a");
+    const authorRes = await getUpdates();
+    expect(authorRes.status).toBe(403);
+
+    // Admin is permitted and returns UpdateInfo cleanly without leaking external requests when offline
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Offline test"));
+    await loginAs("u-admin", "admin@site-a.test", "admin", "site-a");
+    const adminRes = await getUpdates();
+    expect(adminRes.status).toBe(200);
+    const body = await adminRes.json();
+    expect(typeof body.currentVersion).toBe("string");
+    expect(typeof body.updateAvailable).toBe("boolean");
+
+    // Server Action module must no longer export unauthenticated getPublicCategories
+    expect("getPublicCategories" in categoryActions).toBe(false);
   });
 });

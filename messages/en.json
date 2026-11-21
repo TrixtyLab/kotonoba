@@ -81,7 +81,11 @@
     "city": "City",
     "qrCode": "QR Code",
     "diagramSyntaxError": "Diagram Syntax Error:",
-    "renderingDiagram": "Rendering diagram…"
+    "renderingDiagram": "Rendering diagram…",
+    "loadMore": "Load more",
+    "loadingMore": "Loading more…",
+    "paginationLabel": "Pagination navigation",
+    "downloadMyData": "Export My Data"
   },
   "blog": {
     "top": "Home",
@@ -1089,5 +1093,17 @@
     "errorDomain": "Please enter the domain or destination host.",
     "errorCategory": "Please enter the first category name.",
     "errorGeneric": "Error initializing the site."
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "description": "An unexpected error interrupted this request. You can retry safely or return to a working section.",
+    "adminTitle": "Admin workspace error",
+    "adminDescription": "Could not load this workspace section cleanly. Retry the view or go back to the dashboard overview.",
+    "retry": "Try again",
+    "backHome": "Back to blog",
+    "backAdmin": "Back to dashboard",
+    "digestLabel": "Reference ID",
+    "notFoundTitle": "Page not found",
+    "notFoundDescription": "The requested page or article does not exist or is no longer available on this site."
   }
 }

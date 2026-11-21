@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { auditLogs } from "@/lib/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import type { TokenPayload } from "@/lib/auth/jwt";
+import { ROLES } from "@/lib/config/constants";
 
 /** Serialized audit log item returned to administration views. */
 export interface AuditLogRecord {
@@ -34,14 +35,14 @@ export function listAuditLogsForActor(
   requestedSiteId?: string | null,
   limit = 100
 ): AuditLogRecord[] {
-  if (actor.role !== "super_admin" && actor.role !== "admin") {
+  if (actor.role !== ROLES.SUPER_ADMIN && actor.role !== ROLES.ADMIN) {
     return [];
   }
 
   const safeLimit = Math.max(1, Math.min(250, Math.floor(limit)));
   const db = getDb();
 
-  if (actor.role === "admin") {
+  if (actor.role === ROLES.ADMIN) {
     if (!actor.siteId) {
       return [];
     }

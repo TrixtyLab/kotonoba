@@ -1,15 +1,10 @@
 import { getTranslations } from "next-intl/server";
 import { getAdminSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics, posts, pages } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
-import { sql, desc, eq } from "drizzle-orm";
 import { Files, LogIn, LogOut, ArrowRight } from "lucide-react";
 import { Link } from "@/i18n/routing";
-import {
-  getDateRangeBounds,
-  buildAnalyticsFilterConditions,
-} from "@/lib/analytics/query";
+import { getDateRangeBounds } from "@/lib/analytics/query";
+import { getAnalyticsContentTrafficData } from "@/lib/queries/analytics-traffic";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
 
 interface PageProps {
@@ -53,26 +48,11 @@ export default async function AnalyticsPagesPage({
   if (!site) notFound();
 
   const bounds = getDateRangeBounds(sp.range);
-  const filterCondition = buildAnalyticsFilterConditions(
+  const { sitePosts, sitePages, pathStats, entryPages } = getAnalyticsContentTrafficData(
     site.id,
-    bounds.start,
-    bounds.end,
+    bounds,
     sp
   );
-  const db = getDb();
-
-  // Load site posts and pages for title and drilldown link resolution
-  const sitePosts = db
-    .select({ id: posts.id, title: posts.title, slug: posts.slug })
-    .from(posts)
-    .where(eq(posts.siteId, site.id))
-    .all();
-
-  const sitePages = db
-    .select({ id: pages.id, title: pages.title, slug: pages.slug })
-    .from(pages)
-    .where(eq(pages.siteId, site.id))
-    .all();
 
   const postSlugMap = new Map<string, { id: string; title: string }>();
   for (const p of sitePosts) {
@@ -85,25 +65,6 @@ export default async function AnalyticsPagesPage({
     pageSlugMap.set(pg.slug, { id: pg.id, title: pg.title });
     pageSlugMap.set(`/p/${pg.slug}`, { id: pg.id, title: pg.title });
   }
-
-  // Aggregate paths with views, unique visitors, avg time on page, and bounce rate
-  const pathStats = db
-    .select({
-      path: analytics.path,
-      postId: sql<string | null>`max(post_id)`,
-      pageId: sql<string | null>`max(page_id)`,
-      views: sql<number>`count(*)`,
-      uniqueVisitors: sql<number>`count(distinct ip_hash)`,
-      avgTimeSeconds: sql<number>`coalesce(avg(nullif(time_on_page, 0)), 0)`,
-      totalHits: sql<number>`count(*)`,
-      bouncedHits: sql<number>`sum(case when time_on_page < 10 then 1 else 0 end)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.path)
-    .orderBy(desc(sql`count(*)`))
-    .limit(100)
-    .all();
 
   let allTableData: PathRow[] = pathStats.map((p) => {
     const avgSec = Math.round(p.avgTimeSeconds);
@@ -150,26 +111,6 @@ export default async function AnalyticsPagesPage({
   } else if (activeType === "system") {
     allTableData = allTableData.filter((d) => d.contentType === "system");
   }
-
-  // Entry and Exit pages by session
-  const entryPages = db
-    .select({
-      path: analytics.path,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(
-      sql`${filterCondition} AND (analytics.id IN (
-        SELECT id FROM analytics a2 
-        WHERE a2.site_id = ${site.id} 
-        GROUP BY coalesce(nullif(a2.session_id, ''), a2.ip_hash) 
-        HAVING min(a2.created_at)
-      ))`
-    )
-    .groupBy(analytics.path)
-    .orderBy(desc(sql`count(*)`))
-    .limit(10)
-    .all();
 
   const columns: ColumnDef<PathRow>[] = [
     {

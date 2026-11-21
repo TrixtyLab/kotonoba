@@ -118,148 +118,140 @@ export async function testBlueskyConnection(creds: BlueskyCredentials): Promise<
  * @param {BlueskyPostPayload} post - Published post data payload containing headline, slug, excerpt, and media assets.
  * @returns {Promise<boolean>} Promise resolving to true if published successfully, false otherwise.
  */
+interface BlueskyNotificationConfig {
+  identifier: string;
+  appPassword: string;
+  serviceUrl: string;
+  includeTags: boolean;
+  includeTitle: boolean;
+  includeDescription: boolean;
+}
+
+function loadBlueskyConfig(siteId: string): BlueskyNotificationConfig | null {
+  const db = getDb();
+  const rows = db.select().from(settings).where(eq(settings.siteId, siteId)).all();
+  const configMap: Record<string, string> = {};
+  for (const s of rows) configMap[s.key] = s.value;
+
+  const enabled = configMap.bluesky_enabled === "true";
+  const identifier = configMap.bluesky_identifier?.trim() || "";
+  const appPassword = decryptSecretOrLegacyPlaintext(configMap.bluesky_app_password).trim();
+  if (!enabled || !identifier || !appPassword) return null;
+
+  const rawServiceUrl = configMap.bluesky_service_url?.trim() || "https://bsky.social";
+  const serviceUrl = /^https?:\/\//i.test(rawServiceUrl) ? rawServiceUrl : `https://${rawServiceUrl}`;
+  return {
+    identifier,
+    appPassword,
+    serviceUrl,
+    includeTags: configMap.bluesky_include_tags !== "false",
+    includeTitle: configMap.bluesky_include_title !== "false",
+    includeDescription: configMap.bluesky_include_description !== "false",
+  };
+}
+
+function resolvePostHashtags(siteId: string, post: BlueskyPostPayload): string {
+  const db = getDb();
+  const tagRows = post.tagIds?.length
+    ? db.select({ name: tags.name }).from(tags).where(and(eq(tags.siteId, siteId), inArray(tags.id, post.tagIds))).all()
+    : db
+        .select({ name: tags.name })
+        .from(postTags)
+        .innerJoin(tags, eq(postTags.tagId, tags.id))
+        .where(eq(postTags.postId, post.id))
+        .all();
+
+  return tagRows
+    .map((t) => `#${t.name.replace(/[^a-zA-Z0-9_\u0080-\uFFFF]/g, "")}`)
+    .filter((h) => h.length > 1)
+    .slice(0, 5)
+    .join(" ");
+}
+
+function buildBlueskyPostText(
+  config: BlueskyNotificationConfig,
+  title: string,
+  excerpt: string,
+  postUrl: string,
+  hashtags: string
+): string {
+  const textSegments: string[] = [];
+  if (config.includeTitle && title) textSegments.push(title);
+  if (config.includeDescription && excerpt) textSegments.push(excerpt);
+  if (textSegments.length === 0) textSegments.push(title || excerpt || postUrl);
+
+  let postText = textSegments.join("\n\n");
+  if (hashtags) {
+    const remainingLength = 295 - postText.length;
+    if (remainingLength > hashtags.length + 2) {
+      postText = postText ? `${postText}\n\n${hashtags}` : hashtags;
+    } else if (remainingLength > 10) {
+      postText = postText ? `${postText}\n\n${hashtags.slice(0, remainingLength - 3)}…` : hashtags.slice(0, 297);
+    }
+  }
+
+  return postText.length > 300 ? `${postText.slice(0, 297)}…` : postText;
+}
+
+async function uploadBlueskyCoverThumb(
+  agent: BskyAgent,
+  baseUrl: string,
+  coverImage?: string | null
+): Promise<BlobRef | undefined> {
+  if (!coverImage) return undefined;
+  try {
+    const cleanCover = normalizeMediaUrl(coverImage);
+    const coverImageUrl = cleanCover.startsWith("http")
+      ? cleanCover
+      : `${baseUrl}${cleanCover.startsWith("/") ? "" : "/"}${cleanCover}`;
+
+    const imgRes = await safeOutboundFetch(coverImageUrl, {}, { timeoutMs: 8000 });
+    if (!imgRes.ok) return undefined;
+
+    const contentLength = Number.parseInt(imgRes.headers.get("content-length") || "0", 10);
+    if (contentLength > 2_000_000) return undefined;
+
+    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    if (imgBuffer.length === 0 || imgBuffer.length >= 1_000_000 || !contentType.startsWith("image/")) {
+      return undefined;
+    }
+
+    const uploadRes = await agent.uploadBlob(imgBuffer, { encoding: contentType });
+    return uploadRes.data.blob;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function sendBlueskyPostNotification(
   siteId: string,
   post: BlueskyPostPayload
 ): Promise<boolean> {
   try {
-    const db = getDb();
-    const siteSettings = db
-      .select()
-      .from(settings)
-      .where(eq(settings.siteId, siteId))
-      .all();
+    const config = loadBlueskyConfig(siteId);
+    if (!config) return false;
 
-    const configMap: Record<string, string> = {};
-    for (const s of siteSettings) {
-      configMap[s.key] = s.value;
-    }
-
-    const enabled = configMap.bluesky_enabled === "true";
-    const identifier = configMap.bluesky_identifier?.trim();
-    const appPassword = decryptSecretOrLegacyPlaintext(configMap.bluesky_app_password).trim();
-    const rawServiceUrl = configMap.bluesky_service_url?.trim() || "https://bsky.social";
-    const serviceUrl = /^https?:\/\//i.test(rawServiceUrl) ? rawServiceUrl : `https://${rawServiceUrl}`;
-    const includeTags = configMap.bluesky_include_tags !== "false";
-    const includeTitle = configMap.bluesky_include_title !== "false";
-    const includeDescription = configMap.bluesky_include_description !== "false";
-
-    if (!enabled || !identifier || !appPassword) {
-      return false;
-    }
-
-    const serviceCheck = await validateOutboundUrl(serviceUrl);
-    if (!serviceCheck.valid) {
-      return false;
-    }
+    const serviceCheck = await validateOutboundUrl(config.serviceUrl);
+    if (!serviceCheck.valid) return false;
 
     const agent = new BskyAgent({ service: serviceCheck.url.toString() });
-    await agent.login({
-      identifier,
-      password: appPassword,
-    });
+    await agent.login({ identifier: config.identifier, password: config.appPassword });
 
+    const db = getDb();
     const site = db.select().from(sites).where(eq(sites.id, siteId)).get();
     const postLocale = post.locale || site?.locale || "en";
-    const siteDomain = site?.domain || "localhost:3000";
-    const baseUrl = buildSiteBaseUrl(siteDomain);
-
-    const canonicalPostUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
-    const postUrl = post.shortUrl || canonicalPostUrl;
-
-    let tagNames: string[] = [];
-    if (includeTags) {
-      if (post.tagIds && post.tagIds.length > 0) {
-        const dbTags = db
-          .select({ name: tags.name })
-          .from(tags)
-          .where(and(eq(tags.siteId, siteId), inArray(tags.id, post.tagIds)))
-          .all();
-        tagNames = dbTags.map((t) => t.name);
-      } else {
-        const postTagRows = db
-          .select({ name: tags.name })
-          .from(postTags)
-          .innerJoin(tags, eq(postTags.tagId, tags.id))
-          .where(eq(postTags.postId, post.id))
-          .all();
-        tagNames = postTagRows.map((t) => t.name);
-      }
-    }
-
-    const hashtags = tagNames
-      .map((name) => `#${name.replace(/[^a-zA-Z0-9_\u0080-\uFFFF]/g, "")}`)
-      .filter((h) => h.length > 1)
-      .slice(0, 5)
-      .join(" ");
+    const baseUrl = buildSiteBaseUrl(site?.domain || "localhost:3000");
+    const postUrl = post.shortUrl || `${baseUrl}/${postLocale}/entry/${post.slug}`;
 
     const title = (post.title || "").trim();
     const excerpt = (post.excerpt || "").trim();
-
-    const textSegments: string[] = [];
-    if (includeTitle && title) {
-      textSegments.push(title);
-    }
-    if (includeDescription && excerpt) {
-      textSegments.push(excerpt);
-    }
-
-    if (textSegments.length === 0) {
-      if (title) {
-        textSegments.push(title);
-      } else if (excerpt) {
-        textSegments.push(excerpt);
-      } else {
-        textSegments.push(postUrl);
-      }
-    }
-
-    let postText = textSegments.join("\n\n");
-
-    if (hashtags) {
-      const remainingLength = 295 - postText.length;
-      if (remainingLength > hashtags.length + 2) {
-        postText = postText ? `${postText}\n\n${hashtags}` : hashtags;
-      } else if (remainingLength > 10) {
-        postText = postText
-          ? `${postText}\n\n${hashtags.slice(0, remainingLength - 3)}…`
-          : hashtags.slice(0, 297);
-      }
-    }
-
-    if (postText.length > 300) {
-      postText = `${postText.slice(0, 297)}…`;
-    }
+    const hashtags = config.includeTags ? resolvePostHashtags(siteId, post) : "";
+    const postText = buildBlueskyPostText(config, title, excerpt, postUrl, hashtags);
 
     const rt = new RichText({ text: postText });
     await rt.detectFacets(agent);
-
-    let thumbBlob: BlobRef | undefined = undefined;
-
-    if (post.coverImage) {
-      try {
-        const cleanCover = normalizeMediaUrl(post.coverImage);
-        const coverImageUrl = cleanCover.startsWith("http")
-          ? cleanCover
-          : `${baseUrl}${cleanCover.startsWith("/") ? "" : "/"}${cleanCover}`;
-
-        const imgRes = await safeOutboundFetch(coverImageUrl, {}, { timeoutMs: 8000 });
-        if (imgRes.ok) {
-          const contentLength = Number.parseInt(imgRes.headers.get("content-length") || "0", 10);
-          if (contentLength > 2_000_000) {
-            throw new Error("Cover image exceeds size limit");
-          }
-          const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          if (imgBuffer.length > 0 && imgBuffer.length < 1_000_000 && contentType.startsWith("image/")) {
-            const uploadRes = await agent.uploadBlob(imgBuffer, { encoding: contentType });
-            thumbBlob = uploadRes.data.blob;
-          }
-        }
-      } catch {
-        // Continue creating embed without thumbnail if image fetch fails
-      }
-    }
+    const thumbBlob = await uploadBlueskyCoverThumb(agent, baseUrl, post.coverImage);
 
     const embed: AppBskyEmbedExternal.Main & { $type: "app.bsky.embed.external" } = {
       $type: "app.bsky.embed.external",
@@ -277,7 +269,6 @@ export async function sendBlueskyPostNotification(
       embed,
       createdAt: new Date().toISOString(),
     });
-
     return true;
   } catch (error) {
     console.error("Error posting to Bluesky:", error);

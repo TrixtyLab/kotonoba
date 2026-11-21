@@ -9,6 +9,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useToast } from "@/components/ui/Toast";
+import { generateSlug } from "@/lib/utils/slug";
 import { Tag as TagIcon, Plus, Search } from "lucide-react";
 
 /**
@@ -52,7 +53,7 @@ export function TagsManagerClient({
     startTransition(async () => {
       const res = await createTag(siteId, { name });
       if (res.success && res.id) {
-        setTags((prev) => [...prev, { id: res.id as string, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") }]);
+        setTags((prev) => [...prev, { id: res.id as string, name, slug: generateSlug(name) }]);
         setName("");
         toast.success(t("tagCreated"));
       } else {

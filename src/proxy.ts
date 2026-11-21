@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 import { LOCALES, routing } from "@/i18n/routing";
 import { verifyToken } from "@/lib/auth/jwt";
-import { getAdminDomainEnv, getCspModeEnv, isDevelopmentEnv } from "@/lib/config/env";
+import { getAdminDomainEnv, isDevelopmentEnv } from "@/lib/config/env";
+import { isEnforcedCspActive } from "@/lib/config/features";
 import { getRequestHost } from "@/lib/http/request";
 import {
   applySecurityHeaders,
@@ -68,7 +69,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     isDev: isDevelopmentEnv(),
     isHttps,
   });
-  const cspHeaderName = getCspHeaderName(getCspModeEnv());
+  const cspHeaderName = getCspHeaderName(isEnforcedCspActive() ? "enforce" : "report-only");
 
   const withCommonHeaders = (response: NextResponse): NextResponse => {
     applySecurityHeaders(response.headers, { headerName: cspHeaderName, value: cspValue });

@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { POST_STATUS } from "@/lib/config/constants";
 import { notificationOutbox, posts, postTags, settings } from "@/lib/db/schema";
 import { and, eq, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { generateId } from "@/lib/utils/slug";
@@ -94,7 +95,7 @@ export async function processPendingOutboxNotifications(
       .where(and(eq(posts.id, job.postId), eq(posts.siteId, job.siteId)))
       .get();
 
-    if (!post || post.status !== "published") {
+    if (!post || post.status !== POST_STATUS.PUBLISHED) {
       db.update(notificationOutbox)
         .set({ status: "failed", lastError: "Post no longer published", attempts: job.attempts + 1 })
         .where(eq(notificationOutbox.id, job.id))

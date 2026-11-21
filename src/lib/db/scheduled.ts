@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { posts, pages } from "@/lib/db/schema";
+import { POST_STATUS } from "@/lib/config/constants";
 import { eq, and, lte, or } from "drizzle-orm";
 import {
   enqueuePostNotifications,
@@ -8,13 +9,7 @@ import {
 
 /**
  * Transitions scheduled posts and pages whose configured `publishedAt` has elapsed (`<= now`)
- * to `'published'`, enqueues outbox notifications transactionally, and processes pending retries.
- *
- * Designed to run cleanly inside `/api/cron/publish` or manual administrative triggers rather
- * than mutating database state inside public SSR GET page renders.
- *
- * @param {string} [siteId] - Optional site identifier filter for tenant-scoped publishing.
- * @returns Summary counters of newly published posts/pages and dispatched outbox notifications.
+ * to published status, enqueues outbox notifications transactionally, and processes pending retries.
  */
 export async function publishScheduledPosts(siteId?: string): Promise<{
   publishedPostsCount: number;
@@ -29,7 +24,7 @@ export async function publishScheduledPosts(siteId?: string): Promise<{
     const { publishedPostsCount, publishedPagesCount } = db.transaction((tx) => {
       const postCondition = and(
         siteId ? eq(posts.siteId, siteId) : undefined,
-        eq(posts.status, "scheduled"),
+        eq(posts.status, POST_STATUS.SCHEDULED),
         lte(posts.publishedAt, now)
       );
 
@@ -41,14 +36,14 @@ export async function publishScheduledPosts(siteId?: string): Promise<{
 
       for (const p of pendingPosts) {
         tx.update(posts)
-          .set({ status: "published", updatedAt: now })
+          .set({ status: POST_STATUS.PUBLISHED, updatedAt: now })
           .where(eq(posts.id, p.id))
           .run();
       }
 
       const pageCondition = and(
         siteId ? eq(pages.siteId, siteId) : undefined,
-        eq(pages.status, "scheduled"),
+        eq(pages.status, POST_STATUS.SCHEDULED),
         lte(pages.publishedAt, now)
       );
 
@@ -60,7 +55,7 @@ export async function publishScheduledPosts(siteId?: string): Promise<{
 
       for (const pg of pendingPages) {
         tx.update(pages)
-          .set({ status: "published", updatedAt: now })
+          .set({ status: POST_STATUS.PUBLISHED, updatedAt: now })
           .where(eq(pages.id, pg.id))
           .run();
       }
@@ -78,7 +73,7 @@ export async function publishScheduledPosts(siteId?: string): Promise<{
         .where(
           and(
             siteId ? eq(posts.siteId, siteId) : undefined,
-            eq(posts.status, "published"),
+            eq(posts.status, POST_STATUS.PUBLISHED),
             eq(posts.updatedAt, now)
           )
         )
@@ -108,30 +103,18 @@ export async function publishScheduledPosts(siteId?: string): Promise<{
   }
 }
 
-/**
- * Builds a composite SQL where condition for querying publicly visible articles
- * (either already 'published' or 'scheduled' with publishedAt <= now).
- *
- * @param {Date} [referenceDate] - Optional reference timestamp (defaults to current Date).
- * @returns {import("drizzle-orm").SQL} Combined Drizzle SQL clause.
- */
+/** Builds a composite SQL where condition for publicly visible articles. */
 export function getPublicPostCondition(referenceDate = new Date()) {
   return or(
-    eq(posts.status, "published"),
-    and(eq(posts.status, "scheduled"), lte(posts.publishedAt, referenceDate))
+    eq(posts.status, POST_STATUS.PUBLISHED),
+    and(eq(posts.status, POST_STATUS.SCHEDULED), lte(posts.publishedAt, referenceDate))
   );
 }
 
-/**
- * Builds a composite SQL where condition for querying publicly visible static custom pages
- * (either already 'published' or 'scheduled' with publishedAt <= now).
- *
- * @param {Date} [referenceDate] - Optional reference timestamp (defaults to current Date).
- * @returns {import("drizzle-orm").SQL} Combined Drizzle SQL clause.
- */
+/** Builds a composite SQL where condition for publicly visible static custom pages. */
 export function getPublicPageCondition(referenceDate = new Date()) {
   return or(
-    eq(pages.status, "published"),
-    and(eq(pages.status, "scheduled"), lte(pages.publishedAt, referenceDate))
+    eq(pages.status, POST_STATUS.PUBLISHED),
+    and(eq(pages.status, POST_STATUS.SCHEDULED), lte(pages.publishedAt, referenceDate))
   );
 }

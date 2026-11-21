@@ -8,6 +8,7 @@ import { Input, Textarea } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { CalendarClock, Globe, RefreshCw, Sparkles } from "lucide-react";
 import { normalizeLocale, type Locale } from "@/i18n/routing";
+import { POST_STATUS, type PostStatus } from "@/lib/config/constants";
 import { generateSlug } from "@/lib/utils/slug";
 import { useToast } from "@/components/ui/Toast";
 
@@ -21,8 +22,8 @@ export interface PostPublishPanelProps {
   onLocaleChange: (loc: Locale) => void;
   availableLanguageOptions: Array<{ value: Locale; label: string }>;
   onOpenTranslateModal: () => void;
-  status: "draft" | "published" | "scheduled" | "archived";
-  onStatusChange: (status: "draft" | "published" | "scheduled" | "archived") => void;
+  status: PostStatus;
+  onStatusChange: (status: PostStatus) => void;
   scheduledAt: string;
   onScheduledAtChange: (val: string) => void;
   excerpt: string;
@@ -119,16 +120,16 @@ export function PostPublishPanel({
         <Select
           label={t("publishStatus")}
           value={status}
-          onChange={(val) => onStatusChange(val as "draft" | "published" | "scheduled" | "archived")}
+          onChange={(val) => onStatusChange(val as PostStatus)}
           options={[
-            { value: "draft", label: t("draftHidden") },
-            { value: "published", label: t("publishedVisible") },
-            { value: "scheduled", label: t("scheduledOption") },
-            { value: "archived", label: t("archived") },
+            { value: POST_STATUS.DRAFT, label: t("draftHidden") },
+            { value: POST_STATUS.PUBLISHED, label: t("publishedVisible") },
+            { value: POST_STATUS.SCHEDULED, label: t("scheduledOption") },
+            { value: POST_STATUS.ARCHIVED, label: t("archived") },
           ]}
         />
 
-        {status === "scheduled" && (
+        {status === POST_STATUS.SCHEDULED && (
           <div className="space-y-1.5 p-3 rounded-lg bg-surface-hover/50 border border-border">
             <label className="text-xs font-semibold text-text flex items-center gap-1.5">
               <CalendarClock className="w-3.5 h-3.5 text-accent" />

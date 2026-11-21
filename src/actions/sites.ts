@@ -6,7 +6,8 @@ import { requireAuth } from "@/lib/auth/session";
 import { requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidateSiteShell } from "@/lib/cache/revalidate";
 import { isProductionEnv } from "@/lib/config/env";
-import { siteSchema, validate, type SiteInput } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { siteSchema, type SiteInput } from "@/lib/contracts";
 import {
   createSiteService,
   deleteSiteService,
@@ -36,7 +37,7 @@ export async function createSite(inputData: Partial<SiteInput>): Promise<SiteMut
 export async function updateSite(siteId: string, inputData: Partial<SiteInput>): Promise<SiteMutationResponse> {
   const actor = await requireSiteAccess(siteId, ROLE_ADMINS);
   const res = updateSiteService(actor, siteId, inputData);
-  if (res.success) revalidateSiteShell();
+  if (res.success) revalidateSiteShell(siteId);
   return res;
 }
 
@@ -44,7 +45,7 @@ export async function updateSite(siteId: string, inputData: Partial<SiteInput>):
 export async function deleteSite(siteId: string): Promise<SiteMutationResponse> {
   const actor = await requireAuth(ROLE_SUPER_ADMIN);
   const res = deleteSiteService(actor, siteId);
-  if (res.success) revalidateSiteShell();
+  if (res.success) revalidateSiteShell(siteId);
   return res;
 }
 
@@ -64,7 +65,7 @@ export async function setActiveSiteAction(siteId: string): Promise<{ success: bo
     maxAge: 60 * 60 * 24 * 30,
   });
 
-  revalidateSiteShell();
+  revalidateSiteShell(siteId);
   return { success: true };
 }
 

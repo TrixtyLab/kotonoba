@@ -47,7 +47,7 @@ export interface HeaderBannerSectionProps {
 /**
  * Configuration cards for the permanent default header banner and temporary scheduled campaign banner.
  */
-export function HeaderBannerSection({
+function DefaultBannerSection({
   defaultImage,
   onChangeDefaultImage,
   defaultLink,
@@ -56,145 +56,177 @@ export function HeaderBannerSection({
   onChangeDefaultTarget,
   defaultAlt,
   onChangeDefaultAlt,
-  scheduleEnabled,
-  onChangeScheduleEnabled,
-  scheduledImage,
-  onChangeScheduledImage,
-  scheduledLink,
-  onChangeScheduledLink,
-  scheduledTarget,
-  onChangeScheduledTarget,
-  scheduledAlt,
-  onChangeScheduledAlt,
-  startDate,
-  onChangeStartDate,
-  endDate,
-  onChangeEndDate,
-  campaignStatus,
   onOpenMediaPickerDefault,
-  onOpenMediaPickerScheduled,
-}: HeaderBannerSectionProps) {
+  t,
+}: Pick<
+  HeaderBannerSectionProps,
+  | "defaultImage"
+  | "onChangeDefaultImage"
+  | "defaultLink"
+  | "onChangeDefaultLink"
+  | "defaultTarget"
+  | "onChangeDefaultTarget"
+  | "defaultAlt"
+  | "onChangeDefaultAlt"
+  | "onOpenMediaPickerDefault"
+> & { t: ReturnType<typeof useTranslations<"settings">> }) {
+  return (
+    <section className="space-y-6 p-5 sm:p-6 rounded-xl border border-border/60 bg-surface/40">
+      <div className="pb-4 border-b border-border/40">
+        <h3 className="text-sm font-bold text-text flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-accent" />
+          <span>{t("defaultHeaderBanner")}</span>
+        </h3>
+        <p className="text-xs text-text-muted mt-0.5">{t("defaultHeaderBannerDesc")}</p>
+      </div>
+
+      {defaultImage ? (
+        <div className="space-y-3">
+          <div className="relative w-full h-[180px] sm:h-[220px] md:h-[302px] rounded-xl overflow-hidden border border-border/60 bg-surface-hover/20 shadow-xs">
+            <img
+              src={normalizeMediaUrl(defaultImage)}
+              alt={defaultAlt || "Default Header Banner Preview"}
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <span className="text-xs text-text-muted font-mono">1200 × 302 px</span>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={onOpenMediaPickerDefault} className="text-xs flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-accent" />
+                <span>{t("changeImage")}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onChangeDefaultImage("");
+                  onChangeDefaultLink("");
+                  onChangeDefaultAlt("");
+                }}
+                className="text-xs text-danger hover:text-danger hover:bg-danger/10 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{t("removeBanner")}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full h-44 rounded-xl border-2 border-dashed border-border/70 flex flex-col items-center justify-center p-6 text-center text-text-muted space-y-3">
+          <div className="w-10 h-10 rounded-full bg-surface-hover/80 flex items-center justify-center text-text-muted">
+            <ImageIcon className="w-5 h-5 text-text-muted/60" />
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-xs font-medium text-text">{t("noBannersConfigured")}</p>
+            <p className="text-[11px] text-text-muted font-mono">1200 × 302 px</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={onOpenMediaPickerDefault} className="flex items-center gap-1.5 text-xs mt-1">
+            <ImageIcon className="w-3.5 h-3.5 text-accent" />
+            <span>{t("selectFromMedia")}</span>
+          </Button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <div className="md:col-span-8 space-y-1.5">
+          <label className="text-xs font-semibold text-text flex items-center gap-1.5">
+            <LinkIcon className="w-3.5 h-3.5 text-text-muted" />
+            <span>{t("bannerLinkUrl")}</span>
+          </label>
+          <Input type="text" value={defaultLink} onChange={(e) => onChangeDefaultLink(e.target.value)} placeholder="https://example.com o /entry/my-post" className="text-xs" />
+        </div>
+        <div className="md:col-span-4 space-y-1.5">
+          <label className="text-xs font-semibold text-text">{t("bannerAltText")}</label>
+          <Input type="text" value={defaultAlt} onChange={(e) => onChangeDefaultAlt(e.target.value)} placeholder={t("mainBannerPlaceholder")} className="text-xs" />
+        </div>
+      </div>
+
+      {defaultLink && (
+        <div className="flex items-center gap-2 pt-1">
+          <input type="checkbox" id="defaultTargetCheckbox" checked={defaultTarget === "_blank"} onChange={(e) => onChangeDefaultTarget(e.target.checked ? "_blank" : "_self")} className="rounded border-border text-accent focus:ring-accent w-4 h-4 cursor-pointer" />
+          <label htmlFor="defaultTargetCheckbox" className="text-xs text-text select-none cursor-pointer flex items-center gap-1">
+            <span>{t("openInNewTab")}</span>
+            <ExternalLink className="w-3 h-3 text-text-muted" />
+          </label>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function resolveCampaignBadgeMeta(
+  campaignStatus: "disabled" | "scheduled" | "expired" | "active",
+  t: ReturnType<typeof useTranslations<"settings">>
+) {
+  if (campaignStatus === "active") {
+    return {
+      pill: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+      dot: "bg-emerald-500 animate-pulse",
+      label: t("campaignActiveBadge"),
+    };
+  }
+  if (campaignStatus === "scheduled") {
+    return {
+      pill: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+      dot: "bg-amber-500",
+      label: t("campaignScheduledBadge"),
+    };
+  }
+  return {
+    pill: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+    dot: "bg-rose-500",
+    label: t("campaignExpiredBadge"),
+  };
+}
+
+export function HeaderBannerSection(props: HeaderBannerSectionProps) {
+  const {
+    defaultImage,
+    onChangeDefaultImage,
+    defaultLink,
+    onChangeDefaultLink,
+    defaultTarget,
+    onChangeDefaultTarget,
+    defaultAlt,
+    onChangeDefaultAlt,
+    scheduleEnabled,
+    onChangeScheduleEnabled,
+    scheduledImage,
+    onChangeScheduledImage,
+    scheduledLink,
+    onChangeScheduledLink,
+    scheduledTarget,
+    onChangeScheduledTarget,
+    scheduledAlt,
+    onChangeScheduledAlt,
+    startDate,
+    onChangeStartDate,
+    endDate,
+    onChangeEndDate,
+    campaignStatus,
+    onOpenMediaPickerDefault,
+    onOpenMediaPickerScheduled,
+  } = props;
   const t = useTranslations("settings");
+  const statusMeta = resolveCampaignBadgeMeta(campaignStatus, t);
 
   return (
     <>
-      <section className="space-y-6 p-5 sm:p-6 rounded-xl border border-border/60 bg-surface/40">
-        <div className="pb-4 border-b border-border/40">
-          <h3 className="text-sm font-bold text-text flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-accent" />
-            <span>{t("defaultHeaderBanner")}</span>
-          </h3>
-          <p className="text-xs text-text-muted mt-0.5">{t("defaultHeaderBannerDesc")}</p>
-        </div>
-
-        {defaultImage ? (
-          <div className="space-y-3">
-            <div className="relative w-full h-[180px] sm:h-[220px] md:h-[302px] rounded-xl overflow-hidden border border-border/60 bg-surface-hover/20 shadow-xs">
-              <img
-                src={normalizeMediaUrl(defaultImage)}
-                alt={defaultAlt || "Default Header Banner Preview"}
-                className="w-full h-full object-cover"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <span className="text-xs text-text-muted font-mono">1200 × 302 px</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={onOpenMediaPickerDefault}
-                  className="text-xs flex items-center gap-1.5"
-                >
-                  <ImageIcon className="w-3.5 h-3.5 text-accent" />
-                  <span>{t("changeImage")}</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    onChangeDefaultImage("");
-                    onChangeDefaultLink("");
-                    onChangeDefaultAlt("");
-                  }}
-                  className="text-xs text-danger hover:text-danger hover:bg-danger/10 flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{t("removeBanner")}</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-44 rounded-xl border-2 border-dashed border-border/70 flex flex-col items-center justify-center p-6 text-center text-text-muted space-y-3">
-            <div className="w-10 h-10 rounded-full bg-surface-hover/80 flex items-center justify-center text-text-muted">
-              <ImageIcon className="w-5 h-5 text-text-muted/60" />
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs font-medium text-text">{t("noBannersConfigured")}</p>
-              <p className="text-[11px] text-text-muted font-mono">1200 × 302 px</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onOpenMediaPickerDefault}
-              className="flex items-center gap-1.5 text-xs mt-1"
-            >
-              <ImageIcon className="w-3.5 h-3.5 text-accent" />
-              <span>{t("selectFromMedia")}</span>
-            </Button>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-          <div className="md:col-span-8 space-y-1.5">
-            <label className="text-xs font-semibold text-text flex items-center gap-1.5">
-              <LinkIcon className="w-3.5 h-3.5 text-text-muted" />
-              <span>{t("bannerLinkUrl")}</span>
-            </label>
-            <Input
-              type="text"
-              value={defaultLink}
-              onChange={(e) => onChangeDefaultLink(e.target.value)}
-              placeholder="https://example.com o /entry/my-post"
-              className="text-xs"
-            />
-          </div>
-
-          <div className="md:col-span-4 space-y-1.5">
-            <label className="text-xs font-semibold text-text">{t("bannerAltText")}</label>
-            <Input
-              type="text"
-              value={defaultAlt}
-              onChange={(e) => onChangeDefaultAlt(e.target.value)}
-              placeholder={t("mainBannerPlaceholder")}
-              className="text-xs"
-            />
-          </div>
-        </div>
-
-        {defaultLink && (
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="defaultTargetCheckbox"
-              checked={defaultTarget === "_blank"}
-              onChange={(e) => onChangeDefaultTarget(e.target.checked ? "_blank" : "_self")}
-              className="rounded border-border text-accent focus:ring-accent w-4 h-4 cursor-pointer"
-            />
-            <label
-              htmlFor="defaultTargetCheckbox"
-              className="text-xs text-text select-none cursor-pointer flex items-center gap-1"
-            >
-              <span>{t("openInNewTab")}</span>
-              <ExternalLink className="w-3 h-3 text-text-muted" />
-            </label>
-          </div>
-        )}
-      </section>
+      <DefaultBannerSection
+        defaultImage={defaultImage}
+        onChangeDefaultImage={onChangeDefaultImage}
+        defaultLink={defaultLink}
+        onChangeDefaultLink={onChangeDefaultLink}
+        defaultTarget={defaultTarget}
+        onChangeDefaultTarget={onChangeDefaultTarget}
+        defaultAlt={defaultAlt}
+        onChangeDefaultAlt={onChangeDefaultAlt}
+        onOpenMediaPickerDefault={onOpenMediaPickerDefault}
+        t={t}
+      />
 
       <section className="space-y-6 p-5 sm:p-6 rounded-xl border border-border/60 bg-surface/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/40">
@@ -207,31 +239,9 @@ export function HeaderBannerSection({
           </div>
 
           {scheduleEnabled && scheduledImage && (
-            <div
-              className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border whitespace-nowrap shrink-0 self-start sm:self-auto ${
-                campaignStatus === "active"
-                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                  : campaignStatus === "scheduled"
-                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  campaignStatus === "active"
-                    ? "bg-emerald-500 animate-pulse"
-                    : campaignStatus === "scheduled"
-                    ? "bg-amber-500"
-                    : "bg-rose-500"
-                }`}
-              />
-              <span>
-                {campaignStatus === "active"
-                  ? t("campaignActiveBadge")
-                  : campaignStatus === "scheduled"
-                  ? t("campaignScheduledBadge")
-                  : t("campaignExpiredBadge")}
-              </span>
+            <div className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border whitespace-nowrap shrink-0 self-start sm:self-auto ${statusMeta.pill}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.dot}`} />
+              <span>{statusMeta.label}</span>
             </div>
           )}
         </div>

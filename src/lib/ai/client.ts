@@ -103,6 +103,50 @@ async function getAiConfig(siteId: string): Promise<AiConfig> {
   };
 }
 
+function readChoiceText(choice?: {
+  delta?: { content?: unknown };
+  message?: { content?: unknown };
+  text?: unknown;
+}): string {
+  if (typeof choice?.delta?.content === "string") return choice.delta.content;
+  if (typeof choice?.message?.content === "string") return choice.message.content;
+  if (typeof choice?.text === "string") return choice.text;
+  return "";
+}
+
+function parseSseDataChunk(rawLine: string): { parsed: boolean; text: string } {
+  const line = rawLine.trim();
+  if (!line.startsWith("data:")) return { parsed: false, text: "" };
+  const dataContent = line.slice(5).trim();
+  if (!dataContent || dataContent === "[DONE]") return { parsed: false, text: "" };
+
+  try {
+    const chunk = JSON.parse(dataContent);
+    if (chunk.error?.message) throw new Error(chunk.error.message);
+    return { parsed: true, text: readChoiceText(chunk.choices?.[0]) };
+  } catch (e) {
+    if (e instanceof Error && e.message !== dataContent && dataContent.includes('"error"')) throw e;
+    return { parsed: false, text: "" };
+  }
+}
+
+function extractSseResponseText(trimmed: string): string | null {
+  const hasSsePrefix = trimmed.startsWith("data:") || trimmed.includes("\ndata:") || trimmed.includes("\r\ndata:");
+  if (!hasSsePrefix) return null;
+
+  let accumulated = "";
+  let parsedAnyChunk = false;
+
+  for (const rawLine of trimmed.split(/\r?\n/)) {
+    const res = parseSseDataChunk(rawLine);
+    if (!res.parsed) continue;
+    parsedAnyChunk = true;
+    accumulated += res.text;
+  }
+
+  return parsedAnyChunk ? accumulated : null;
+}
+
 /**
  * Parses and extracts text content from an AI provider response, supporting both standard
  * JSON chat completion responses and Server-Sent Events (SSE) streaming chunks.
@@ -114,70 +158,16 @@ export function extractAiResponseText(responseText: string): string {
   const trimmed = responseText.trim();
   if (!trimmed) return "";
 
-  if (trimmed.startsWith("data:") || trimmed.includes("\ndata:") || trimmed.includes("\r\ndata:")) {
-    const lines = trimmed.split(/\r?\n/);
-    let accumulated = "";
-    let parsedAnyChunk = false;
-
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line.startsWith("data:")) continue;
-
-      const dataContent = line.slice(5).trim();
-      if (!dataContent || dataContent === "[DONE]") continue;
-
-      try {
-        const chunk = JSON.parse(dataContent);
-        parsedAnyChunk = true;
-
-        if (chunk.error?.message) {
-          throw new Error(chunk.error.message);
-        }
-
-        const delta = chunk.choices?.[0]?.delta;
-        const message = chunk.choices?.[0]?.message;
-        const text = chunk.choices?.[0]?.text;
-
-        if (typeof delta?.content === "string") {
-          accumulated += delta.content;
-        } else if (typeof message?.content === "string") {
-          accumulated += message.content;
-        } else if (typeof text === "string") {
-          accumulated += text;
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message !== dataContent && dataContent.includes('"error"')) {
-          throw e;
-        }
-      }
-    }
-
-    if (parsedAnyChunk) {
-      return accumulated;
-    }
-  }
+  const sseResult = extractSseResponseText(trimmed);
+  if (sseResult !== null) return sseResult;
 
   try {
     const json = JSON.parse(trimmed);
-    if (json.error?.message) {
-      throw new Error(json.error.message);
-    }
-    const choice = json.choices?.[0];
-    if (typeof choice?.message?.content === "string") {
-      return choice.message.content;
-    }
-    if (typeof choice?.delta?.content === "string") {
-      return choice.delta.content;
-    }
-    if (typeof choice?.text === "string") {
-      return choice.text;
-    }
-    if (typeof json.response === "string") {
-      return json.response;
-    }
-    if (typeof json.content === "string") {
-      return json.content;
-    }
+    if (json.error?.message) throw new Error(json.error.message);
+    const choiceText = readChoiceText(json.choices?.[0]);
+    if (choiceText) return choiceText;
+    if (typeof json.response === "string") return json.response;
+    if (typeof json.content === "string") return json.content;
     return "";
   } catch (err) {
     if (err instanceof Error && !err.message.includes("Unexpected token") && !err.message.includes("JSON")) {

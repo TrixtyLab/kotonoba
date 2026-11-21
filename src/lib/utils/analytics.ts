@@ -7,6 +7,54 @@ export interface ParsedClientInfo {
   os: string;
 }
 
+const BROWSER_MATCHERS: Array<[RegExp, string]> = [
+  [/edg\/|edge\//, "Edge"],
+  [/opr\/|opera/, "Opera"],
+  [/samsungbrowser/, "Samsung Internet"],
+  [/brave/, "Brave"],
+  [/vivaldi/, "Vivaldi"],
+  [/duckduckgo/, "DuckDuckGo"],
+  [/firefox|fxios/, "Firefox"],
+  [/chrome|crios|chromium/, "Chrome"],
+  [/msie|trident\//, "Internet Explorer"],
+];
+
+const OS_MATCHERS: Array<[RegExp, string]> = [
+  [/iphone|ipad|ipod/i, "iOS"],
+  [/android/i, "Android"],
+  [/windows|win32|win64/i, "Windows"],
+  [/macintosh|mac os x/i, "macOS"],
+  [/cros/i, "Chrome OS"],
+  [/linux/i, "Linux"],
+];
+
+function detectDevice(ua: string): "desktop" | "mobile" | "tablet" {
+  if (/ipad|tablet|playbook|silk/i.test(ua) || (ua.includes("android") && !ua.includes("mobile"))) {
+    return "tablet";
+  }
+  if (/mobile|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)) {
+    return "mobile";
+  }
+  return "desktop";
+}
+
+function detectBrowser(ua: string): string {
+  for (const [pattern, name] of BROWSER_MATCHERS) {
+    if (pattern.test(ua)) return name;
+  }
+  if (ua.includes("safari") && !ua.includes("chrome") && !ua.includes("android")) {
+    return "Safari";
+  }
+  return "Other";
+}
+
+function detectOs(ua: string): string {
+  for (const [pattern, name] of OS_MATCHERS) {
+    if (pattern.test(ua)) return name;
+  }
+  return "Other";
+}
+
 /**
  * Extracts normalized device category, browser vendor, and operating system name from a raw User-Agent string.
  *
@@ -17,54 +65,11 @@ export function parseDeviceAndBrowser(userAgent: string): ParsedClientInfo {
   if (!userAgent || typeof userAgent !== "string") {
     return { device: "desktop", browser: "Other", os: "Other" };
   }
-
   const ua = userAgent.toLowerCase();
-
-  let device: "desktop" | "mobile" | "tablet" = "desktop";
-  if (/ipad|tablet|playbook|silk/i.test(ua) || (ua.includes("android") && !ua.includes("mobile"))) {
-    device = "tablet";
-  } else if (/mobile|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)) {
-    device = "mobile";
-  }
-
-  let browser = "Other";
-  if (ua.includes("edg/") || ua.includes("edge/")) {
-    browser = "Edge";
-  } else if (ua.includes("opr/") || ua.includes("opera")) {
-    browser = "Opera";
-  } else if (ua.includes("samsungbrowser")) {
-    browser = "Samsung Internet";
-  } else if (ua.includes("brave")) {
-    browser = "Brave";
-  } else if (ua.includes("vivaldi")) {
-    browser = "Vivaldi";
-  } else if (ua.includes("duckduckgo")) {
-    browser = "DuckDuckGo";
-  } else if (ua.includes("firefox") || ua.includes("fxios")) {
-    browser = "Firefox";
-  } else if (ua.includes("chrome") || ua.includes("crios") || ua.includes("chromium")) {
-    browser = "Chrome";
-  } else if (ua.includes("safari") && !ua.includes("chrome") && !ua.includes("android")) {
-    browser = "Safari";
-  } else if (ua.includes("msie") || ua.includes("trident/")) {
-    browser = "Internet Explorer";
-  }
-
-  let os = "Other";
-  if (/iphone|ipad|ipod/i.test(ua)) {
-    os = "iOS";
-  } else if (/android/i.test(ua)) {
-    os = "Android";
-  } else if (/windows|win32|win64/i.test(ua)) {
-    os = "Windows";
-  } else if (/macintosh|mac os x/i.test(ua)) {
-    os = "macOS";
-  } else if (/cros/i.test(ua)) {
-    os = "Chrome OS";
-  } else if (/linux/i.test(ua)) {
-    os = "Linux";
-  }
-
-  return { device, browser, os };
+  return {
+    device: detectDevice(ua),
+    browser: detectBrowser(ua),
+    os: detectOs(ua),
+  };
 }
 

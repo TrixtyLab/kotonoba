@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     files: ["src/**/*.{ts,tsx}"],
     rules: {
       "react/no-danger": "error",
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
   {
@@ -42,7 +43,7 @@ const eslintConfig = defineConfig([
     files: ["src/actions/**/*.{ts,tsx}"],
     rules: {
       "max-lines": [
-        "warn",
+        "error",
         {
           max: 150,
           skipBlankLines: true,
@@ -65,6 +66,15 @@ const eslintConfig = defineConfig([
   {
     files: ["src/components/**/*.{ts,tsx}"],
     rules: {
+      "max-lines": [
+        "error",
+        {
+          max: 450,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
+      complexity: ["error", 15],
       "no-restricted-imports": [
         "error",
         {
@@ -90,6 +100,15 @@ const eslintConfig = defineConfig([
   {
     files: ["src/lib/**/*.{ts,tsx}"],
     rules: {
+      "max-lines": [
+        "error",
+        {
+          max: 450,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
+      complexity: ["error", 15],
       "no-restricted-imports": [
         "error",
         {
@@ -97,6 +116,72 @@ const eslintConfig = defineConfig([
             {
               group: ["@/components/*"],
               message: "Core domain libraries in src/lib must remain independent of UI components.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/hooks/**/*.{ts,tsx}"],
+    rules: {
+      "max-lines": [
+        "error",
+        {
+          max: 450,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
+      complexity: ["error", 15],
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@/lib/db",
+                "@/lib/db/*",
+                "better-sqlite3",
+                "drizzle-orm",
+                "@/lib/config/secrets",
+                "@/lib/security/crypto",
+                "@/lib/storage",
+                "@/lib/storage/*",
+              ],
+              message: "Client hooks must not import database internals, storage backends, or secret cryptography modules.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "src/app/[locale]/**/*.{ts,tsx}",
+      "src/app/robots.ts",
+      "src/app/sitemap.ts",
+      "src/app/feed.xml/route.ts",
+      "src/app/llms.txt/route.ts",
+      "src/app/llms-full.txt/route.ts",
+    ],
+    rules: {
+      "max-lines": [
+        "error",
+        {
+          max: 450,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
+      complexity: ["error", 15],
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/db", "@/lib/db/*", "better-sqlite3", "drizzle-orm"],
+              message: "App pages and public SEO/feed entrypoints must delegate SQL queries to src/lib/queries/* or src/lib/services/*.",
             },
           ],
         },

@@ -1,6 +1,7 @@
 "use server";
 
 import { ROLE_ALL } from "@/lib/auth/roles";
+import { ROLES } from "@/lib/config/constants";
 import { requireAuth } from "@/lib/auth/session";
 import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
 import { bindPostDubShortLink, createDubLink, isDubConfigured } from "@/lib/dub";
@@ -45,7 +46,7 @@ export async function generateDubLinkAction(params: GenerateDubLinkParams): Prom
     await requireResourceAccess("post", params.postId, ROLE_ALL);
   } else if (params.siteId) {
     await requireSiteAccess(params.siteId, ROLE_ALL);
-  } else if (user.role !== "super_admin") {
+  } else if (user.role !== ROLES.SUPER_ADMIN) {
     if (!user.siteId) {
       return { success: false, error: "Forbidden" };
     }

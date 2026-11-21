@@ -1,15 +1,18 @@
-import { getPublicSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { pages, posts, categories, users } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { getPublicPageCondition, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/blog/ShareButtons";
 import { LineSidebar } from "@/components/blog/LineSidebar";
-import { renderPostContent } from "@/lib/utils/markdown";
+import { MermaidRenderer } from "@/components/MermaidRenderer";
+import { Sparkles } from "lucide-react";
+import { extractMermaidDiagrams, renderPostContent } from "@/lib/utils/markdown";
+import { resolveCanonicalBodyText } from "@/lib/content/canonical";
+import { getCachedLatestPublicPostsSummary } from "@/lib/queries/public-posts";
+import { getCachedPublicPageBySlug } from "@/lib/queries/pages";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/utils/media";
-import { getSidebarBanners } from "@/lib/banners";
+import { getCachedSidebarBanners } from "@/lib/banners";
 import { SafeHtml } from "@/components/SafeHtml";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
@@ -17,9 +20,8 @@ import type { Metadata } from "next";
 /**
  * Generates OpenGraph, Twitter, and canonical SEO metadata tags for a published custom page.
  *
- * @param {Object} props - Component properties.
- * @param {Promise<{ slug: string; locale: string }>} props.params - Promise resolving to route parameters with page slug and active locale code.
- * @returns {Promise<Metadata>} Metadata object configured for search engines and social cards.
+ * @param props - Object containing route params Promise with page slug and active locale code.
+ * @returns Metadata object configured for search engines and social cards.
  */
 export async function generateMetadata({
   params,
@@ -27,16 +29,11 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getPublicSite();
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
   const t = await getTranslations({ locale, namespace: "blog" });
   if (!site) return { title: t("noPosts") };
 
-  const db = getDb();
-  const page = db
-    .select()
-    .from(pages)
-    .where(and(eq(pages.siteId, site.id), eq(pages.slug, slug), getPublicPageCondition()))
-    .get();
+  const page = await getCachedPublicPageBySlug(site.id, slug, locale, host);
 
   if (!page) return { title: "Page Not Found" };
 
@@ -94,44 +91,23 @@ export default async function CustomPageEntry({
   params: Promise<{ slug: string; locale: string }>;
 }) {
   const { slug, locale } = await params;
-  const site = await getPublicSite();
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
   if (!site) notFound();
 
   const t = await getTranslations({ locale, namespace: "blog" });
-  const db = getDb();
-  const page = db
-    .select({
-      id: pages.id,
-      title: pages.title,
-      slug: pages.slug,
-      contentMd: pages.contentMd,
-      contentHtml: pages.contentHtml,
-      contentFormat: pages.contentFormat,
-      excerpt: pages.excerpt,
-      coverImage: pages.coverImage,
-      publishedAt: pages.publishedAt,
-      createdAt: pages.createdAt,
-      authorName: users.displayName,
-    })
-    .from(pages)
-    .leftJoin(users, eq(pages.authorId, users.id))
-    .where(and(eq(pages.siteId, site.id), eq(pages.slug, slug), getPublicPageCondition()))
-    .get();
+  const [page, allCategories, latestPosts, sidebarBanners] = await Promise.all([
+    getCachedPublicPageBySlug(site.id, slug, locale, host),
+    getCachedSiteCategories(site.id, locale, host),
+    getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+    getCachedSidebarBanners(site.id, host),
+  ]);
 
   if (!page) notFound();
 
-  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
-  const latestPosts = db
-    .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.publishedAt))
-    .limit(5)
-    .all();
-
-  const postContent = page.contentMd || page.contentHtml || "";
-  const renderedHtml = renderPostContent(postContent, {
-    format: page.contentFormat,
+  const rawBody = resolveCanonicalBodyText(page);
+  const mermaidDiagrams = extractMermaidDiagrams(rawBody, page.contentMd, page.contentHtml);
+  const renderedHtml = renderPostContent(rawBody, {
+    format: page.contentFormat ?? undefined,
     utmSource:
       site?.domain && !site.domain.includes("localhost")
         ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
@@ -161,6 +137,19 @@ export default async function CustomPageEntry({
         {/* Content */}
         <SafeHtml className="prose-blog pt-2" html={renderedHtml} />
 
+        {/* Mermaid Diagrams */}
+        {mermaidDiagrams.length > 0 && (
+          <div className="space-y-6 pt-4">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-text pb-2.5 border-b border-border/40">
+              <Sparkles className="w-4 h-4 text-accent" />
+              <span>Diagrams ({mermaidDiagrams.length})</span>
+            </div>
+            {mermaidDiagrams.map((chart, idx) => (
+              <MermaidRenderer key={idx} chart={chart} />
+            ))}
+          </div>
+        )}
+
         {/* Bottom Share Bar */}
         <div className="pt-4 flex items-center justify-between border-t border-border/40 text-xs text-text-muted">
           <span>{t("sharePage")}:</span>
@@ -174,7 +163,7 @@ export default async function CustomPageEntry({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={await getSidebarBanners(site.id)}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>

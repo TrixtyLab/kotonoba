@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { getPublicSite, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
-import { getPublicCategories } from "@/actions/categories";
-import { getDb } from "@/lib/db";
-import { posts, settings } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { getCachedLatestPublicPostsSummary } from "@/lib/queries/public-posts";
+import { getCachedSiteSeoSettings } from "@/lib/queries/seo";
 import { Header } from "@/components/blog/Header";
 import { HeaderBanner } from "@/components/blog/HeaderBanner";
 import { Footer } from "@/components/blog/Footer";
@@ -13,7 +11,7 @@ import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { redirect } from "@/i18n/routing";
 import { headers } from "next/headers";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { getSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
+import { getCachedSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
 import { getAdminDomainEnv, getDefaultSiteUrl } from "@/lib/config/env";
 import { getRequestHost } from "@/lib/http/request";
 import { normalizeMediaUrl } from "@/lib/utils/media";
@@ -26,7 +24,7 @@ export const dynamic = "force-dynamic";
  * @returns {Promise<Metadata>} Metadata configuration object with resolved assets and social tags.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const site = await getPublicSite();
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
   const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const defaultFavicon = "/icon.svg";
   const rawFavicon = site?.faviconUrl || defaultFavicon;
@@ -34,16 +32,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const rawAppleIcon = site?.faviconUrl || site?.logoUrl || defaultFavicon;
   const appleIcon = normalizeMediaUrl(rawAppleIcon) || defaultFavicon;
 
-  const db = getDb();
-  const antiAiSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
-        .get()
-    : null;
-
-  const isAiBlocked = antiAiSetting?.value === "true";
+  const seo = site ? await getCachedSiteSeoSettings(site.id, host) : null;
+  const isAiBlocked = Boolean(seo?.blockAiCrawlers);
 
   return {
     metadataBase: new URL(baseUrl),
@@ -117,6 +107,7 @@ export default async function BlogLayout({
   }
 
   const site = siteForHost || (isLocal ? await getPublicSite() : null);
+  const host = cleanHost || (await getRequestNormalizedHost());
   const siteData = site || {
     id: "default",
     name: "Kotonoba",
@@ -127,45 +118,24 @@ export default async function BlogLayout({
     supportedLocales: '["en"]',
   };
 
-  const categories = site ? await getPublicCategories(site.id) : [];
+  const [categories, rawSearchPosts, bannersConfig, seoSettings] = site
+    ? await Promise.all([
+        getCachedSiteCategories(site.id, locale, host),
+        getCachedLatestPublicPostsSummary(site.id, 20, locale, host),
+        getCachedSiteBanners(site.id, host),
+        getCachedSiteSeoSettings(site.id, host),
+      ])
+    : [[], [], { headerBanner: null, sidebarBanners: [] }, { blockAiCrawlers: false, llmsTxtEnabled: false, llmsTxtCustom: "" }];
 
-  const db = getDb();
+  const searchPosts = rawSearchPosts.map((p) => ({
+    id: p.id,
+    title: p.title,
+    slug: p.slug,
+    publishedAt: p.publishedAt ? p.publishedAt.toISOString() : null,
+  }));
 
-  const searchPosts = site
-    ? db
-        .select({
-          id: posts.id,
-          title: posts.title,
-          slug: posts.slug,
-          excerpt: posts.excerpt,
-        })
-        .from(posts)
-        .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-        .limit(20)
-        .all()
-    : [];
-
-  const antiAiSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
-        .get()
-    : null;
-
-  const isAiBlocked = antiAiSetting?.value === "true";
-
-  const llmsSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_enabled")))
-        .get()
-    : null;
-
-  const enableLlmsTxt = !isAiBlocked && llmsSetting?.value === "true";
-
-  const bannersConfig = site ? await getSiteBanners(site.id) : { headerBanner: null, sidebarBanners: [] };
+  const isAiBlocked = seoSettings.blockAiCrawlers;
+  const enableLlmsTxt = !isAiBlocked && seoSettings.llmsTxtEnabled;
 
   const primaryColor = site?.primaryColor || "#3b82f6";
   const themeStyles = {

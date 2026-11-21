@@ -40,6 +40,63 @@ export function renderPostContent(rawContent: string, options?: RenderContentOpt
   return renderMarkdownToHtml(normalized, options);
 }
 
+function decodeHtmlEntities(raw: string): string {
+  return raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Extracts Mermaid diagram definitions from raw Markdown fenced blocks,
+ * canonical unified `content`, or rich-text HTML (`<code class="language-mermaid">`).
+ *
+ * @param sources - One or more Markdown/HTML source strings to inspect.
+ * @returns Ordered deduplicated array of Mermaid diagram definitions.
+ */
+export function extractMermaidDiagrams(...sources: Array<string | null | undefined>): string[] {
+  const diagrams: string[] = [];
+  const seen = new Set<string>();
+
+  const pushDiagram = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      diagrams.push(trimmed);
+    }
+  };
+
+  for (const src of sources) {
+    if (!src) continue;
+    const mdRegex = /```mermaid[\r\n]+([\s\S]*?)```/gi;
+    let match: RegExpExecArray | null;
+    while ((match = mdRegex.exec(src)) !== null) {
+      pushDiagram(decodeHtmlEntities(match[1]));
+    }
+
+    const codeBlockRegex =
+      /<code[^>]*class=["'][^"']*\blanguage-mermaid\b[^"']*["'][^>]*>([\s\S]*?)<\/code>/gi;
+    let codeMatch: RegExpExecArray | null;
+    while ((codeMatch = codeBlockRegex.exec(src)) !== null) {
+      pushDiagram(decodeHtmlEntities(codeMatch[1]));
+    }
+
+    const htmlFenceRegex = /```mermaid(?:<br\s*\/?>|\r?\n|\s)+([\s\S]*?)```/gi;
+    let fenceMatch: RegExpExecArray | null;
+    while ((fenceMatch = htmlFenceRegex.exec(src)) !== null) {
+      pushDiagram(decodeHtmlEntities(fenceMatch[1]));
+    }
+  }
+
+  return diagrams;
+}
+
 /**
  * Processes pre-rendered HTML strings to resolve embed directives, raw iframes, and standalone media URLs into responsive widgets.
  *
@@ -48,7 +105,11 @@ export function renderPostContent(rawContent: string, options?: RenderContentOpt
  * @returns {string} HTML string with embed directives replaced by responsive iframe/widget markup.
  */
 function processHtmlEmbeds(html: string, options?: RenderContentOptions): string {
-  let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, type, url) => {
+  let result = html
+    .replace(/<pre[^>]*>\s*<code[^>]*class=["'][^"']*\blanguage-mermaid\b[^"']*["'][^>]*>[\s\S]*?<\/code>\s*<\/pre>/gi, "")
+    .replace(/<p[^>]*>\s*```mermaid[\s\S]*?```\s*<\/p>/gi, "");
+
+  result = result.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, type, url) => {
     const embed = parseEmbedDirective(type, url.trim(), options);
     return embed ? embed.html : `<p>${renderSafeFallbackLink(url.trim())}</p>`;
   });

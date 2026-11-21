@@ -4,6 +4,7 @@ import { canAccessSite } from "@/lib/auth/site-access";
 import { canManageSettings, ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
 import { getAdminSite } from "@/lib/tenant";
 import { getEnvConfig } from "@/lib/config/env";
+import { MEDIA_PAGE_SIZE } from "@/lib/config/constants";
 import { getClientIp, isSameOriginRequest } from "@/lib/http/request";
 import { recordAuditEvent } from "@/lib/security/audit";
 import {
@@ -55,13 +56,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const { searchParams } = new URL(req.url);
   const folder = searchParams.get("folder") || "";
+  const cursor = searchParams.get("cursor") || undefined;
+  const rawLimit = Number.parseInt(searchParams.get("limit") || "", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 200)) : MEDIA_PAGE_SIZE;
   const siteScope = await resolveMediaSiteId(user, searchParams.get("siteId"));
   if (!siteScope.ok) {
     return NextResponse.json({ error: siteScope.error }, { status: siteScope.status });
   }
 
   try {
-    const listing = await listMediaFiles(folder, siteScope.siteId);
+    const listing = await listMediaFiles(folder, siteScope.siteId, { cursor, limit });
     const status = getStorageStatus(siteScope.siteId);
     const usedBytes = await getSiteStorageUsageBytes(siteScope.siteId);
     const { maxSiteStorageBytes } = getEnvConfig();
@@ -72,6 +76,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       parentFolder: listing.parentFolder,
       folders: listing.folders,
       files: listing.files,
+      nextCursor: listing.nextCursor ?? null,
       storage: {
         ...status,
         usedBytes,

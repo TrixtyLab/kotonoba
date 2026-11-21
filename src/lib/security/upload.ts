@@ -20,6 +20,12 @@ export interface SanitizedImagePayload {
   extension: DetectedImageType["extension"];
 }
 
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function hasPngMagic(buffer: Buffer): boolean {
+  return PNG_MAGIC.every((byte, idx) => buffer[idx] === byte);
+}
+
 /**
  * Inspects leading file magic bytes to identify genuine JPEG, PNG, GIF, or WebP images.
  * Rejects HTML, SVG, scripts, polyglots, or unsupported binary payloads regardless of filename or HTTP header.
@@ -30,32 +36,18 @@ export interface SanitizedImagePayload {
 export function detectImageTypeFromBytes(buffer: Buffer): DetectedImageType | null {
   if (!buffer || buffer.length < 12) return null;
 
-  // JPEG: FF D8 FF
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return { mimeType: "image/jpeg", extension: ".jpg" };
   }
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47 &&
-    buffer[4] === 0x0d &&
-    buffer[5] === 0x0a &&
-    buffer[6] === 0x1a &&
-    buffer[7] === 0x0a
-  ) {
+  if (hasPngMagic(buffer)) {
     return { mimeType: "image/png", extension: ".png" };
   }
 
-  // GIF87a / GIF89a
   const header6 = buffer.subarray(0, 6).toString("ascii");
   if (header6 === "GIF87a" || header6 === "GIF89a") {
     return { mimeType: "image/gif", extension: ".gif" };
   }
 
-  // WebP: RIFF....WEBP
   const riff = buffer.subarray(0, 4).toString("ascii");
   const webp = buffer.subarray(8, 12).toString("ascii");
   if (riff === "RIFF" && webp === "WEBP") {

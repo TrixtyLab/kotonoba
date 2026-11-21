@@ -138,11 +138,4 @@ export function decryptBackupArchive(buffer: Buffer): Buffer {
   }
 }
 
-/**
- * Feature flag controlling restore of legacy unencrypted ZIP backups.
- *
- * @returns `true` when legacy ZIP imports are explicitly enabled.
- */
-export function isLegacyBackupImportEnabled(): boolean {
-  return getBackupEncryptionEnv().allowLegacy;
-}
+export { isLegacyBackupImportEnabled } from "@/lib/config/features";

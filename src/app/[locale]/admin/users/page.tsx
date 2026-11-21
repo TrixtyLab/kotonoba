@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth/session";
+import { ROLES, type UserRole } from "@/lib/config/constants";
 import { redirect } from "@/i18n/routing";
 import { getUsers } from "@/actions/users";
 import { getAllSites } from "@/actions/sites";
@@ -22,7 +23,7 @@ export default async function AdminUsersPage({
     return null;
   }
 
-  if (currentUser.role !== "super_admin" && currentUser.role !== "admin") {
+  if (currentUser.role !== ROLES.SUPER_ADMIN && currentUser.role !== ROLES.ADMIN) {
     redirect({ href: "/admin", locale });
     return null;
   }
@@ -41,7 +42,7 @@ export default async function AdminUsersPage({
         domain: s.domain,
       }))}
       currentUserId={currentUser.userId}
-      currentUserRole={currentUser.role as "super_admin" | "admin" | "editor" | "author"}
+      currentUserRole={currentUser.role as UserRole}
     />
   );
 }

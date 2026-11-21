@@ -1,8 +1,4 @@
-import { getPublicSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, users, categories, tags, postCategories, postTags } from "@/lib/db/schema";
-import { eq, and, desc, lt, gt, asc } from "drizzle-orm";
-import { getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils/date";
 import { ShareButtons } from "@/components/blog/ShareButtons";
@@ -14,10 +10,15 @@ import { Tag as TagIcon, Eye, ChevronLeft, ChevronRight, Sparkles } from "lucide
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
-import { renderPostContent } from "@/lib/utils/markdown";
+import { extractMermaidDiagrams, renderPostContent } from "@/lib/utils/markdown";
+import { resolveCanonicalBodyText } from "@/lib/content/canonical";
+import { getCachedLatestPublicPostsSummary } from "@/lib/queries/public-posts";
+import { getCachedPublicPostBySlug } from "@/lib/queries/public-post-detail";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/utils/media";
-import { getSidebarBanners } from "@/lib/banners";
+import { getCachedSidebarBanners } from "@/lib/banners";
 import { SafeHtml } from "@/components/SafeHtml";
 
 /**
@@ -32,18 +33,13 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getPublicSite();
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
   const t = await getTranslations({ locale, namespace: "blog" });
   if (!site) return { title: t("noPosts") };
 
-  const db = getDb();
-  const post = db
-    .select()
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), getPublicPostCondition()))
-    .get();
-
-  if (!post) return { title: t("noPosts") };
+  const bundle = await getCachedPublicPostBySlug(site.id, slug, locale, host);
+  if (!bundle) return { title: t("noPosts") };
+  const { post } = bundle;
 
   const baseUrl = `https://${site.domain}`;
   const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/entry/${post.slug}`;
@@ -98,108 +94,26 @@ export default async function PostEntryPage({
   params: Promise<{ slug: string; locale: string }>;
 }) {
   const { slug, locale } = await params;
-  const site = await getPublicSite();
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
   if (!site) notFound();
 
   const t = await getTranslations({ locale, namespace: "blog" });
 
-  const db = getDb();
-  const post = db
-    .select({
-      id: posts.id,
-      title: posts.title,
-      slug: posts.slug,
-      contentMd: posts.contentMd,
-      contentHtml: posts.contentHtml,
-      contentFormat: posts.contentFormat,
-      excerpt: posts.excerpt,
-      coverImage: posts.coverImage,
-      publishedAt: posts.publishedAt,
-      views: posts.views,
-      shortUrl: posts.shortUrl,
-      authorName: users.displayName,
-      authorAvatar: users.avatarUrl,
-    })
-    .from(posts)
-    .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(posts.siteId, site.id), eq(posts.slug, slug), getPublicPostCondition()))
-    .get();
+  const [bundle, allCategories, latestPosts, sidebarBanners] = await Promise.all([
+    getCachedPublicPostBySlug(site.id, slug, locale, host),
+    getCachedSiteCategories(site.id, locale, host),
+    getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+    getCachedSidebarBanners(site.id, host),
+  ]);
 
-  if (!post) notFound();
-
-  const assignedCategories = db
-    .select({
-      id: categories.id,
-      name: categories.name,
-      slug: categories.slug,
-    })
-    .from(postCategories)
-    .innerJoin(categories, eq(postCategories.categoryId, categories.id))
-    .where(eq(postCategories.postId, post.id))
-    .all();
-
-  const assignedTags = db
-    .select({
-      id: tags.id,
-      name: tags.name,
-      slug: tags.slug,
-    })
-    .from(postTags)
-    .innerJoin(tags, eq(postTags.tagId, tags.id))
-    .where(eq(postTags.postId, post.id))
-    .all();
-
-  const prevPost = post.publishedAt
-    ? db
-        .select({ title: posts.title, slug: posts.slug })
-        .from(posts)
-        .where(
-          and(
-            eq(posts.siteId, site.id),
-            getPublicPostCondition(),
-            lt(posts.publishedAt, post.publishedAt)
-          )
-        )
-        .orderBy(desc(posts.publishedAt))
-        .limit(1)
-        .get()
-    : null;
-
-  const nextPost = post.publishedAt
-    ? db
-        .select({ title: posts.title, slug: posts.slug })
-        .from(posts)
-        .where(
-          and(
-            eq(posts.siteId, site.id),
-            getPublicPostCondition(),
-            gt(posts.publishedAt, post.publishedAt)
-          )
-        )
-        .orderBy(asc(posts.publishedAt))
-        .limit(1)
-        .get()
-    : null;
-
-  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
-  const latestPosts = db
-    .select({ id: posts.id, title: posts.title, slug: posts.slug, publishedAt: posts.publishedAt })
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.publishedAt))
-    .limit(5)
-    .all();
+  if (!bundle) notFound();
+  const { post, assignedCategories, assignedTags, prevPost, nextPost } = bundle;
 
   const postUrl = `https://${site.domain}/entry/${post.slug}`;
   const shareUrl = post.shortUrl || postUrl;
 
-  const mermaidDiagrams: string[] = [];
-  const regex = /```mermaid\n([\s\S]*?)```/g;
-  let match;
-  const rawText = post.contentMd || "";
-  while ((match = regex.exec(rawText)) !== null) {
-    mermaidDiagrams.push(match[1].trim());
-  }
+  const rawBody = resolveCanonicalBodyText(post);
+  const mermaidDiagrams = extractMermaidDiagrams(rawBody, post.contentMd, post.contentHtml);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
@@ -239,8 +153,8 @@ export default async function PostEntryPage({
         {/* Body Content */}
         <SafeHtml
           className="prose-blog pt-2"
-          html={renderPostContent(post.contentHtml || post.contentMd || "", {
-            format: post.contentFormat,
+          html={renderPostContent(rawBody, {
+            format: post.contentFormat ?? undefined,
             utmSource:
               site?.domain && !site.domain.includes("localhost")
                 ? site.domain.replace(/^https?:\/\//, "").split(":")[0]
@@ -342,7 +256,7 @@ export default async function PostEntryPage({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={await getSidebarBanners(site.id)}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>

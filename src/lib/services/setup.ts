@@ -5,7 +5,8 @@ import { generateId, generateSlug } from "@/lib/utils/slug";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeLocale } from "@/i18n/locales";
-import { strongPasswordSchema } from "@/lib/security/validate";
+import { strongPasswordSchema } from "@/lib/contracts";
+import { POST_STATUS, ROLES } from "@/lib/config/constants";
 import { renderMarkdownToHtml } from "@/lib/utils/markdown";
 import type { SessionCookieSubject } from "@/lib/auth/cookies";
 
@@ -125,7 +126,7 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
         email: cleanEmail,
         passwordHash,
         displayName: valid.adminName.trim() || "Administrator",
-        role: "super_admin",
+        role: ROLES.SUPER_ADMIN,
         siteId,
         tokenVersion: 1,
         createdAt: now,
@@ -152,11 +153,12 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
         authorId: userId,
         title: postTitle,
         slug: generateSlug(postTitle),
+        content: welcomeContent,
         contentMd: welcomeContent,
         contentHtml: renderedWelcome,
         contentFormat: "markdown",
         excerpt: "Your new Kotonoba site is up and running. Explore the admin panel, write articles, and customize your theme.",
-        status: "published",
+        status: POST_STATUS.PUBLISHED,
         locale: siteLocale,
         publishedAt: now,
         createdAt: now,
@@ -206,7 +208,7 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
     session: {
       userId,
       email: cleanEmail,
-      role: "super_admin",
+      role: ROLES.SUPER_ADMIN,
       siteId,
       tokenVersion: 1,
     },

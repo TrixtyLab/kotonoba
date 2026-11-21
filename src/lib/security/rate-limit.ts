@@ -1,21 +1,5 @@
-const windows = new Map<string, { count: number; resetAt: number }>();
-
 const CLEANUP_INTERVAL = 60_000;
-let lastCleanup = Date.now();
-
-/**
- * Periodically sweeps and removes expired rate limiting records from the in-memory store.
- *
- * @returns Void.
- */
-function cleanup(): void {
-  const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL) return;
-  lastCleanup = now;
-  for (const [key, window] of windows) {
-    if (window.resetAt < now) windows.delete(key);
-  }
-}
+const MAX_IN_MEMORY_WINDOWS = 10_000;
 
 /**
  * Rate limit policy configuration specifying the request threshold and rolling window duration.
@@ -25,6 +9,18 @@ export interface RateLimitConfig {
   maxRequests: number;
   /** Window duration in milliseconds. */
   windowMs: number;
+}
+
+/** Result returned when checking/consuming a quota token from a {@link RateLimitStore}. */
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  retryAfter: number;
+}
+
+/** Pluggable backing store contract for single-node or shared Redis rate limiting. */
+export interface RateLimitStore {
+  consume(key: string, config: RateLimitConfig, nowMs?: number): RateLimitResult;
 }
 
 /**
@@ -39,30 +35,78 @@ export const RATE_LIMITS = {
 } satisfies Record<string, RateLimitConfig>;
 
 /**
- * Evaluates whether an incoming request from a specific identifier (such as an IP address) exceeds the configured rate limit.
- *
- * @param key - The unique tracking key, typically the client IP or user ID.
- * @param config - The rate limit configuration rule to apply. Defaults to the default tier.
- * @returns An evaluation object indicating whether the request is allowed, remaining requests, and retry delay in seconds.
+ * Bounded process-local rate limit store evicting expired windows and capping active buckets
+ * to protect single-instance deployments against unbounded memory growth.
+ */
+export class InMemoryRateLimitStore implements RateLimitStore {
+  private readonly windows = new Map<string, { count: number; resetAt: number }>();
+  private readonly maxEntries: number;
+  private lastCleanup = Date.now();
+
+  constructor(maxEntries = MAX_IN_MEMORY_WINDOWS) {
+    this.maxEntries = Math.max(100, maxEntries);
+  }
+
+  private sweepExpired(now: number, force = false): void {
+    if (!force && now - this.lastCleanup < CLEANUP_INTERVAL) return;
+    this.lastCleanup = now;
+    for (const [key, entry] of this.windows) {
+      if (entry.resetAt <= now) this.windows.delete(key);
+    }
+  }
+
+  private ensureCapacity(now: number): void {
+    if (this.windows.size < this.maxEntries) return;
+    this.sweepExpired(now, true);
+    while (this.windows.size >= this.maxEntries) {
+      const oldestKey = this.windows.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.windows.delete(oldestKey);
+    }
+  }
+
+  consume(key: string, config: RateLimitConfig, nowMs = Date.now()): RateLimitResult {
+    this.sweepExpired(nowMs);
+    const existing = this.windows.get(key);
+
+    if (!existing || existing.resetAt <= nowMs) {
+      this.ensureCapacity(nowMs);
+      this.windows.set(key, { count: 1, resetAt: nowMs + config.windowMs });
+      return { allowed: true, remaining: Math.max(0, config.maxRequests - 1), retryAfter: 0 };
+    }
+
+    if (existing.count >= config.maxRequests) {
+      const retryAfter = Math.ceil((existing.resetAt - nowMs) / 1000);
+      return { allowed: false, remaining: 0, retryAfter };
+    }
+
+    existing.count++;
+    return {
+      allowed: true,
+      remaining: Math.max(0, config.maxRequests - existing.count),
+      retryAfter: 0,
+    };
+  }
+}
+
+let activeStore: RateLimitStore = new InMemoryRateLimitStore();
+
+/** Swaps the active rate limiter backend (e.g. shared store or test double). */
+export function setRateLimitStore(store: RateLimitStore): void {
+  activeStore = store;
+}
+
+/** Restores the default bounded in-memory rate limit store. */
+export function resetRateLimitStore(): void {
+  activeStore = new InMemoryRateLimitStore();
+}
+
+/**
+ * Evaluates whether an incoming request from a specific identifier exceeds the configured quota.
  */
 export function checkRateLimit(
   key: string,
   config: RateLimitConfig = RATE_LIMITS.default
-): { allowed: boolean; remaining: number; retryAfter: number } {
-  cleanup();
-  const now = Date.now();
-  const window = windows.get(key);
-
-  if (!window || window.resetAt < now) {
-    windows.set(key, { count: 1, resetAt: now + config.windowMs });
-    return { allowed: true, remaining: config.maxRequests - 1, retryAfter: 0 };
-  }
-
-  if (window.count >= config.maxRequests) {
-    const retryAfter = Math.ceil((window.resetAt - now) / 1000);
-    return { allowed: false, remaining: 0, retryAfter };
-  }
-
-  window.count++;
-  return { allowed: true, remaining: config.maxRequests - window.count, retryAfter: 0 };
+): RateLimitResult {
+  return activeStore.consume(key, config);
 }

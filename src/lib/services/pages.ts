@@ -3,11 +3,12 @@ import { pages, users, analytics } from "@/lib/db/schema";
 import { eq, desc, and, ne } from "drizzle-orm";
 import type { TokenPayload } from "@/lib/auth/jwt";
 import { generateId, generateSlug } from "@/lib/utils/slug";
-import type { PageInput } from "@/lib/security/validate";
+import type { PageInput } from "@/lib/contracts";
 import { normalizeMediaUrl } from "@/lib/utils/media";
 import { sanitizeUrl } from "@/lib/security/sanitize";
 import { resolveCanonicalContent } from "@/lib/content/canonical";
 import { recordAuditEvent } from "@/lib/security/audit";
+import { POST_STATUS, ROLES, type PostStatus } from "@/lib/config/constants";
 
 /**
  * Result payload returned from custom page creation or update operations.
@@ -23,7 +24,7 @@ export interface AdminPageRecord {
   id: string;
   title: string;
   slug: string;
-  status: "draft" | "published" | "scheduled" | "archived";
+  status: PostStatus;
   locale: string;
   views: number;
   publishedAt: Date | null;
@@ -40,7 +41,7 @@ export function createPageService(
   siteId: string,
   data: PageInput
 ): { result: PageMutationResponse; pageSlug?: string } {
-  const { title, slug, contentMd, contentHtml, contentFormat, excerpt, coverImage, status, publishedAt, locale } = data;
+  const { title, slug, content, contentMd, contentHtml, contentFormat, excerpt, coverImage, status, publishedAt, locale } = data;
   const db = getDb();
   const pageId = generateId();
   const pageSlug = slug ? generateSlug(slug) : generateSlug(title);
@@ -58,7 +59,7 @@ export function createPageService(
 
   const now = new Date();
   let targetPublishedAt: Date | null = null;
-  if (status === "published" || status === "scheduled") {
+  if (status === POST_STATUS.PUBLISHED || status === POST_STATUS.SCHEDULED) {
     if (publishedAt) {
       const parsed = new Date(publishedAt);
       targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : now;
@@ -67,7 +68,7 @@ export function createPageService(
     }
   }
 
-  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat);
+  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat, content);
   const safeCoverImage = coverImage ? sanitizeUrl(normalizeMediaUrl(coverImage), { allowRelative: true }) : null;
 
   db.insert(pages)
@@ -77,6 +78,7 @@ export function createPageService(
       authorId: actor.userId,
       title,
       slug: pageSlug,
+      content: canonical.content,
       contentMd: canonical.contentMd,
       contentHtml: canonical.contentHtml,
       contentFormat: canonical.contentFormat,
@@ -99,6 +101,24 @@ export function getPageRowById(pageId: string) {
   return getDb().select().from(pages).where(eq(pages.id, pageId)).get() || null;
 }
 
+function resolveUpdatedPublishedAt(
+  status: string,
+  publishedAt: string | Date | null | undefined,
+  existingPublishedAt: Date | null,
+  now: Date
+): Date | null {
+  if (status === POST_STATUS.DRAFT) return null;
+  if (status !== POST_STATUS.PUBLISHED && status !== POST_STATUS.SCHEDULED) return existingPublishedAt;
+  if (!publishedAt) return existingPublishedAt || now;
+  const parsed = publishedAt instanceof Date ? publishedAt : new Date(publishedAt);
+  return !isNaN(parsed.getTime()) ? parsed : existingPublishedAt || now;
+}
+
+function resolveUpdatedCoverImage(coverImage: string | null | undefined, existingCover: string | null): string | null {
+  if (coverImage === undefined) return existingCover;
+  return coverImage ? sanitizeUrl(normalizeMediaUrl(coverImage), { allowRelative: true }) : null;
+}
+
 /**
  * Updates an existing custom static page enforcing author ownership and `(siteId, slug)` uniqueness.
  */
@@ -107,11 +127,11 @@ export function updatePageService(
   existing: NonNullable<ReturnType<typeof getPageRowById>>,
   data: PageInput
 ): { result: PageMutationResponse; pageSlug?: string } {
-  if (actor.role === "author" && existing.authorId !== actor.userId) {
+  if (actor.role === ROLES.AUTHOR && existing.authorId !== actor.userId) {
     return { result: { success: false, error: "You can only edit your own pages." } };
   }
 
-  const { title, slug, contentMd, contentHtml, contentFormat, excerpt, coverImage, status, publishedAt, locale } = data;
+  const { title, slug, content, contentMd, contentHtml, contentFormat, excerpt, coverImage, status, publishedAt, locale } = data;
   const db = getDb();
   const now = new Date();
   const pageSlug = slug ? generateSlug(slug) : existing.slug;
@@ -127,32 +147,15 @@ export function updatePageService(
     };
   }
 
-  let targetPublishedAt: Date | null = null;
-  if (status === "published" || status === "scheduled") {
-    if (publishedAt) {
-      const parsed = new Date(publishedAt);
-      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : existing.publishedAt || now;
-    } else {
-      targetPublishedAt = existing.publishedAt || now;
-    }
-  } else if (status === "draft") {
-    targetPublishedAt = null;
-  } else {
-    targetPublishedAt = existing.publishedAt;
-  }
-
-  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat);
-  const safeCoverImage =
-    coverImage !== undefined
-      ? coverImage
-        ? sanitizeUrl(normalizeMediaUrl(coverImage), { allowRelative: true })
-        : null
-      : existing.coverImage;
+  const targetPublishedAt = resolveUpdatedPublishedAt(status, publishedAt, existing.publishedAt, now);
+  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat, content);
+  const safeCoverImage = resolveUpdatedCoverImage(coverImage, existing.coverImage);
 
   db.update(pages)
     .set({
       title,
       slug: pageSlug,
+      content: canonical.content,
       contentMd: canonical.contentMd,
       contentHtml: canonical.contentHtml,
       contentFormat: canonical.contentFormat,
@@ -173,7 +176,7 @@ export function updatePageService(
 export function deletePageService(
   actor: TokenPayload,
   pageId: string
-): { success: boolean; error?: string; slug?: string } {
+): { success: boolean; error?: string; slug?: string; siteId?: string } {
   const db = getDb();
   const existing = db.select().from(pages).where(eq(pages.id, pageId)).get();
   if (!existing) {
@@ -194,7 +197,7 @@ export function deletePageService(
     metadata: { slug: existing.slug },
   });
 
-  return { success: true, slug: existing.slug };
+  return { success: true, slug: existing.slug, siteId: existing.siteId };
 }
 
 /** Lists custom pages for admin panel listings. */
@@ -229,7 +232,7 @@ export function listPublishedPages(siteId: string): Array<{ id: string; title: s
       locale: pages.locale,
     })
     .from(pages)
-    .where(and(eq(pages.siteId, siteId), eq(pages.status, "published")))
+    .where(and(eq(pages.siteId, siteId), eq(pages.status, POST_STATUS.PUBLISHED)))
     .orderBy(desc(pages.createdAt))
     .all();
 }

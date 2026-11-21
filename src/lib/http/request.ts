@@ -32,6 +32,24 @@ export function getRequestId(headers: HeaderReadable): string | undefined {
   return /^[A-Za-z0-9._-]+$/.test(value) ? value : undefined;
 }
 
+function matchesIpv4CidrRule(candidate: string, rule: string): boolean {
+  const [baseIp, prefixStr] = rule.split("/");
+  const prefix = Number.parseInt(prefixStr || "", 10);
+  if (!net.isIPv4(candidate) || !net.isIPv4(baseIp) || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) {
+    return false;
+  }
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+  return (ipv4ToInt(candidate) & mask) === (ipv4ToInt(baseIp) & mask);
+}
+
+function matchesTrustedRule(candidate: string, rule: string): boolean {
+  const trimmed = rule.trim();
+  if (!trimmed) return false;
+  if (trimmed === "*") return true;
+  if (trimmed.includes("/")) return matchesIpv4CidrRule(candidate, trimmed);
+  return normalizeIp(trimmed) === candidate;
+}
+
 /**
  * Checks whether an IP address string belongs to a configured trusted reverse proxy.
  * Supports exact IPs and IPv4 CIDR blocks in `TRUSTED_PROXY_IPS`.
@@ -42,36 +60,7 @@ function isTrustedProxyIp(ip: string | null | undefined, trustedList?: string[])
   if (!net.isIP(candidate)) return false;
 
   const list = trustedList ?? getEnvConfig().trustedProxyIps;
-  if (list.length === 0) return false;
-
-  for (const rule of list) {
-    const trimmed = rule.trim();
-    if (!trimmed) continue;
-
-    if (trimmed === "*") {
-      return true;
-    }
-
-    if (trimmed.includes("/")) {
-      const [baseIp, prefixStr] = trimmed.split("/");
-      const prefix = Number.parseInt(prefixStr || "", 10);
-      if (net.isIPv4(candidate) && net.isIPv4(baseIp) && Number.isInteger(prefix) && prefix >= 0 && prefix <= 32) {
-        const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
-        const candidateInt = ipv4ToInt(candidate);
-        const baseInt = ipv4ToInt(baseIp);
-        if ((candidateInt & mask) === (baseInt & mask)) {
-          return true;
-        }
-      }
-      continue;
-    }
-
-    if (normalizeIp(trimmed) === candidate) {
-      return true;
-    }
-  }
-
-  return false;
+  return list.some((rule) => matchesTrustedRule(candidate, rule));
 }
 
 function ipv4ToInt(ip: string): number {

@@ -3,8 +3,10 @@ import { sites, users, type sites as sitesTable } from "@/lib/db/schema";
 import { eq, or, sql } from "drizzle-orm";
 import { headers, cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth/session";
+import { ROLES } from "@/lib/config/constants";
 import { getDefaultSiteUrl, isSingleTenantFallbackEnabled } from "@/lib/config/env";
 import { getRequestHost } from "@/lib/http/request";
+import { runWithTenantCache, tenantRegistryCacheTag } from "@/lib/cache/revalidate";
 
 /**
  * Inferred database row type representing a registered blog site.
@@ -26,26 +28,65 @@ export function normalizeDomain(domain: string): string {
     .trim();
 }
 
+function rehydrateSiteDates(site: Site | null): Site | null {
+  if (!site) return null;
+  return {
+    ...site,
+    createdAt: site.createdAt instanceof Date ? site.createdAt : new Date(site.createdAt),
+    updatedAt: site.updatedAt instanceof Date ? site.updatedAt : new Date(site.updatedAt),
+  };
+}
+
+function resolveSiteByHostSync(cleanHost: string, rawHost: string): Site | null {
+  const db = getDb();
+  const allSites = db.select().from(sites).all();
+  const matched = allSites.find((s) => {
+    const siteClean = normalizeDomain(s.domain);
+    return siteClean === cleanHost || s.domain.toLowerCase() === rawHost.toLowerCase();
+  });
+  return matched || null;
+}
+
 /**
- * Finds a registered blog site strictly matching the incoming HTTP Host header.
+ * Returns the normalized incoming HTTP `Host` header (or `"default"` outside HTTP requests).
+ */
+export async function getRequestNormalizedHost(): Promise<string> {
+  try {
+    const headersList = await headers();
+    const rawHost = getRequestHost(headersList);
+    return normalizeDomain(rawHost) || "default";
+  } catch {
+    return "default";
+  }
+}
+
+/**
+ * Finds a registered blog site strictly matching the incoming HTTP Host header behind tenant cache.
  * Returns null if the domain is not assigned to any blog site.
  *
  * @returns A Promise resolving to the matching Site entity, or null.
  */
 export async function getSiteForHost(): Promise<Site | null> {
-  const headersList = await headers();
-  const rawHost = getRequestHost(headersList);
+  let rawHost = "";
+  try {
+    const headersList = await headers();
+    rawHost = getRequestHost(headersList);
+  } catch {
+    return null;
+  }
   const cleanHost = normalizeDomain(rawHost);
+  if (!cleanHost) return null;
 
   try {
-    const db = getDb();
-    const allSites = db.select().from(sites).all();
-    const matched = allSites.find((s) => {
-      const siteClean = normalizeDomain(s.domain);
-      return siteClean === cleanHost || s.domain.toLowerCase() === rawHost.toLowerCase();
-    });
-
-    return matched || null;
+    const cached = await runWithTenantCache(
+      async () => resolveSiteByHostSync(cleanHost, rawHost),
+      ["tenant-site-host", cleanHost],
+      {
+        tags: [tenantRegistryCacheTag()],
+        revalidate: 60,
+      }
+    );
+    return rehydrateSiteDates(cached);
   } catch {
     return null;
   }
@@ -63,9 +104,8 @@ function isLocalHost(cleanHost: string): boolean {
 /**
  * Resolves the active tenant site for public blog/SEO routes.
  *
- * Strictly uses HTTP Host header domain matching in production so unmatched domains or
+ * Strictly uses cached HTTP Host domain matching in production so unmatched domains or
  * stale admin workspace cookies can never leak another tenant's public site.
- * On localhost/loopback dev hosts (or explicit single-site fallback), falls back safely.
  *
  * @returns Matched public `Site` record, or `null` if no host match applies.
  */
@@ -106,10 +146,6 @@ export async function getPublicSite(): Promise<Site | null> {
 /**
  * Resolves the tenant site an authenticated administrator may manage.
  *
- * Unlike public host resolution, this never falls back to the first site for a
- * tenant-scoped user. A stale workspace cookie from a previous super-admin
- * session therefore cannot expose another tenant's dashboard data.
- *
  * @returns The site the current user is allowed to manage, or null.
  */
 export async function getAdminSite(): Promise<Site | null> {
@@ -118,7 +154,7 @@ export async function getAdminSite(): Promise<Site | null> {
 
   const db = getDb();
 
-  if (user.role === "super_admin") {
+  if (user.role === ROLES.SUPER_ADMIN) {
     try {
       const cookieStore = await cookies();
       const adminSiteId = cookieStore.get("kotonoba_admin_site_id")?.value;
@@ -143,7 +179,6 @@ export async function getAdminSite(): Promise<Site | null> {
 
 /**
  * Verifies whether at least one administrator account is present in the database.
- * Used by layouts and middleware to conditionally route unconfigured deployments to the initial setup wizard.
  *
  * @returns True if at least one administrator exists, false otherwise.
  */
@@ -152,10 +187,29 @@ export function hasAdminUser(): boolean {
   const count = db
     .select({ count: sql<number>`count(*)` })
     .from(users)
-    .where(or(eq(users.role, "super_admin"), eq(users.role, "admin")))
+    .where(or(eq(users.role, ROLES.SUPER_ADMIN), eq(users.role, ROLES.ADMIN)))
     .get();
 
   return (count?.count || 0) > 0;
+}
+
+async function readRequestHostHeader(reqHeaders?: Headers | null): Promise<string> {
+  if (reqHeaders) return getRequestHost(reqHeaders);
+  try {
+    return getRequestHost(await headers());
+  } catch {
+    return "";
+  }
+}
+
+function isLocalhostDomain(cleanDomain: string): boolean {
+  return (
+    cleanDomain === "localhost" ||
+    cleanDomain === "127.0.0.1" ||
+    cleanDomain === "::1" ||
+    cleanDomain.endsWith(".localhost") ||
+    cleanDomain.startsWith("localhost:")
+  );
 }
 
 /**
@@ -163,42 +217,18 @@ export function hasAdminUser(): boolean {
  *
  * @param site - Optional Site entity.
  * @param reqHeaders - Optional incoming Headers collection.
- * @returns Fully qualified base URL string (e.g. "https://kagarisoft.unsetsoft.com" or "http://localhost:3000").
+ * @returns Fully qualified base URL string.
  */
 export async function getCanonicalBaseUrl(site?: Site | null, reqHeaders?: Headers | null): Promise<string> {
-  let domain = site?.domain;
-  let hostHeader = "";
+  const hostHeader = await readRequestHostHeader(reqHeaders);
+  const siteDomain = site?.domain;
+  const preferHeader =
+    (!siteDomain || isLocalhostDomain(normalizeDomain(siteDomain))) &&
+    Boolean(hostHeader && !isLocalhostDomain(normalizeDomain(hostHeader)));
 
-  if (reqHeaders) {
-    hostHeader = getRequestHost(reqHeaders);
-  } else {
-    try {
-      const h = await headers();
-      hostHeader = getRequestHost(h);
-    } catch {
-      // static/prerender context
-    }
-  }
-
-  if (!domain || domain.includes("localhost") || domain.includes("127.0.0.1")) {
-    if (hostHeader && !hostHeader.includes("localhost") && !hostHeader.includes("127.0.0.1")) {
-      domain = hostHeader;
-    }
-  }
-
-  if (!domain) {
-    domain = getDefaultSiteUrl().replace(/^https?:\/\//, "") || hostHeader || "localhost:3000";
-  }
-
-  const cleanDomain = normalizeDomain(domain);
-  const isLocal =
-    cleanDomain === "localhost" ||
-    cleanDomain === "127.0.0.1" ||
-    cleanDomain === "::1" ||
-    cleanDomain.endsWith(".localhost") ||
-    cleanDomain.startsWith("localhost:");
-
-  const protocol = isLocal ? "http" : "https";
+  const fallbackDomain = getDefaultSiteUrl().replace(/^https?:\/\//, "") || hostHeader || "localhost:3000";
+  const resolved = preferHeader ? hostHeader : siteDomain || fallbackDomain;
+  const cleanDomain = normalizeDomain(resolved);
+  const protocol = isLocalhostDomain(cleanDomain) ? "http" : "https";
   return `${protocol}://${cleanDomain}`;
 }
-

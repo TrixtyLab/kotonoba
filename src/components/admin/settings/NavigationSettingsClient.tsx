@@ -4,6 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { updateSite } from "@/actions/sites";
 import { NavigationManager } from "@/components/admin/NavigationManager";
+import { SettingsForm } from "@/components/admin/settings/SettingsForm";
 import { Compass } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { useRouter } from "@/i18n/routing";
@@ -50,21 +51,18 @@ export function NavigationSettingsClient({ site, availablePages = [] }: Navigati
   }
 
   return (
-    <div className="space-y-6">
-      <div className="pb-4 border-b border-border">
-        <h2 className="text-lg font-bold text-text flex items-center gap-2">
-          <Compass className="w-5 h-5 text-accent" />
-          <span>{t("navigation")}</span>
-        </h2>
-        <p className="text-xs text-text-muted mt-0.5">{t("navigationDesc")}</p>
-      </div>
-
+    <SettingsForm
+      title={t("navigation")}
+      description={t("navigationDesc")}
+      icon={<Compass className="w-5 h-5 text-accent" />}
+      maxWidthClass="max-w-4xl"
+    >
       <NavigationManager
         initialLinks={site.navLinks}
         initialAlignment={site.navAlignment}
         availablePages={availablePages}
         onSave={handleSave}
       />
-    </div>
+    </SettingsForm>
   );
 }

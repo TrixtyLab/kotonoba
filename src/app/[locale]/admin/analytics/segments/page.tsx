@@ -1,8 +1,6 @@
 import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
-import { getDb } from "@/lib/db";
-import { analyticsSegments } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { listSavedAnalyticsSegments } from "@/lib/queries/analytics-overview";
 import { SegmentsManagerClient, SegmentItem } from "@/components/admin/analytics/SegmentsManagerClient";
 
 /**
@@ -14,18 +12,7 @@ export default async function AnalyticsSegmentsPage(): Promise<React.JSX.Element
   const site = await getAdminSite();
   if (!site) notFound();
 
-  const db = getDb();
-  const rows = db
-    .select({
-      id: analyticsSegments.id,
-      name: analyticsSegments.name,
-      filters: analyticsSegments.filters,
-      createdAt: analyticsSegments.createdAt,
-    })
-    .from(analyticsSegments)
-    .where(eq(analyticsSegments.siteId, site.id))
-    .orderBy(desc(analyticsSegments.createdAt))
-    .all();
+  const rows = listSavedAnalyticsSegments(site.id);
 
   const initialSegments: SegmentItem[] = rows.map((r) => ({
     id: r.id,

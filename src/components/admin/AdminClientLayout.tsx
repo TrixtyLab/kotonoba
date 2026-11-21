@@ -5,6 +5,7 @@ import { usePathname } from "@/i18n/routing";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { TopBar } from "@/components/admin/TopBar";
 import type { SiteOption } from "@/components/admin/SiteSwitcher";
+import { ROLES } from "@/lib/config/constants";
 
 /**
  * Properties configuring the root administrative client layout.
@@ -158,7 +159,7 @@ export function AdminClientLayout({
         currentSite={currentSite}
         allSites={allSites}
         canManageSites={canManageSites}
-        canViewAudit={user.role === "super_admin" || user.role === "admin"}
+        canViewAudit={user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ADMIN}
       />
 
       <div

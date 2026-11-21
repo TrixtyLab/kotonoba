@@ -3,7 +3,7 @@ import { posts, postCategories, postTags, users, sites, analytics } from "@/lib/
 import { eq, and, ne, desc } from "drizzle-orm";
 import type { TokenPayload } from "@/lib/auth/jwt";
 import { generateId, generateSlug } from "@/lib/utils/slug";
-import { type PostInput } from "@/lib/security/validate";
+import { type PostInput } from "@/lib/contracts";
 import { isDubConfigured, createDubLink, deleteDubLink } from "@/lib/dub";
 import { normalizeMediaUrl } from "@/lib/utils/media";
 import { sanitizeUrl } from "@/lib/security/sanitize";
@@ -12,6 +12,7 @@ import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 import { recordAuditEvent } from "@/lib/security/audit";
 import { taxonomyBelongsToSite } from "@/lib/db/tenant-scope";
 import { dispatchPostNotifications } from "@/lib/notifications/outbox";
+import { POST_STATUS, ROLES, type PostStatus } from "@/lib/config/constants";
 
 /**
  * Result payload returned from post creation or update operations.
@@ -27,7 +28,7 @@ export interface AdminPostRecord {
   id: string;
   title: string;
   slug: string;
-  status: "draft" | "published" | "scheduled" | "archived";
+  status: PostStatus;
   locale: string;
   views: number;
   pinned: boolean;
@@ -35,6 +36,47 @@ export interface AdminPostRecord {
   publishedAt: Date | null;
   createdAt: Date;
   authorName: string | null;
+}
+
+function resolveTargetPublishedAt(
+  status: string,
+  publishedAt: string | Date | null | undefined,
+  fallbackDate: Date | null,
+  defaultOnPublish: Date
+): Date | null {
+  if (status === POST_STATUS.DRAFT) return null;
+  if (status !== POST_STATUS.PUBLISHED && status !== POST_STATUS.SCHEDULED) return fallbackDate;
+  if (!publishedAt) return fallbackDate || defaultOnPublish;
+  const parsed = publishedAt instanceof Date ? publishedAt : new Date(publishedAt);
+  return !isNaN(parsed.getTime()) ? parsed : fallbackDate || defaultOnPublish;
+}
+
+async function maybeProvisionDubShortLink(options: {
+  siteId: string;
+  postSlug: string;
+  title: string;
+  locale: string;
+  currentShortUrl: string | null;
+  currentDubLinkId: string | null;
+}): Promise<{ shortUrl: string | null; dubLinkId: string | null }> {
+  if (options.currentShortUrl || !isDubConfigured()) {
+    return { shortUrl: options.currentShortUrl, dubLinkId: options.currentDubLinkId };
+  }
+  try {
+    const db = getDb();
+    const site = db.select({ domain: sites.domain }).from(sites).where(eq(sites.id, options.siteId)).get();
+    const fullUrl = `${buildSiteBaseUrl(site?.domain || "localhost:3000")}/entry/${options.postSlug}`;
+    const dubResult = await createDubLink({
+      url: fullUrl,
+      slug: options.postSlug,
+      tags: ["blog", "blog-cms", options.locale],
+      comments: `Article: ${options.title.slice(0, 50)} (Kotonoba CMS)`,
+    });
+    if (dubResult) return { shortUrl: dubResult.shortUrl, dubLinkId: dubResult.id };
+  } catch {
+    // Non-blocking on external API failure
+  }
+  return { shortUrl: options.currentShortUrl, dubLinkId: options.currentDubLinkId };
 }
 
 /**
@@ -49,6 +91,7 @@ export async function createPostService(
   const {
     title,
     slug,
+    content,
     contentMd,
     contentHtml,
     contentFormat,
@@ -84,39 +127,19 @@ export async function createPostService(
   }
 
   const now = new Date();
-  let targetPublishedAt: Date | null = null;
-  if (status === "published" || status === "scheduled") {
-    if (publishedAt) {
-      const parsed = new Date(publishedAt);
-      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : now;
-    } else {
-      targetPublishedAt = now;
-    }
-  }
+  const targetPublishedAt = resolveTargetPublishedAt(status, publishedAt, null, now);
+  const resolvedDub = await maybeProvisionDubShortLink({
+    siteId,
+    postSlug,
+    title,
+    locale,
+    currentShortUrl: shortUrl ? sanitizeUrl(shortUrl, { allowRelative: false }) : null,
+    currentDubLinkId: dubLinkId || null,
+  });
+  const finalShortUrl = resolvedDub.shortUrl;
+  const finalDubLinkId = resolvedDub.dubLinkId;
 
-  let finalShortUrl = shortUrl ? sanitizeUrl(shortUrl, { allowRelative: false }) : null;
-  let finalDubLinkId = dubLinkId || null;
-
-  if (!finalShortUrl && isDubConfigured()) {
-    try {
-      const site = db.select({ domain: sites.domain }).from(sites).where(eq(sites.id, siteId)).get();
-      const fullUrl = `${buildSiteBaseUrl(site?.domain || "localhost:3000")}/entry/${postSlug}`;
-      const dubResult = await createDubLink({
-        url: fullUrl,
-        slug: postSlug,
-        tags: ["blog", "blog-cms", locale],
-        comments: `Article: ${title.slice(0, 50)} (Kotonoba CMS)`,
-      });
-      if (dubResult) {
-        finalShortUrl = dubResult.shortUrl;
-        finalDubLinkId = dubResult.id;
-      }
-    } catch {
-      // Non-blocking on external API failure
-    }
-  }
-
-  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat);
+  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat, content);
   const safeCoverImage = coverImage ? sanitizeUrl(normalizeMediaUrl(coverImage), { allowRelative: true }) : null;
 
   db.insert(posts)
@@ -126,6 +149,7 @@ export async function createPostService(
       authorId: actor.userId,
       title,
       slug: postSlug,
+      content: canonical.content,
       contentMd: canonical.contentMd,
       contentHtml: canonical.contentHtml,
       contentFormat: canonical.contentFormat,
@@ -155,7 +179,7 @@ export async function createPostService(
     }
   }
 
-  if (status === "published") {
+  if (status === POST_STATUS.PUBLISHED) {
     dispatchPostNotifications(siteId, postId).catch(() => {});
   }
 
@@ -183,6 +207,33 @@ export function getExistingPostMeta(postId: string) {
     .get();
 }
 
+function syncUpdatedPostTaxonomies(
+  postId: string,
+  categoryIds?: string[],
+  tagIds?: string[]
+): void {
+  const db = getDb();
+  db.delete(postCategories).where(eq(postCategories.postId, postId)).run();
+  for (const catId of categoryIds || []) {
+    db.insert(postCategories).values({ postId, categoryId: catId }).run();
+  }
+  db.delete(postTags).where(eq(postTags.postId, postId)).run();
+  for (const tagId of tagIds || []) {
+    db.insert(postTags).values({ postId, tagId }).run();
+  }
+}
+
+function buildUpdatedShortLinkInputs(
+  shortUrl: string | null | undefined,
+  dubLinkId: string | null | undefined,
+  existing: NonNullable<ReturnType<typeof getExistingPostMeta>>
+) {
+  return {
+    shortUrl: shortUrl !== undefined ? (shortUrl ? sanitizeUrl(shortUrl, { allowRelative: false }) : null) : existing.shortUrl,
+    dubLinkId: dubLinkId !== undefined ? dubLinkId : existing.dubLinkId,
+  };
+}
+
 /**
  * Updates an existing blog post, validates tenant taxonomy ownership, syncs categories/tags, and notifies integrations.
  */
@@ -191,28 +242,11 @@ export async function updatePostService(
   existing: NonNullable<ReturnType<typeof getExistingPostMeta>>,
   data: PostInput
 ): Promise<{ result: PostMutationResponse; postSlug?: string }> {
-  if (actor.role === "author" && existing.authorId !== actor.userId) {
+  if (actor.role === ROLES.AUTHOR && existing.authorId !== actor.userId) {
     return { result: { success: false, error: "You can only edit your own articles." } };
   }
 
-  const {
-    title,
-    slug,
-    contentMd,
-    contentHtml,
-    contentFormat,
-    excerpt,
-    coverImage,
-    status,
-    publishedAt,
-    locale,
-    categoryIds,
-    tagIds,
-    pinned,
-    shortUrl,
-    dubLinkId,
-  } = data;
-
+  const { title, slug, content, contentMd, contentHtml, contentFormat, excerpt, coverImage, status, publishedAt, locale, categoryIds, tagIds, pinned, shortUrl, dubLinkId } = data;
   if (!taxonomyBelongsToSite(existing.siteId, categoryIds, tagIds)) {
     return { result: { success: false, error: "Invalid taxonomy selection" } };
   }
@@ -225,56 +259,32 @@ export async function updatePostService(
     .where(and(eq(posts.siteId, existing.siteId), eq(posts.slug, postSlug), ne(posts.id, existing.id)))
     .get();
   if (duplicateSlug) {
-    return {
-      result: { success: false, errors: { slug: ["An article with this slug already exists in this site."] } },
-    };
+    return { result: { success: false, errors: { slug: ["An article with this slug already exists in this site."] } } };
   }
 
   const now = new Date();
-  let targetPublishedAt: Date | null = null;
-  if (status === "published" || status === "scheduled") {
-    if (publishedAt) {
-      const parsed = new Date(publishedAt);
-      targetPublishedAt = !isNaN(parsed.getTime()) ? parsed : existing.publishedAt || now;
-    } else {
-      targetPublishedAt = existing.publishedAt || now;
-    }
-  } else if (status === "draft") {
-    targetPublishedAt = null;
-  } else {
-    targetPublishedAt = existing.publishedAt;
-  }
+  const targetPublishedAt = resolveTargetPublishedAt(status, publishedAt, existing.publishedAt, now);
+  const initialLinks = buildUpdatedShortLinkInputs(shortUrl, dubLinkId, existing);
+  const resolvedDub =
+    status === POST_STATUS.PUBLISHED
+      ? await maybeProvisionDubShortLink({
+          siteId: existing.siteId,
+          postSlug,
+          title,
+          locale: locale || existing.locale,
+          currentShortUrl: initialLinks.shortUrl,
+          currentDubLinkId: initialLinks.dubLinkId,
+        })
+      : initialLinks;
 
-  let finalShortUrl =
-    shortUrl !== undefined ? (shortUrl ? sanitizeUrl(shortUrl, { allowRelative: false }) : null) : existing.shortUrl;
-  let finalDubLinkId = dubLinkId !== undefined ? dubLinkId : existing.dubLinkId;
-
-  if (status === "published" && !finalShortUrl && isDubConfigured()) {
-    try {
-      const site = db.select({ domain: sites.domain }).from(sites).where(eq(sites.id, existing.siteId)).get();
-      const fullUrl = `${buildSiteBaseUrl(site?.domain || "localhost:3000")}/entry/${postSlug}`;
-      const dubResult = await createDubLink({
-        url: fullUrl,
-        slug: postSlug,
-        tags: ["blog", "blog-cms", locale || existing.locale],
-        comments: `Article: ${title.slice(0, 50)} (Kotonoba CMS)`,
-      });
-      if (dubResult) {
-        finalShortUrl = dubResult.shortUrl;
-        finalDubLinkId = dubResult.id;
-      }
-    } catch {
-      // Non-blocking on external API failure
-    }
-  }
-
-  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat);
+  const canonical = resolveCanonicalContent(contentMd, contentHtml, contentFormat, content);
   const safeCoverImage = coverImage ? sanitizeUrl(normalizeMediaUrl(coverImage), { allowRelative: true }) : null;
 
   db.update(posts)
     .set({
       title,
       slug: postSlug,
+      content: canonical.content,
       contentMd: canonical.contentMd,
       contentHtml: canonical.contentHtml,
       contentFormat: canonical.contentFormat,
@@ -285,30 +295,16 @@ export async function updatePostService(
       publishedAt: targetPublishedAt,
       updatedAt: now,
       pinned,
-      shortUrl: finalShortUrl,
-      dubLinkId: finalDubLinkId,
+      shortUrl: resolvedDub.shortUrl,
+      dubLinkId: resolvedDub.dubLinkId,
     })
     .where(eq(posts.id, existing.id))
     .run();
 
-  db.delete(postCategories).where(eq(postCategories.postId, existing.id)).run();
-  if (categoryIds && categoryIds.length > 0) {
-    for (const catId of categoryIds) {
-      db.insert(postCategories).values({ postId: existing.id, categoryId: catId }).run();
-    }
-  }
+  syncUpdatedPostTaxonomies(existing.id, categoryIds, tagIds);
 
-  db.delete(postTags).where(eq(postTags.postId, existing.id)).run();
-  if (tagIds && tagIds.length > 0) {
-    for (const tagId of tagIds) {
-      db.insert(postTags).values({ postId: existing.id, tagId }).run();
-    }
-  }
-
-  const isNewlyPublished = status === "published" && (!existing.publishedAt || existing.status !== "published");
-  if (isNewlyPublished) {
-    dispatchPostNotifications(existing.siteId, existing.id).catch(() => {});
-  }
+  const isNewlyPublished = status === POST_STATUS.PUBLISHED && (!existing.publishedAt || existing.status !== POST_STATUS.PUBLISHED);
+  if (isNewlyPublished) dispatchPostNotifications(existing.siteId, existing.id).catch(() => {});
 
   return { result: { success: true, postId: existing.id }, postSlug };
 }
@@ -316,7 +312,7 @@ export async function updatePostService(
 /**
  * Deletes a post, cleans up Dub.co short link & analytics rows by exact postId, and writes audit log.
  */
-export async function deletePostService(actor: TokenPayload, postId: string): Promise<{ deletedSlug?: string }> {
+export async function deletePostService(actor: TokenPayload, postId: string): Promise<{ deletedSlug?: string; siteId?: string }> {
   const db = getDb();
   const existing = db.select().from(posts).where(eq(posts.id, postId)).get();
   if (!existing) return {};
@@ -343,7 +339,7 @@ export async function deletePostService(actor: TokenPayload, postId: string): Pr
     metadata: { slug: existing.slug },
   });
 
-  return { deletedSlug: existing.slug };
+  return { deletedSlug: existing.slug, siteId: existing.siteId };
 }
 
 /** Lists all posts for admin management tables for a specific tenant site. */

@@ -17,11 +17,9 @@ Access the site at `http://localhost:3000`. On first visit, the initial setup wi
 ### `docker-compose.yml`
 
 ```yaml
-version: "3.8"
-
 services:
   kotonoba:
-    image: ghcr.io/your-username/kotonoba:latest
+    image: ghcr.io/trixtylab/kotonoba:latest
     container_name: kotonoba
     restart: unless-stopped
     ports:
@@ -30,7 +28,10 @@ services:
       - NODE_ENV=production
       - DB_PATH=/app/data/kotonoba.db
       - UPLOAD_DIR=/app/data/uploads
-      - JWT_SECRET=change-this-to-a-secure-random-32-char-key
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET (32+ chars)}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (32+ chars)}
+      - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY:-}
+      - CSP_MODE=${CSP_MODE:-report-only}
       - SITE_URL=https://yourdomain.com
       - ADMIN_DOMAIN=blog-dashboard.yourdomain.com # Optional: redirects non-blog requests to /admin
     volumes:

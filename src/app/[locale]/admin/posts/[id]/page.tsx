@@ -1,7 +1,5 @@
 import { getAdminSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, postCategories, postTags } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { getAdminEditablePost } from "@/lib/queries/admin-dashboard";
 import { getCategories } from "@/actions/categories";
 import { getTags } from "@/actions/tags";
 import { PostEditor } from "@/components/admin/PostEditor";
@@ -24,23 +22,9 @@ export default async function EditPostPage({
   const site = await getAdminSite();
   if (!site) notFound();
 
-  const db = getDb();
-  const post = db.select().from(posts).where(and(eq(posts.id, id), eq(posts.siteId, site.id))).get();
-  if (!post) notFound();
-
-  const assignedCatIds = db
-    .select({ id: postCategories.categoryId })
-    .from(postCategories)
-    .where(eq(postCategories.postId, id))
-    .all()
-    .map((c) => c.id);
-
-  const assignedTagIds = db
-    .select({ id: postTags.tagId })
-    .from(postTags)
-    .where(eq(postTags.postId, id))
-    .all()
-    .map((t) => t.id);
+  const editable = getAdminEditablePost(site.id, id);
+  if (!editable) notFound();
+  const { post, assignedCatIds, assignedTagIds } = editable;
 
   const categories = await getCategories(site.id);
   const tags = await getTags(site.id);
@@ -62,7 +46,10 @@ export default async function EditPostPage({
         id: post.id,
         title: post.title,
         slug: post.slug,
+        content: post.content || "",
         contentMd: post.contentMd || "",
+        contentHtml: post.contentHtml || "",
+        contentFormat: post.contentFormat,
         excerpt: post.excerpt || "",
         coverImage: post.coverImage,
         status: post.status,

@@ -21,7 +21,7 @@ export async function saveSiteSettings(
 ): Promise<SettingsMutationResponse> {
   const actor = await requireSiteAccess(siteId, ROLE_ADMINS);
   const res = await saveSiteSettingsService(actor, siteId, keyValuePairs);
-  if (res.success) revalidateSiteShell();
+  if (res.success) revalidateSiteShell(siteId);
   return res;
 }
 

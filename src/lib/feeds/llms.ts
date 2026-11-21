@@ -1,7 +1,6 @@
-import { getDb } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getPublicSite, getCanonicalBaseUrl, type Site } from "@/lib/tenant";
+import { getPublicSite, getCanonicalBaseUrl, getRequestNormalizedHost, type Site } from "@/lib/tenant";
+import { getCachedSiteSeoSettings } from "@/lib/queries/seo";
+import { resolveCanonicalBodyText } from "@/lib/content/canonical";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { normalizeLocale, type Locale } from "@/i18n/locales";
 
@@ -12,14 +11,15 @@ export interface LlmsSiteContext {
   siteDesc: string;
   siteLocale: Locale;
   baseUrl: string;
+  host: string;
   customInstructions: string;
 }
 
 export type LlmsContextResult = LlmsSiteContext | { allowed: false };
 
 /**
- * Resolves the active public tenant and verifies that AI crawler blocking is off
- * and `llms_txt_enabled` is explicitly enabled before serving `/llms*.txt`.
+ * Resolves the active public tenant and verifies via tenant-cached SEO settings that AI
+ * crawler blocking is off and `llms_txt_enabled` is explicitly enabled before serving `/llms*.txt`.
  */
 export async function resolveLlmsContext(reqHeaders: Headers): Promise<LlmsContextResult> {
   const site = await getPublicSite();
@@ -27,20 +27,9 @@ export async function resolveLlmsContext(reqHeaders: Headers): Promise<LlmsConte
     return { allowed: false };
   }
 
-  const db = getDb();
-  const rows = db
-    .select({ key: settings.key, value: settings.value })
-    .from(settings)
-    .where(
-      and(
-        eq(settings.siteId, site.id),
-        inArray(settings.key, ["block_ai_crawlers", "llms_txt_enabled", "llms_txt_custom"])
-      )
-    )
-    .all();
-
-  const map = new Map(rows.map((r) => [r.key, r.value]));
-  if (map.get("block_ai_crawlers") === "true" || map.get("llms_txt_enabled") !== "true") {
+  const host = await getRequestNormalizedHost();
+  const seo = await getCachedSiteSeoSettings(site.id, host);
+  if (seo.blockAiCrawlers || !seo.llmsTxtEnabled) {
     return { allowed: false };
   }
 
@@ -56,7 +45,8 @@ export async function resolveLlmsContext(reqHeaders: Headers): Promise<LlmsConte
       "High-performance multi-tenant blog CMS",
     siteLocale,
     baseUrl,
-    customInstructions: (map.get("llms_txt_custom") || "").trim(),
+    host,
+    customInstructions: seo.llmsTxtCustom,
   };
 }
 
@@ -73,23 +63,23 @@ export function formatPostUrlForLocale(
 }
 
 /**
- * Normalizes canonical post content (`contentFormat === "markdown"` or sanitized HTML)
+ * Normalizes canonical post content (`content` / `contentFormat` with legacy fallback)
  * into readable plain text for `/llms-full.txt` ingestion without leaking HTML tags or scripts.
  */
 export function extractReadablePostText(post: {
+  content?: string | null;
   contentMd?: string | null;
   contentHtml?: string | null;
   contentFormat?: string | null;
 }): string {
-  const md = (post.contentMd || "").trim();
-  const html = (post.contentHtml || "").trim();
+  const body = resolveCanonicalBodyText(post).trim();
+  if (!body) return "";
 
-  if (post.contentFormat === "markdown" && md && !/^<[a-z!/]/i.test(md)) {
-    return md;
+  if (post.contentFormat === "markdown" && !/^<[a-z!/]/i.test(body)) {
+    return body;
   }
 
-  const sourceHtml = html || md;
-  if (!sourceHtml) return "";
+  const sourceHtml = body;
 
   return sourceHtml
     .replace(/<script[\s\S]*?<\/script>/gi, "")

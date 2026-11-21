@@ -202,6 +202,11 @@ export function getAnalyticsRetentionDays(): number {
   return parseNonNegativeIntEnv(process.env.ANALYTICS_RETENTION_DAYS, 365);
 }
 
+/** Returns optional HTTPS webhook endpoint URL for asynchronous critical error alerts. */
+export function getAlertWebhookUrl(): string | null {
+  return process.env.ALERT_WEBHOOK_URL?.trim() || null;
+}
+
 /**
  * Parses and normalizes runtime operational environment variables with safe bounds.
  *

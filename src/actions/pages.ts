@@ -3,7 +3,8 @@
 import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
 import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidatePagePaths } from "@/lib/cache/revalidate";
-import { pageSchema, validate, type PageInput } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { pageSchema, type PageInput } from "@/lib/contracts";
 import {
   createPageService,
   deletePageService,
@@ -27,7 +28,7 @@ export async function createPage(siteId: string, inputData: Partial<PageInput>):
 
   const { result, pageSlug } = createPageService(actor, siteId, validation.data);
   if (result.success) {
-    revalidatePagePaths(pageSlug);
+    revalidatePagePaths(pageSlug, null, siteId);
   }
   return result;
 }
@@ -47,7 +48,7 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
   const actor = await requireSiteAccess(existing.siteId, ROLE_ALL);
   const { result, pageSlug } = updatePageService(actor, existing, validation.data);
   if (result.success) {
-    revalidatePagePaths(pageSlug, existing.slug);
+    revalidatePagePaths(pageSlug, existing.slug, existing.siteId);
   }
   return result;
 }
@@ -59,7 +60,7 @@ export async function deletePage(pageId: string): Promise<{ success: boolean; er
   if (!res.success) {
     return { success: false, error: res.error };
   }
-  revalidatePagePaths(res.slug);
+  revalidatePagePaths(res.slug, null, res.siteId);
   return { success: true };
 }
 

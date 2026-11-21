@@ -3,10 +3,12 @@ import { sites } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import type { TokenPayload } from "@/lib/auth/jwt";
 import { generateId } from "@/lib/utils/slug";
-import { siteSchema, validate, type SiteInput } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { siteSchema, type SiteInput } from "@/lib/contracts";
 import { normalizeMediaUrl } from "@/lib/utils/media";
 import { sanitizeCss, sanitizeNavLinksJson, sanitizeUrl } from "@/lib/security/sanitize";
 import { recordAuditEvent } from "@/lib/security/audit";
+import { ROLES } from "@/lib/config/constants";
 
 /** Result payload returned from site creation, update, or deletion operations. */
 export type SiteMutationResponse =
@@ -73,6 +75,58 @@ export function createSiteService(actor: TokenPayload, data: SiteInput): SiteMut
   return { success: true, id };
 }
 
+function mergeSiteTextPayload(existing: typeof sites.$inferSelect, input: Partial<SiteInput>) {
+  return {
+    name: input.name ?? existing.name,
+    domain: input.domain ?? existing.domain,
+    subtitle: input.subtitle ?? existing.subtitle,
+    description: input.description ?? existing.description,
+    logoUrl: input.logoUrl !== undefined ? input.logoUrl : existing.logoUrl,
+    faviconUrl: input.faviconUrl !== undefined ? input.faviconUrl : existing.faviconUrl,
+    locale: input.locale ?? existing.locale,
+  };
+}
+
+function mergeSitePresentationPayload(existing: typeof sites.$inferSelect, input: Partial<SiteInput>) {
+  const existingNavAlign = (existing.navAlignment as "left" | "center" | "right" | null) || "left";
+  return {
+    theme: input.theme ?? (existing.theme as "dark" | "light"),
+    customCss: input.customCss ?? existing.customCss ?? "",
+    primaryColor: input.primaryColor ?? existing.primaryColor,
+    fontFamily: input.fontFamily ?? existing.fontFamily,
+    navLinks: input.navLinks ?? existing.navLinks ?? "[]",
+    navAlignment: input.navAlignment ?? existingNavAlign,
+    supportedLocales: input.supportedLocales ?? existing.supportedLocales ?? '["en"]',
+  };
+}
+
+function mergeSiteUpdatePayload(existing: typeof sites.$inferSelect, input: Partial<SiteInput>) {
+  return {
+    ...mergeSiteTextPayload(existing, input),
+    ...mergeSitePresentationPayload(existing, input),
+  };
+}
+
+function buildSanitizedSiteColumnPatch(data: SiteInput, cleanDomain: string) {
+  return {
+    name: data.name,
+    domain: cleanDomain,
+    subtitle: data.subtitle || "",
+    description: data.description || "",
+    logoUrl: data.logoUrl ? sanitizeUrl(normalizeMediaUrl(data.logoUrl), { allowRelative: true }) : null,
+    faviconUrl: data.faviconUrl ? sanitizeUrl(normalizeMediaUrl(data.faviconUrl), { allowRelative: true }) : null,
+    locale: data.locale || "en",
+    theme: data.theme || "dark",
+    customCss: sanitizeCss(data.customCss),
+    primaryColor: data.primaryColor || "#6366f1",
+    fontFamily: data.fontFamily || "Inter",
+    navLinks: sanitizeNavLinksJson(data.navLinks),
+    navAlignment: data.navAlignment || "left",
+    supportedLocales: data.supportedLocales !== undefined ? data.supportedLocales : '["en"]',
+    updatedAt: new Date(),
+  };
+}
+
 export function updateSiteService(
   actor: TokenPayload,
   siteId: string,
@@ -84,50 +138,12 @@ export function updateSiteService(
     return { success: false, errors: { site: ["Site not found"] } };
   }
 
-  const merged = {
-    name: inputData.name !== undefined ? inputData.name : existing.name,
-    domain: inputData.domain !== undefined ? inputData.domain : existing.domain,
-    subtitle: inputData.subtitle !== undefined ? inputData.subtitle : existing.subtitle,
-    description: inputData.description !== undefined ? inputData.description : existing.description,
-    logoUrl: inputData.logoUrl !== undefined ? inputData.logoUrl : existing.logoUrl,
-    faviconUrl: inputData.faviconUrl !== undefined ? inputData.faviconUrl : existing.faviconUrl,
-    locale: inputData.locale !== undefined ? inputData.locale : existing.locale,
-    theme: inputData.theme !== undefined ? inputData.theme : (existing.theme as "dark" | "light"),
-    customCss: inputData.customCss !== undefined ? inputData.customCss : existing.customCss || "",
-    primaryColor: inputData.primaryColor !== undefined ? inputData.primaryColor : existing.primaryColor,
-    fontFamily: inputData.fontFamily !== undefined ? inputData.fontFamily : existing.fontFamily,
-    navLinks: inputData.navLinks !== undefined ? inputData.navLinks : existing.navLinks || "[]",
-    navAlignment:
-      inputData.navAlignment !== undefined
-        ? inputData.navAlignment
-        : ((existing.navAlignment as "left" | "center" | "right" | null) || "left"),
-    supportedLocales:
-      inputData.supportedLocales !== undefined ? inputData.supportedLocales : existing.supportedLocales || '["en"]',
-  };
-
-  const validation = validate(siteSchema, merged);
+  const validation = validate(siteSchema, mergeSiteUpdatePayload(existing, inputData));
   if (!validation.success) {
     return { success: false, errors: validation.errors };
   }
 
-  const {
-    name,
-    domain,
-    subtitle,
-    description,
-    logoUrl,
-    faviconUrl,
-    locale,
-    theme,
-    customCss,
-    primaryColor,
-    fontFamily,
-    navLinks,
-    navAlignment,
-    supportedLocales,
-  } = validation.data;
-  const cleanDomain = domain.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
-
+  const cleanDomain = validation.data.domain.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
   if (cleanDomain !== existing.domain) {
     const conflictingDomain = db.select({ id: sites.id }).from(sites).where(eq(sites.domain, cleanDomain)).get();
     if (conflictingDomain && conflictingDomain.id !== siteId) {
@@ -135,31 +151,7 @@ export function updateSiteService(
     }
   }
 
-  const safeLogoUrl = logoUrl ? sanitizeUrl(normalizeMediaUrl(logoUrl), { allowRelative: true }) : null;
-  const safeFaviconUrl = faviconUrl ? sanitizeUrl(normalizeMediaUrl(faviconUrl), { allowRelative: true }) : null;
-  const safeNavLinks = sanitizeNavLinksJson(navLinks);
-  const safeCustomCss = sanitizeCss(customCss);
-
-  db.update(sites)
-    .set({
-      name,
-      domain: cleanDomain,
-      subtitle: subtitle || "",
-      description: description || "",
-      logoUrl: safeLogoUrl,
-      faviconUrl: safeFaviconUrl,
-      locale: locale || "en",
-      theme: theme || "dark",
-      customCss: safeCustomCss,
-      primaryColor: primaryColor || "#6366f1",
-      fontFamily: fontFamily || "Inter",
-      navLinks: safeNavLinks,
-      navAlignment: navAlignment || "left",
-      supportedLocales: supportedLocales !== undefined ? supportedLocales : '["en"]',
-      updatedAt: new Date(),
-    })
-    .where(eq(sites.id, siteId))
-    .run();
+  db.update(sites).set(buildSanitizedSiteColumnPatch(validation.data, cleanDomain)).where(eq(sites.id, siteId)).run();
 
   if (cleanDomain !== existing.domain) {
     recordAuditEvent({
@@ -229,7 +221,7 @@ export function listSitesForActor(actor: TokenPayload): SiteRecord[] {
     })
     .from(sites);
 
-  if (actor.role === "super_admin") {
+  if (actor.role === ROLES.SUPER_ADMIN) {
     return query.orderBy(desc(sites.createdAt)).all() as SiteRecord[];
   }
   if (!actor.siteId) {

@@ -53,44 +53,27 @@ export function SetupWizardClient() {
     setFormData((prev) => ({ ...prev, [field]: val }));
   }
 
+  function validateAdminStep(): string | null {
+    if (!formData.adminName.trim() || !formData.adminEmail.trim() || !formData.adminPassword.trim()) {
+      return t("errorRequiredAdmin");
+    }
+    if (!formData.adminEmail.includes("@") || !formData.adminEmail.includes(".")) {
+      return t("errorInvalidEmail");
+    }
+    const pwd = formData.adminPassword;
+    const isStrong = pwd.length >= 10 && /[A-Z]/.test(pwd) && /[a-z]/.test(pwd) && /[0-9]/.test(pwd);
+    return isStrong ? null : `${t("errorPasswordLength")} (10+ chars, uppercase, lowercase, number)`;
+  }
+
   function validateStep(currentStep: number): boolean {
     setError(null);
-    if (currentStep === 1) {
-      if (!formData.adminName.trim() || !formData.adminEmail.trim() || !formData.adminPassword.trim()) {
-        setError(t("errorRequiredAdmin"));
-        return false;
-      }
-      if (!formData.adminEmail.includes("@") || !formData.adminEmail.includes(".")) {
-        setError(t("errorInvalidEmail"));
-        return false;
-      }
-      if (
-        formData.adminPassword.length < 10 ||
-        !/[A-Z]/.test(formData.adminPassword) ||
-        !/[a-z]/.test(formData.adminPassword) ||
-        !/[0-9]/.test(formData.adminPassword)
-      ) {
-        setError(`${t("errorPasswordLength")} (10+ chars, uppercase, lowercase, number)`);
-        return false;
-      }
-    }
-    if (currentStep === 2) {
-      if (!formData.siteName.trim()) {
-        setError(t("errorBlogName"));
-        return false;
-      }
-      if (!formData.domain.trim()) {
-        setError(t("errorDomain"));
-        return false;
-      }
-    }
-    if (currentStep === 4) {
-      if (!formData.categoryName.trim()) {
-        setError(t("errorCategory"));
-        return false;
-      }
-    }
-    return true;
+    let validationError: string | null = null;
+    if (currentStep === 1) validationError = validateAdminStep();
+    else if (currentStep === 2 && !formData.siteName.trim()) validationError = t("errorBlogName");
+    else if (currentStep === 2 && !formData.domain.trim()) validationError = t("errorDomain");
+    else if (currentStep === 4 && !formData.categoryName.trim()) validationError = t("errorCategory");
+    if (validationError) setError(validationError);
+    return !validationError;
   }
 
   function handleNext() {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ROLES } from "@/lib/config/constants";
 import { getEnvConfig } from "@/lib/config/env";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getClientIp, getRequestId, verifyBearerSecret } from "@/lib/http/request";
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   let authorized = verifyBearerSecret(req.headers, cronSecret);
   if (!authorized) {
     const user = await getCurrentUser();
-    authorized = Boolean(user?.exists && user.role === "super_admin");
+    authorized = Boolean(user?.exists && user.role === ROLES.SUPER_ADMIN);
   }
 
   if (!authorized) {

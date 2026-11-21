@@ -1,3 +1,14 @@
+function pickFirstLocaleText(parsed: Record<string, unknown>, candidates: string[]): string {
+  for (const key of candidates) {
+    const val = parsed[key];
+    if (typeof val === "string" && val.trim()) return val.trim();
+  }
+  for (const val of Object.values(parsed)) {
+    if (typeof val === "string" && val.trim()) return val.trim();
+  }
+  return "";
+}
+
 /**
  * Extracts a localized string from either a JSON-serialized multilingual dictionary or a plain string.
  * Transparently falls back to secondary supported languages or the first available value when the requested locale is missing.
@@ -10,31 +21,15 @@ export function getLocalizedText(rawText: string | null | undefined, locale: str
   if (!rawText) return "";
 
   const trimmed = rawText.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "object" && parsed !== null) {
-        if (locale && parsed[locale] && typeof parsed[locale] === "string" && parsed[locale].trim()) {
-          return parsed[locale].trim();
-        }
-        if (parsed["en"] && typeof parsed["en"] === "string" && parsed["en"].trim()) {
-          return parsed["en"].trim();
-        }
-        if (parsed["es"] && typeof parsed["es"] === "string" && parsed["es"].trim()) {
-          return parsed["es"].trim();
-        }
-        for (const val of Object.values(parsed)) {
-          if (typeof val === "string" && val.trim()) {
-            return val.trim();
-          }
-        }
-      }
-    } catch {
-      return rawText;
-    }
-  }
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return rawText;
 
-  return rawText;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null) return rawText;
+    return pickFirstLocaleText(parsed as Record<string, unknown>, [locale, "en", "es"]) || rawText;
+  } catch {
+    return rawText;
+  }
 }
 
 /**

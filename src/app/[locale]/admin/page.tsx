@@ -1,11 +1,9 @@
 import { getTranslations } from "next-intl/server";
 import { getAdminSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, pages, categories, analytics, users } from "@/lib/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { getAdminDashboardOverview } from "@/lib/queries/admin-dashboard";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
-import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { getStorageStatus } from "@/lib/storage";
 import { getLocalizedText } from "@/lib/utils/localization";
@@ -31,63 +29,9 @@ export default async function AdminDashboardPage({
   const t = await getTranslations({ locale, namespace: "admin" });
   const tc = await getTranslations({ locale, namespace: "common" });
   const site = await getAdminSite();
-  const db = getDb();
-
   const siteId = site?.id || "default";
   const storageStatus = getStorageStatus();
-
-  const postStats = db
-    .select({
-      total: sql<number>`count(*)`,
-      published: sql<number>`sum(case when status = 'published' then 1 else 0 end)`,
-      drafts: sql<number>`sum(case when status = 'draft' then 1 else 0 end)`,
-      totalViews: sql<number>`sum(views)`,
-    })
-    .from(posts)
-    .where(eq(posts.siteId, siteId))
-    .get();
-
-  const pageStats = db
-    .select({
-      total: sql<number>`count(*)`,
-      published: sql<number>`sum(case when status = 'published' then 1 else 0 end)`,
-      drafts: sql<number>`sum(case when status = 'draft' then 1 else 0 end)`,
-      totalViews: sql<number>`sum(views)`,
-    })
-    .from(pages)
-    .where(eq(pages.siteId, siteId))
-    .get();
-
-  const categoryCount = db
-    .select({ count: sql<number>`count(*)` })
-    .from(categories)
-    .where(eq(categories.siteId, siteId))
-    .get();
-
-  const recentPosts = db
-    .select({
-      id: posts.id,
-      title: posts.title,
-      slug: posts.slug,
-      status: posts.status,
-      views: posts.views,
-      publishedAt: posts.publishedAt,
-      createdAt: posts.createdAt,
-      coverImage: posts.coverImage,
-      authorName: users.displayName,
-    })
-    .from(posts)
-    .leftJoin(users, eq(posts.authorId, users.id))
-    .where(eq(posts.siteId, siteId))
-    .orderBy(desc(posts.createdAt))
-    .limit(5)
-    .all();
-
-  const totalHits = db
-    .select({ count: sql<number>`count(*)` })
-    .from(analytics)
-    .where(eq(analytics.siteId, siteId))
-    .get();
+  const { postStats, pageStats, categoryCount, recentPosts, totalHits } = getAdminDashboardOverview(siteId);
 
   const metrics = [
     {
@@ -213,26 +157,7 @@ export default async function AdminDashboardPage({
                 </div>
 
                 <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                  <Badge
-                    variant={
-                      post.status === "published"
-                        ? "success"
-                        : post.status === "scheduled"
-                        ? "primary"
-                        : post.status === "archived"
-                        ? "secondary"
-                        : "warning"
-                    }
-                    className="text-[9px] sm:text-xs"
-                  >
-                    {post.status === "published"
-                      ? t("statusPublished")
-                      : post.status === "scheduled"
-                      ? t("statusScheduled")
-                      : post.status === "archived"
-                      ? t("statusArchived")
-                      : t("statusDraft")}
-                  </Badge>
+                  <StatusBadge status={post.status} className="text-[9px] sm:text-xs" />
                   <Link href={`/admin/posts/${post.id}`} className="hidden sm:inline-flex">
                     <Button variant="ghost" size="sm" className="text-xs">
                       {tc("edit")}

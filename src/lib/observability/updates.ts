@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import packageJson from "../../package.json";
+import packageJson from "../../../package.json";
 import { getAppVersionEnv } from "@/lib/config/env";
 
 /**
@@ -22,7 +22,7 @@ export interface UpdateInfo {
 /**
  * Reads the current application version dynamically from environment variables or package.json on disk.
  *
- * @returns {string} The active SemVer version string.
+ * @returns The active SemVer version string.
  */
 export async function getCurrentVersion(): Promise<string> {
   const envVersion = getAppVersionEnv();
@@ -44,13 +44,6 @@ export async function getCurrentVersion(): Promise<string> {
   return packageJson.version || "1.0.19";
 }
 
-/**
- * Compares two Semantic Versioning strings (e.g., '1.0.13' vs '1.0.12').
- *
- * @param {string} v1 - First version string.
- * @param {string} v2 - Second version string to compare against.
- * @returns {number} 1 if v1 is greater, -1 if v2 is greater, or 0 if equal.
- */
 function compareSemver(v1: string, v2: string): number {
   const parse = (v: string): number[] =>
     v
@@ -74,11 +67,28 @@ function compareSemver(v1: string, v2: string): number {
   return 0;
 }
 
+async function fetchLatestPackageVersion(): Promise<string | null> {
+  try {
+    const rawRes = await fetch("https://raw.githubusercontent.com/TrixtyLab/kotonoba/master/package.json", {
+      headers: { "User-Agent": "Kotonoba-CMS" },
+      cache: "no-store",
+    });
+    if (rawRes.ok) {
+      const rawPkg = await rawRes.json();
+      if (rawPkg.version && typeof rawPkg.version === "string") {
+        return rawPkg.version.trim();
+      }
+    }
+  } catch {
+    // Offline fallback handled by caller
+  }
+  return null;
+}
+
 /**
  * Checks for updates to the Kotonoba application by querying the official GitHub Releases API with CDN fallback.
- * Compares the latest remote release tag with the currently installed version.
  *
- * @returns {Promise<UpdateInfo>} A promise resolving to the update status and release URLs.
+ * @returns Update status metrics and release URLs.
  */
 export async function checkForUpdates(): Promise<UpdateInfo> {
   const currentVersion = await getCurrentVersion();
@@ -108,39 +118,16 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
         }
       }
     } else {
-      // Fallback to raw repository package.json to bypass potential GitHub API 60 req/hr rate limits
-      const rawRes = await fetch("https://raw.githubusercontent.com/TrixtyLab/kotonoba/master/package.json", {
-        headers: { "User-Agent": "Kotonoba-CMS" },
-        cache: "no-store",
-      });
-      if (rawRes.ok) {
-        const rawPkg = await rawRes.json();
-        if (rawPkg.version && typeof rawPkg.version === "string") {
-          latestVersion = rawPkg.version.trim();
-        }
-      }
+      const rawVersion = await fetchLatestPackageVersion();
+      if (rawVersion) latestVersion = rawVersion;
     }
   } catch {
-    try {
-      const rawRes = await fetch("https://raw.githubusercontent.com/TrixtyLab/kotonoba/master/package.json", {
-        headers: { "User-Agent": "Kotonoba-CMS" },
-        cache: "no-store",
-      });
-      if (rawRes.ok) {
-        const rawPkg = await rawRes.json();
-        if (rawPkg.version && typeof rawPkg.version === "string") {
-          latestVersion = rawPkg.version.trim();
-        }
-      }
-    } catch {
-      // Offline fallback: keep latestVersion equal to currentVersion
-    }
+    const rawVersion = await fetchLatestPackageVersion();
+    if (rawVersion) latestVersion = rawVersion;
   }
 
-  const hasNewerVersion = compareSemver(latestVersion, currentVersion) > 0;
-
   return {
-    updateAvailable: hasNewerVersion,
+    updateAvailable: compareSemver(latestVersion, currentVersion) > 0,
     currentVersion,
     latestVersion,
     releaseUrl,

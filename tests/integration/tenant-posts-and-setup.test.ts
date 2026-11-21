@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import {
+  getPaginatedArchivePosts,
   getPaginatedPublicPosts,
   searchPublicPosts,
 } from "@/lib/queries/public-posts";
@@ -211,6 +212,15 @@ describe("Tenant constraints, cascade deletion, queries & setup locking", () => 
     const results = searchPublicPosts("s1", "Roadmap");
     expect(results.every((r) => r.id !== "s2-secret")).toBe(true);
     expect(results).toHaveLength(7);
+
+    const archivePage1 = getPaginatedArchivePosts({ siteId: "s1", page: 1, pageSize: 5 });
+    expect(archivePage1.totalCount).toBe(7);
+    expect(archivePage1.totalPages).toBe(2);
+    expect(archivePage1.items).toHaveLength(5);
+
+    const archivePage2 = getPaginatedArchivePosts({ siteId: "s1", page: 2, pageSize: 5 });
+    expect(archivePage2.currentPage).toBe(2);
+    expect(archivePage2.items).toHaveLength(2);
   });
 
   it("enforces strong password policy in setup wizard", async () => {

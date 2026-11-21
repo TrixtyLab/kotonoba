@@ -3,7 +3,8 @@
 import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
 import { requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidateSiteShell } from "@/lib/cache/revalidate";
-import { tagSchema, validate, type TagInput } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { tagSchema, type TagInput } from "@/lib/contracts";
 import {
   createTagService,
   deleteTagService,
@@ -24,7 +25,7 @@ export async function createTag(siteId: string, inputData: Partial<TagInput>): P
   }
 
   const res = createTagService(siteId, validation.data);
-  if (res.success) revalidateSiteShell();
+  if (res.success) revalidateSiteShell(siteId);
   return res;
 }
 
@@ -35,7 +36,7 @@ export async function deleteTag(tagId: string): Promise<{ success: boolean; erro
 
   await requireSiteAccess(siteId, ROLE_PUBLISHERS);
   deleteTagService(tagId);
-  revalidateSiteShell();
+  revalidateSiteShell(siteId);
   return { success: true };
 }
 

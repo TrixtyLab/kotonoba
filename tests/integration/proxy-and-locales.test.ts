@@ -17,7 +17,8 @@ vi.mock("next-intl/middleware", () => ({
 
 import { proxy } from "@/proxy";
 import { signAccessToken } from "@/lib/auth/jwt";
-import { postSchema, pageSchema, siteSchema, validate } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { postSchema, pageSchema, siteSchema } from "@/lib/contracts";
 import { getJwtSecretString, getEncryptionSecretString } from "@/lib/config/secrets";
 
 describe("Proxy security headers, JWT verification, strict locale validation & secret fail-closed checks", () => {

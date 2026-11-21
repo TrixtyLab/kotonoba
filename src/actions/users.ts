@@ -4,7 +4,7 @@ import { ROLE_ADMINS } from "@/lib/auth/roles";
 import { requireAuth } from "@/lib/auth/session";
 import { requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidateUsersAdmin } from "@/lib/cache/revalidate";
-import { type CreateUserInput, type UpdateUserInput } from "@/lib/security/validate";
+import { type CreateUserInput, type UpdateUserInput } from "@/lib/contracts";
 import {
   createUserService,
   deleteUserService,

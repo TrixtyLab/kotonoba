@@ -3,7 +3,7 @@
 import React from "react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { Menu } from "lucide-react";
+import { Menu, Download } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 /**
@@ -63,6 +63,15 @@ export function TopBar({ user, onOpenMobileSidebar }: TopBarProps): React.JSX.El
               {user.role.replace("_", " ")}
             </p>
           </div>
+          <a
+            href="/api/users/me/export"
+            download
+            title={t("downloadMyData")}
+            aria-label={t("downloadMyData")}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors flex items-center justify-center"
+          >
+            <Download className="w-4 h-4" />
+          </a>
         </div>
       </div>
     </header>

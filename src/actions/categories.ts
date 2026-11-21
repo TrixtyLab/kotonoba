@@ -3,7 +3,8 @@
 import { ROLE_ADMINS, ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
 import { requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidateSiteShell } from "@/lib/cache/revalidate";
-import { categorySchema, validate, type CategoryInput } from "@/lib/security/validate";
+import { validate } from "@/lib/security/validate";
+import { categorySchema, type CategoryInput } from "@/lib/contracts";
 import {
   createCategoryService,
   deleteCategoryService,
@@ -28,7 +29,7 @@ export async function createCategory(
   }
 
   const res = createCategoryService(siteId, validation.data);
-  if (res.success) revalidateSiteShell();
+  if (res.success) revalidateSiteShell(siteId);
   return res;
 }
 
@@ -47,7 +48,7 @@ export async function updateCategory(
   }
 
   const res = updateCategoryService(categoryId, siteId, validation.data);
-  if (res.success) revalidateSiteShell();
+  if (res.success) revalidateSiteShell(siteId);
   return res;
 }
 
@@ -58,17 +59,12 @@ export async function deleteCategory(categoryId: string): Promise<{ success: boo
 
   await requireSiteAccess(siteId, ROLE_ADMINS);
   deleteCategoryService(categoryId);
-  revalidateSiteShell();
+  revalidateSiteShell(siteId);
   return { success: true };
 }
 
 /** Lists categories for authenticated administrative management. */
 export async function getCategories(siteId: string): Promise<CategoryRecord[]> {
   await requireSiteAccess(siteId, ROLE_ALL);
-  return listCategoriesForSite(siteId);
-}
-
-/** Lists public category navigation items for a blog site. */
-export async function getPublicCategories(siteId: string): Promise<CategoryRecord[]> {
   return listCategoriesForSite(siteId);
 }

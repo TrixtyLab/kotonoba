@@ -1,5 +1,5 @@
 import type { Instrumentation } from "next";
-import { assertServerBootConfig } from "@/lib/config/boot";
+import { assertServerBootConfig, reportCriticalServerAlert } from "@/lib/config/boot";
 
 /**
  * Next.js server initialization hook verifying mandatory production security secrets at boot
@@ -12,7 +12,7 @@ export async function register(): Promise<void> {
 /**
  * Structured Next.js server error observer emitting secret-free JSON error diagnostics (`T5.4`).
  */
-export const onRequestError: Instrumentation.onRequestError = (err, request, context) => {
+export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
   const message = err instanceof Error ? err.message : String(err);
   const digest =
     typeof err === "object" && err !== null && "digest" in err
@@ -31,4 +31,11 @@ export const onRequestError: Instrumentation.onRequestError = (err, request, con
       routeType: context.routeType,
     })
   );
+
+  await reportCriticalServerAlert("server.request_error", {
+    digest: digest ?? null,
+    path: request.path,
+    method: request.method,
+    routePath: context.routePath,
+  }).catch(() => {});
 };

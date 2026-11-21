@@ -1,12 +1,11 @@
-import { getPublicSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { categories } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
 import {
-  getLatestPublicPostsSummary,
-  getPaginatedPublicPosts,
+  getCachedLatestPublicPostsSummary,
+  getCachedPaginatedPublicPosts,
   parsePageNumber,
 } from "@/lib/queries/public-posts";
+import { getCachedCategoryBySlug, getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
 import { notFound } from "next/navigation";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
@@ -17,7 +16,7 @@ import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/utils/media";
-import { getSidebarBanners } from "@/lib/banners";
+import { getCachedSidebarBanners } from "@/lib/banners";
 import { getDefaultSiteUrl } from "@/lib/config/env";
 
 /**
@@ -32,9 +31,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = await getPublicSite();
-  const db = getDb();
-  const cat = site ? db.select().from(categories).where(and(eq(categories.siteId, site.id), eq(categories.slug, slug))).get() : null;
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
+  const cat = site ? await getCachedCategoryBySlug(site.id, slug, locale, host) : null;
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
   const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
@@ -88,20 +86,24 @@ export default async function CategoryPage({
   if (!site) notFound();
 
   const t = await getTranslations({ locale, namespace: "blog" });
+  const host = await getRequestNormalizedHost();
 
-  const db = getDb();
-
-  const cat = db.select().from(categories).where(and(eq(categories.siteId, site.id), eq(categories.slug, slug))).get();
+  const cat = await getCachedCategoryBySlug(site.id, slug, locale, host);
   if (!cat) notFound();
 
-  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
-  const paginated = getPaginatedPublicPosts({
-    siteId: site.id,
-    categoryId: cat.id,
-    page: requestedPage,
-    pageSize: 5,
-  });
-  const latestPosts = getLatestPublicPostsSummary(site.id, 5);
+  const [allCategories, paginated, latestPosts, sidebarBanners] = await Promise.all([
+    getCachedSiteCategories(site.id, locale, host),
+    getCachedPaginatedPublicPosts({
+      siteId: site.id,
+      locale,
+      host,
+      categoryId: cat.id,
+      page: requestedPage,
+      pageSize: DEFAULT_PUBLIC_PAGE_SIZE,
+    }),
+    getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+    getCachedSidebarBanners(site.id, host),
+  ]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
@@ -135,7 +137,7 @@ export default async function CategoryPage({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={await getSidebarBanners(site.id)}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>

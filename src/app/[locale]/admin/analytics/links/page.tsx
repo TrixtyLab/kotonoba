@@ -1,11 +1,9 @@
 import { getTranslations } from "next-intl/server";
 import { getAdminSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
-import { sql, desc, eq, and, like } from "drizzle-orm";
 import { Link2, QrCode, ExternalLink, Tag } from "lucide-react";
 import { getDubAnalyticsSummary } from "@/lib/dub";
+import { getRecordedPixelHits } from "@/lib/queries/analytics-overview";
 import { PixelGeneratorCard } from "@/components/admin/analytics/PixelGeneratorCard";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
 
@@ -35,21 +33,7 @@ export default async function AnalyticsLinksPage({
   if (!site) notFound();
 
   const dubSummary = await getDubAnalyticsSummary(site.id);
-  const db = getDb();
-
-  // Query recorded pixel hits
-  const rawPixelHits = db
-    .select({
-      campaign: sql<string>`coalesce(nullif(utm_campaign, ''), replace(path, '/pixel/', ''))`,
-      impressions: sql<number>`count(*)`,
-      uniqueReaders: sql<number>`count(distinct ip_hash)`,
-      lastHitEpoch: sql<number>`max(created_at)`,
-    })
-    .from(analytics)
-    .where(and(eq(analytics.siteId, site.id), like(analytics.path, "/pixel/%")))
-    .groupBy(sql`coalesce(nullif(utm_campaign, ''), replace(path, '/pixel/', ''))`)
-    .orderBy(desc(sql`count(*)`))
-    .all();
+  const rawPixelHits = getRecordedPixelHits(site.id);
 
   const pixelData: PixelHitRow[] = rawPixelHits.map((p) => {
     const d = new Date(p.lastHitEpoch);

@@ -2,54 +2,38 @@
 
 import React, { useState, useTransition, useMemo } from "react";
 import { Link } from "@/i18n/routing";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { deletePage } from "@/actions/pages";
-import { Search, Eye, Edit3, Trash2, ExternalLink, Plus, Files } from "lucide-react";
+import { Tabs } from "@/components/ui/Tabs";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { deletePage } from "@/actions/pages";
+import { POST_STATUS, type PostStatus } from "@/lib/config/constants";
 import { useToast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
+import { Search, Eye, Edit3, Trash2, ExternalLink, Plus, Files } from "lucide-react";
 
-/**
- * Summary representation of a page displayed in the administrative pages table.
- */
+/** Summary representation of a page displayed in the administrative pages table. */
 export interface PageItem {
-  /** Database identifier of the page. */
   id: string;
-  /** Page title. */
   title: string;
-  /** URL slug string. */
   slug: string;
-  /** Publication lifecycle status. */
-  status: "draft" | "published" | "scheduled" | "archived";
-  /** Language locale code. */
+  status: PostStatus;
   locale: string;
-  /** View count metric. */
   views: number;
-  /** Formatted publication timestamp. */
   publishedAtFormatted?: string | null;
-  /** Formatted creation timestamp. */
   createdAtFormatted: string;
-  /** Author display name. */
   authorName?: string | null;
 }
 
-/**
- * Properties configuring the administrative pages list view.
- */
+/** Properties configuring the administrative pages list view. */
 export interface PagesListClientProps {
-  /** Initial catalog of PageItem records loaded from the server. */
   initialPages: PageItem[];
 }
 
 /**
- * Administrative custom pages management table with search, status filters, and deletion.
- * Includes responsive column collapsing and mobile metadata chips for compact phone displays.
- *
- * @param {PagesListClientProps} props - Component properties containing the initial page catalog.
- * @returns {React.JSX.Element} React JSX pages list view.
+ * Administrative custom pages management table with search, tab status filters, and deletion.
  */
 export function PagesListClient({ initialPages }: PagesListClientProps): React.JSX.Element {
   const t = useTranslations("admin");
@@ -62,8 +46,9 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
   const [isPending, startTransition] = useTransition();
 
   const filteredPages = useMemo(() => {
+    const q = search.toLowerCase();
     return pagesList.filter((p) => {
-      const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) || p.slug.includes(search.toLowerCase());
+      const matchSearch = p.title.toLowerCase().includes(q) || p.slug.includes(q);
       const matchStatus = statusFilter === "all" || p.status === statusFilter;
       return matchSearch && matchStatus;
     });
@@ -86,10 +71,10 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
 
   const statusOptions = [
     { key: "all", label: tc("all"), count: pagesList.length },
-    { key: "published", label: t("statusPublished"), count: pagesList.filter((p) => p.status === "published").length },
-    { key: "scheduled", label: t("statusScheduled"), count: pagesList.filter((p) => p.status === "scheduled").length },
-    { key: "draft", label: t("statusDraft"), count: pagesList.filter((p) => p.status === "draft").length },
-    { key: "archived", label: t("statusArchived"), count: pagesList.filter((p) => p.status === "archived").length },
+    { key: POST_STATUS.PUBLISHED, label: t("statusPublished"), count: pagesList.filter((p) => p.status === POST_STATUS.PUBLISHED).length },
+    { key: POST_STATUS.SCHEDULED, label: t("statusScheduled"), count: pagesList.filter((p) => p.status === POST_STATUS.SCHEDULED).length },
+    { key: POST_STATUS.DRAFT, label: t("statusDraft"), count: pagesList.filter((p) => p.status === POST_STATUS.DRAFT).length },
+    { key: POST_STATUS.ARCHIVED, label: t("statusArchived"), count: pagesList.filter((p) => p.status === POST_STATUS.ARCHIVED).length },
   ];
 
   return (
@@ -108,34 +93,9 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
         }
       />
 
-      {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3 rounded-xl border border-border">
-        {/* Status Pills */}
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
-          {statusOptions.map((opt) => (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => setStatusFilter(opt.key)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
-                statusFilter === opt.key
-                  ? "bg-accent text-white font-semibold shadow-2xs"
-                  : "text-text-muted hover:text-text hover:bg-surface-hover"
-              }`}
-            >
-              <span>{opt.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                  statusFilter === opt.key ? "bg-white/20 text-white" : "bg-surface-hover text-text-muted"
-                }`}
-              >
-                {opt.count}
-              </span>
-            </button>
-          ))}
-        </div>
+        <Tabs items={statusOptions} activeKey={statusFilter} onSelect={setStatusFilter} variant="pills" />
 
-        {/* Search Input */}
         <div className="relative w-full sm:w-64">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
@@ -165,10 +125,7 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
         {filteredPages.map((page) => (
           <tr key={page.id} className="hover:bg-surface-hover/50 transition-colors group">
             <td className="py-3 px-4 max-w-xs">
-              <Link
-                href={`/admin/pages/${page.id}`}
-                className="font-semibold text-text hover:text-accent transition-colors block truncate"
-              >
+              <Link href={`/admin/pages/${page.id}`} className="font-semibold text-text hover:text-accent transition-colors block truncate">
                 {page.title}
               </Link>
               <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-muted font-mono">
@@ -176,58 +133,19 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
               </div>
 
               <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
-                <Badge
-                  variant={
-                    page.status === "published"
-                      ? "success"
-                      : page.status === "scheduled"
-                      ? "primary"
-                      : page.status === "archived"
-                      ? "secondary"
-                      : "warning"
-                  }
-                  className="text-[9px] py-0 px-1.5"
-                >
-                  {page.status === "published"
-                    ? t("statusPublished")
-                    : page.status === "scheduled"
-                    ? t("statusScheduled")
-                    : page.status === "archived"
-                    ? t("statusArchived")
-                    : t("statusDraft")}
-                </Badge>
+                <StatusBadge status={page.status} className="text-[9px] py-0 px-1.5" />
                 <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
                   {page.locale}
                 </span>
                 <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
                   <Eye className="w-2.5 h-2.5" /> {page.views.toLocaleString()}
                 </span>
-                <span className="text-[10px] text-text-muted">
-                  {page.publishedAtFormatted || page.createdAtFormatted}
-                </span>
+                <span className="text-[10px] text-text-muted">{page.publishedAtFormatted || page.createdAtFormatted}</span>
               </div>
             </td>
 
             <td className="py-3 px-4 hidden sm:table-cell">
-              <Badge
-                variant={
-                  page.status === "published"
-                    ? "success"
-                    : page.status === "scheduled"
-                    ? "primary"
-                    : page.status === "archived"
-                    ? "secondary"
-                    : "warning"
-                }
-              >
-                {page.status === "published"
-                  ? t("statusPublished")
-                  : page.status === "scheduled"
-                  ? t("statusScheduled")
-                  : page.status === "archived"
-                  ? t("statusArchived")
-                  : t("statusDraft")}
-              </Badge>
+              <StatusBadge status={page.status} />
             </td>
 
             <td className="py-3 px-4 hidden md:table-cell">
@@ -249,32 +167,15 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
 
             <td className="py-3 px-4 text-right">
               <div className="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
-                {page.status === "published" && (
-                  <a
-                    href={`/p/${page.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                    title={tc("preview")}
-                  >
+                {page.status === POST_STATUS.PUBLISHED && (
+                  <a href={`/p/${page.slug}`} target="_blank" rel="noopener noreferrer" className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("preview")}>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 )}
-
-                <Link
-                  href={`/admin/pages/${page.id}`}
-                  className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                  title={tc("edit")}
-                >
+                <Link href={`/admin/pages/${page.id}`} className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("edit")}>
                   <Edit3 className="w-3.5 h-3.5" />
                 </Link>
-
-                <button
-                  type="button"
-                  onClick={() => setPageToDelete(page.id)}
-                  className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer"
-                  title={tc("delete")}
-                >
+                <button type="button" onClick={() => setPageToDelete(page.id)} className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer" title={tc("delete")}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -283,7 +184,6 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
         ))}
       </AdminDataTable>
 
-      {/* Confirm Delete Dialog */}
       <ConfirmModal
         isOpen={Boolean(pageToDelete)}
         title={tc("delete")}

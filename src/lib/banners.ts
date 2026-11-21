@@ -1,10 +1,10 @@
 import { getDb } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { runWithTenantCache, sitePostsCacheTag } from "@/lib/cache/revalidate";
+import { sanitizeUrl } from "@/lib/security/sanitize";
 
-/**
- * Structure of an individual sidebar promotional mini-banner.
- */
+/** Structure of an individual sidebar promotional mini-banner. */
 export interface SidebarBannerItem {
   id: string;
   imageUrl: string;
@@ -13,9 +13,7 @@ export interface SidebarBannerItem {
   target?: "_blank" | "_self";
 }
 
-/**
- * Individual banner asset definition with link and window target.
- */
+/** Individual banner asset definition with link and window target. */
 export interface HeaderBannerItem {
   imageUrl: string | null;
   linkUrl: string | null;
@@ -23,179 +21,141 @@ export interface HeaderBannerItem {
   alt?: string;
 }
 
-/**
- * Scheduled banner campaign with date constraints.
- */
+/** Scheduled banner campaign with date constraints. */
 export interface ScheduledBannerCampaign extends HeaderBannerItem {
   startDate?: string | null;
   endDate?: string | null;
 }
 
-/**
- * Combined configuration for the top header banner system.
- */
+/** Combined configuration for the top header banner system. */
 export interface HeaderBannerConfig {
-  /** Default permanent fallback banner. */
   defaultBanner: HeaderBannerItem | null;
-  /** Scheduled promotional campaign banner. */
   scheduledCampaign: ScheduledBannerCampaign | null;
-  /** Flag determining if the scheduled campaign is active. */
   scheduleEnabled: boolean;
 }
 
-/**
- * Combined banner configuration for a blog site.
- */
+/** Combined banner configuration for a blog site. */
 export interface SiteBannersConfig {
   headerBanner: HeaderBannerConfig | null;
   sidebarBanners: SidebarBannerItem[];
 }
 
+function isDateActive(startDate?: string | null, endDate?: string | null, now = Date.now()): boolean {
+  if (startDate?.trim()) {
+    const start = new Date(startDate).getTime();
+    if (!isNaN(start) && now < start) return false;
+  }
+  if (endDate?.trim()) {
+    const end = new Date(endDate).getTime();
+    if (!isNaN(end) && now > end) return false;
+  }
+  return true;
+}
+
 /**
  * Resolves the currently active header banner for public presentation.
- * Evaluates whether a scheduled campaign is active at the current moment;
- * if not (or if expired/future), falls back seamlessly to the default permanent banner.
- *
- * @param {HeaderBannerConfig | null} config - Header banner configuration.
- * @returns {HeaderBannerItem | null} The resolved banner item to render, or null if none is active.
  */
 export function getResolvedHeaderBanner(config: HeaderBannerConfig | null): HeaderBannerItem | null {
   if (!config) return null;
 
-  if (config.scheduleEnabled && config.scheduledCampaign && config.scheduledCampaign.imageUrl?.trim()) {
-    const now = Date.now();
-    let isWithinSchedule = true;
-
-    if (config.scheduledCampaign.startDate && config.scheduledCampaign.startDate.trim()) {
-      const start = new Date(config.scheduledCampaign.startDate).getTime();
-      if (!isNaN(start) && now < start) {
-        isWithinSchedule = false;
-      }
-    }
-
-    if (config.scheduledCampaign.endDate && config.scheduledCampaign.endDate.trim()) {
-      const end = new Date(config.scheduledCampaign.endDate).getTime();
-      if (!isNaN(end) && now > end) {
-        isWithinSchedule = false;
-      }
-    }
-
-    if (isWithinSchedule) {
-      return config.scheduledCampaign;
-    }
+  const campaign = config.scheduledCampaign;
+  if (config.scheduleEnabled && campaign?.imageUrl?.trim() && isDateActive(campaign.startDate, campaign.endDate)) {
+    return campaign;
   }
-
-  if (config.defaultBanner && config.defaultBanner.imageUrl?.trim()) {
-    return config.defaultBanner;
-  }
-
+  if (config.defaultBanner?.imageUrl?.trim()) return config.defaultBanner;
   return null;
 }
 
+function buildHeaderItemFromMap(map: Map<string, string>, prefix: string): HeaderBannerItem | null {
+  const imageUrl = sanitizeUrl(map.get(`${prefix}_image`), { allowRelative: true });
+  if (!imageUrl) return null;
+  const target: "_blank" | "_self" = map.get(`${prefix}_target`) === "_self" ? "_self" : "_blank";
+  return {
+    imageUrl,
+    linkUrl: sanitizeUrl(map.get(`${prefix}_link`), { allowRelative: true }),
+    target,
+    alt: map.get(`${prefix}_alt`)?.trim() || "",
+  };
+}
+
+function parseSidebarBannersJson(rawSidebar?: string): SidebarBannerItem[] {
+  if (!rawSidebar) return [];
+  try {
+    const parsed = JSON.parse(rawSidebar);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((b): b is SidebarBannerItem => Boolean(b && typeof b.imageUrl === "string"))
+      .map((b) => ({
+        ...b,
+        imageUrl: sanitizeUrl(b.imageUrl, { allowRelative: true }) || "",
+        linkUrl: sanitizeUrl(b.linkUrl, { allowRelative: true }) || "",
+      }))
+      .filter((b) => b.imageUrl.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Retrieves all banner configurations for a specific site from the settings table.
- *
- * @param {string} siteId - Unique database identifier of the target site.
- * @returns {Promise<SiteBannersConfig>} Configuration object containing header banner and sidebar mini-banners.
+ * Retrieves uncached banner configurations for a site (used inside admin editor).
  */
 export async function getSiteBanners(siteId: string): Promise<SiteBannersConfig> {
   try {
     const db = getDb();
-    const siteSettings = db
-      .select({ key: settings.key, value: settings.value })
-      .from(settings)
-      .where(eq(settings.siteId, siteId))
-      .all();
+    const siteSettings = db.select({ key: settings.key, value: settings.value }).from(settings).where(eq(settings.siteId, siteId)).all();
+    const map = new Map(siteSettings.map((s) => [s.key, s.value]));
 
-    const map = new Map<string, string>();
-    for (const s of siteSettings) {
-      map.set(s.key, s.value);
-    }
-
-    const { sanitizeUrl } = await import("@/lib/security/sanitize");
-
-    const defaultImage = sanitizeUrl(map.get("header_banner_image"), { allowRelative: true });
-    const defaultLink = sanitizeUrl(map.get("header_banner_link"), { allowRelative: true });
-    const defaultTarget = (map.get("header_banner_target") === "_self" ? "_self" : "_blank") as "_blank" | "_self";
-    const defaultAlt = map.get("header_banner_alt")?.trim() || "";
-
-    const defaultBanner: HeaderBannerItem | null = defaultImage
-      ? {
-          imageUrl: defaultImage,
-          linkUrl: defaultLink,
-          target: defaultTarget,
-          alt: defaultAlt,
-        }
-      : null;
-
+    const defaultBanner = buildHeaderItemFromMap(map, "header_banner");
+    const scheduledBase = buildHeaderItemFromMap(map, "header_banner_scheduled");
     const scheduleEnabled = map.get("header_banner_schedule_enabled") === "true";
-    const scheduledImage = sanitizeUrl(map.get("header_banner_scheduled_image"), { allowRelative: true });
-    const scheduledLink = sanitizeUrl(map.get("header_banner_scheduled_link"), { allowRelative: true });
-    const scheduledTarget = (map.get("header_banner_scheduled_target") === "_self" ? "_self" : "_blank") as "_blank" | "_self";
-    const scheduledAlt = map.get("header_banner_scheduled_alt")?.trim() || "";
-    const startDate = map.get("header_banner_start_date")?.trim() || null;
-    const endDate = map.get("header_banner_end_date")?.trim() || null;
 
-    const scheduledCampaign: ScheduledBannerCampaign | null = scheduledImage
+    const scheduledCampaign: ScheduledBannerCampaign | null = scheduledBase
       ? {
-          imageUrl: scheduledImage,
-          linkUrl: scheduledLink,
-          target: scheduledTarget,
-          alt: scheduledAlt,
-          startDate,
-          endDate,
+          ...scheduledBase,
+          startDate: map.get("header_banner_start_date")?.trim() || null,
+          endDate: map.get("header_banner_end_date")?.trim() || null,
         }
       : null;
 
     const headerBanner: HeaderBannerConfig | null =
       defaultBanner || scheduledCampaign || scheduleEnabled
-        ? {
-            defaultBanner,
-            scheduledCampaign,
-            scheduleEnabled,
-          }
+        ? { defaultBanner, scheduledCampaign, scheduleEnabled }
         : null;
-
-    let sidebarBanners: SidebarBannerItem[] = [];
-    const rawSidebar = map.get("sidebar_banners");
-    if (rawSidebar) {
-      try {
-        const parsed = JSON.parse(rawSidebar);
-        if (Array.isArray(parsed)) {
-          sidebarBanners = parsed
-            .filter((b): b is SidebarBannerItem => Boolean(b && typeof b.imageUrl === "string"))
-            .map((b) => ({
-              ...b,
-              imageUrl: sanitizeUrl(b.imageUrl, { allowRelative: true }) || "",
-              linkUrl: sanitizeUrl(b.linkUrl, { allowRelative: true }) || "",
-            }))
-            .filter((b) => b.imageUrl.length > 0);
-        }
-      } catch {
-        sidebarBanners = [];
-      }
-    }
 
     return {
       headerBanner,
-      sidebarBanners,
+      sidebarBanners: parseSidebarBannersJson(map.get("sidebar_banners")),
     };
   } catch (err) {
     console.error("[banners] Failed to load site banners:", err);
-    return {
-      headerBanner: null,
-      sidebarBanners: [],
-    };
+    return { headerBanner: null, sidebarBanners: [] };
   }
 }
 
 /**
- * Retrieves only the sidebar mini banners array for a specific site.
- *
- * @param {string} siteId - Unique database identifier of the target site.
- * @returns {Promise<SidebarBannerItem[]>} Array of configured sidebar mini banners.
+ * Retrieves tenant-cached header and sidebar banners keyed by `(siteId, host)`.
  */
-export async function getSidebarBanners(siteId: string): Promise<SidebarBannerItem[]> {
-  const { sidebarBanners } = await getSiteBanners(siteId);
+export async function getCachedSiteBanners(
+  siteId: string,
+  host = "default"
+): Promise<SiteBannersConfig> {
+  return runWithTenantCache(
+    async () => getSiteBanners(siteId),
+    ["site-banners", siteId, host],
+    {
+      tags: [sitePostsCacheTag(siteId)],
+      revalidate: 60,
+    }
+  );
+}
+
+/**
+ * Retrieves tenant-cached sidebar promotional banners keyed by `(siteId, host)`.
+ */
+export async function getCachedSidebarBanners(
+  siteId: string,
+  host = "default"
+): Promise<SidebarBannerItem[]> {
+  const { sidebarBanners } = await getCachedSiteBanners(siteId, host);
   return sidebarBanners;
 }

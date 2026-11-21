@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Tabs } from "@/components/ui/Tabs";
 import {
   LayoutDashboard,
   Files,
@@ -16,14 +17,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 
-interface NavItem {
-  key: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  exact?: boolean;
-}
-
-const NAV_ITEMS: NavItem[] = [
+const NAV_ITEMS = [
   { key: "navOverview", href: "/admin/analytics", icon: LayoutDashboard, exact: true },
   { key: "navPages", href: "/admin/analytics/pages", icon: Files },
   { key: "navVisitors", href: "/admin/analytics/visitors", icon: Users },
@@ -37,9 +31,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * Top-level secondary navigation bar for transitioning between analytics sub-pages while maintaining active query parameters.
- *
- * @returns {React.JSX.Element} Responsive horizontal tab strip.
+ * Top-level secondary navigation bar for transitioning between analytics sub-pages while maintaining query parameters.
  */
 export function AnalyticsNav(): React.JSX.Element {
   const pathname = usePathname();
@@ -51,31 +43,28 @@ export function AnalyticsNav(): React.JSX.Element {
   const queryString = query.toString();
   const suffix = queryString ? `?${queryString}` : "";
 
+  const activeItem = NAV_ITEMS.find((item) =>
+    item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`)
+  );
+
   return (
     <nav aria-label={t("navAriaLabel")} className="w-full border-b border-border bg-surface/50 backdrop-blur-xs">
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-1 py-1.5 sm:px-2">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isActive = item.exact
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-          return (
-            <button
-              key={item.href}
-              type="button"
-              onClick={() => router.push(`${item.href}${suffix}`)}
-              className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all select-none shrink-0 ${
-                isActive
-                  ? "bg-accent/10 text-accent font-bold shadow-2xs"
-                  : "text-text-muted hover:text-text hover:bg-surface-hover/80"
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-accent" : "text-text-muted"}`} />
-              <span>{t(item.key)}</span>
-            </button>
-          );
-        })}
+      <div className="px-1 py-1.5 sm:px-2">
+        <Tabs
+          variant="pills"
+          ariaLabel={t("navAriaLabel")}
+          activeKey={activeItem?.href || ""}
+          onSelect={(href) => router.push(`${href}${suffix}`)}
+          items={NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeItem?.href === item.href;
+            return {
+              key: item.href,
+              label: t(item.key),
+              icon: <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-accent" : "text-text-muted"}`} />,
+            };
+          })}
+        />
       </div>
     </nav>
   );

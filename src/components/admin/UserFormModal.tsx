@@ -10,6 +10,7 @@ import { SiteSelect } from "@/components/admin/SiteSelect";
 import type { SiteOption } from "@/components/admin/UsersManagerClient";
 import type { AuthRole } from "@/lib/auth/site-access";
 import { canManageSites } from "@/lib/auth/roles";
+import { ROLES } from "@/lib/config/constants";
 
 /** Props for {@link UserFormModal}. */
 export interface UserFormModalProps {
@@ -110,14 +111,14 @@ export function UserFormModal({
             options={
               isSuper
                 ? [
-                    { value: "super_admin", label: `${t("roleSuperAdmin")} - ${t("roleSuperAdminDesc")}` },
-                    { value: "admin", label: `${t("roleAdmin")} - ${t("roleAdminDesc")}` },
-                    { value: "editor", label: `${t("roleEditor")} - ${t("roleEditorDesc")}` },
-                    { value: "author", label: `${t("roleAuthor")} - ${t("roleAuthorDesc")}` },
+                    { value: ROLES.SUPER_ADMIN, label: `${t("roleSuperAdmin")} - ${t("roleSuperAdminDesc")}` },
+                    { value: ROLES.ADMIN, label: `${t("roleAdmin")} - ${t("roleAdminDesc")}` },
+                    { value: ROLES.EDITOR, label: `${t("roleEditor")} - ${t("roleEditorDesc")}` },
+                    { value: ROLES.AUTHOR, label: `${t("roleAuthor")} - ${t("roleAuthorDesc")}` },
                   ]
                 : [
-                    { value: "editor", label: `${t("roleEditor")} - ${t("roleEditorDesc")}` },
-                    { value: "author", label: `${t("roleAuthor")} - ${t("roleAuthorDesc")}` },
+                    { value: ROLES.EDITOR, label: `${t("roleEditor")} - ${t("roleEditorDesc")}` },
+                    { value: ROLES.AUTHOR, label: `${t("roleAuthor")} - ${t("roleAuthorDesc")}` },
                   ]
             }
           />

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createTempDb, type TempDbContext } from "../helpers/db";
-import { sites, users, posts, pages, categories, settings } from "@/lib/db/schema";
+import { sites, users, posts, pages, categories, tags, settings } from "@/lib/db/schema";
 
 const mockRequestState = vi.hoisted(() => ({
   host: "blog.test",
@@ -78,6 +78,15 @@ describe("Sitemap hreflang parity, RSS feed sanitization & host isolation", () =
         siteId: "site-a",
         name: "Tech",
         slug: "tech",
+      })
+      .run();
+
+    db.insert(tags)
+      .values({
+        id: "tag-sec",
+        siteId: "site-a",
+        name: "Security",
+        slug: "security",
       })
       .run();
 
@@ -181,6 +190,8 @@ describe("Sitemap hreflang parity, RSS feed sanitization & host isolation", () =
     const esEntry = entries.find((e) => e.url === "https://blog.test/es/entry/hola-es");
     const esPage = entries.find((e) => e.url === "https://blog.test/es/p/acerca");
     const catEntry = entries.find((e) => e.url === "https://blog.test/category/tech");
+    const tagEntry = entries.find((e) => e.url === "https://blog.test/tag/security");
+    const archiveEntry = entries.find((e) => e.url === "https://blog.test/archive");
 
     expect(enEntry?.alternates?.languages).toEqual({
       en: "https://blog.test/entry/hello-en",
@@ -194,6 +205,14 @@ describe("Sitemap hreflang parity, RSS feed sanitization & host isolation", () =
     expect(catEntry?.alternates?.languages).toEqual({
       en: "https://blog.test/category/tech",
       es: "https://blog.test/es/category/tech",
+    });
+    expect(tagEntry?.alternates?.languages).toEqual({
+      en: "https://blog.test/tag/security",
+      es: "https://blog.test/es/tag/security",
+    });
+    expect(archiveEntry?.alternates?.languages).toEqual({
+      en: "https://blog.test/archive",
+      es: "https://blog.test/es/archive",
     });
 
     const urls = entries.map((e) => e.url);
@@ -214,6 +233,9 @@ describe("Sitemap hreflang parity, RSS feed sanitization & host isolation", () =
     const xml = await res.text();
     expect(xml).toContain("Site A ]]]]><![CDATA[> Title");
     expect(xml).toContain("Hello ]]]]><![CDATA[> EN");
+    expect(xml).toContain("<link>https://blog.test/entry/hello-en</link>");
+    expect(xml).not.toContain("<link>https://blog.test/en/entry/hello-en</link>");
+    expect(xml).toContain("<link>https://blog.test/es/entry/hola-es</link>");
     expect(xml).toContain("<p>Safe</p>");
     expect(xml).not.toContain("<script>");
     expect(xml).not.toContain("javascript:evil()");

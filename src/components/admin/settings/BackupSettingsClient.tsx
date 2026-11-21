@@ -4,6 +4,7 @@ import React, { useState, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { SettingsForm } from "@/components/admin/settings/SettingsForm";
 import { useToast } from "@/components/ui/Toast";
 import { Archive, Download, Upload } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
@@ -135,15 +136,12 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="pb-4 border-b border-border">
-        <h2 className="text-lg font-bold text-text flex items-center gap-2">
-          <Archive className="w-5 h-5 text-accent" />
-          <span>{t("backup")}</span>
-        </h2>
-        <p className="text-xs text-text-muted mt-0.5">{t("backupDesc")}</p>
-      </div>
-
+    <SettingsForm
+      title={t("backup")}
+      description={t("backupDesc")}
+      icon={<Archive className="w-5 h-5 text-accent" />}
+      maxWidthClass="max-w-4xl"
+    >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         {/* Export Backup Card */}
         <div className="p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4">
@@ -260,6 +258,6 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
         confirmText={t("confirmReplaceAll")}
         variant="danger"
       />
-    </div>
+    </SettingsForm>
   );
 }

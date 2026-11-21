@@ -3,11 +3,12 @@ import { categories, pages, posts, tags } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth/session";
 import type { TokenPayload } from "@/lib/auth/jwt";
+import { ROLES, type UserRole } from "@/lib/config/constants";
 
 /**
  * Roles recognized by the CMS authorization layer.
  */
-export type AuthRole = "super_admin" | "admin" | "editor" | "author";
+export type AuthRole = UserRole;
 
 /**
  * Resource types that can be scoped to a tenant site.
@@ -26,7 +27,7 @@ export function canAccessSite(
   siteId: string
 ): boolean {
   if (!siteId) return false;
-  if (user.role === "super_admin") return true;
+  if (user.role === ROLES.SUPER_ADMIN) return true;
   return Boolean(user.siteId) && user.siteId === siteId;
 }
 

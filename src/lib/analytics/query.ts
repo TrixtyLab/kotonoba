@@ -90,6 +90,16 @@ export function getDateRangeBounds(preset?: string | null): DateRangeBounds {
  * @param {AnalyticsFilters} [filters] - Dimension filters.
  * @returns {SQL} Composed SQL where expression.
  */
+const ANALYTICS_DIMENSION_FILTERS = [
+  ["country", analytics.country],
+  ["browser", analytics.browser],
+  ["device", analytics.device],
+  ["os", analytics.os],
+  ["path", analytics.path],
+  ["utmCampaign", analytics.utmCampaign],
+  ["utmSource", analytics.utmSource],
+] as const;
+
 export function buildAnalyticsFilterConditions(
   siteId: string,
   startDate?: Date,
@@ -98,35 +108,39 @@ export function buildAnalyticsFilterConditions(
 ): SQL {
   const conditions: SQL[] = [eq(analytics.siteId, siteId)];
 
-  if (startDate && startDate.getTime() > 0) {
-    conditions.push(gte(analytics.createdAt, startDate));
-  }
-  if (endDate) {
-    conditions.push(lte(analytics.createdAt, endDate));
-  }
-  if (filters?.country) {
-    conditions.push(eq(analytics.country, filters.country));
-  }
-  if (filters?.browser) {
-    conditions.push(eq(analytics.browser, filters.browser));
-  }
-  if (filters?.device) {
-    conditions.push(eq(analytics.device, filters.device));
-  }
-  if (filters?.os) {
-    conditions.push(eq(analytics.os, filters.os));
-  }
-  if (filters?.path) {
-    conditions.push(eq(analytics.path, filters.path));
-  }
-  if (filters?.utmCampaign) {
-    conditions.push(eq(analytics.utmCampaign, filters.utmCampaign));
-  }
-  if (filters?.utmSource) {
-    conditions.push(eq(analytics.utmSource, filters.utmSource));
+  if (startDate && startDate.getTime() > 0) conditions.push(gte(analytics.createdAt, startDate));
+  if (endDate) conditions.push(lte(analytics.createdAt, endDate));
+  if (filters) {
+    for (const [key, column] of ANALYTICS_DIMENSION_FILTERS) {
+      const value = filters[key];
+      if (value) conditions.push(eq(column, value));
+    }
   }
 
   return and(...conditions)!;
+}
+
+function summarizeSessionMetrics(
+  sessionStats: Array<{ pageviews: number; maxDuration: number }>
+): { bounceRate: number; avgDurationSeconds: number } {
+  const totalSessions = sessionStats.length;
+  if (totalSessions === 0) return { bounceRate: 0, avgDurationSeconds: 0 };
+
+  let bouncedSessions = 0;
+  let totalDurationSeconds = 0;
+  for (const s of sessionStats) {
+    if (s.pageviews === 1 || s.maxDuration < 10) bouncedSessions++;
+    totalDurationSeconds += s.maxDuration;
+  }
+
+  return {
+    bounceRate: Math.round((bouncedSessions / totalSessions) * 100),
+    avgDurationSeconds: Math.round(totalDurationSeconds / totalSessions),
+  };
+}
+
+function computeGrowthPct(current: number, previous: number): number {
+  return previous > 0 ? Math.round(((current - previous) / previous) * 100) : 0;
 }
 
 /**
@@ -147,31 +161,13 @@ export async function getAnalyticsOverviewMetrics(
   const currentCondition = buildAnalyticsFilterConditions(siteId, bounds.start, bounds.end, filters);
   const previousCondition = buildAnalyticsFilterConditions(siteId, bounds.previousStart, bounds.previousEnd, filters);
 
-  const currentHits = db
-    .select({ count: sql<number>`count(*)` })
-    .from(analytics)
-    .where(currentCondition)
-    .get()?.count || 0;
+  const currentHits = db.select({ count: sql<number>`count(*)` }).from(analytics).where(currentCondition).get()?.count || 0;
+  const previousHits = db.select({ count: sql<number>`count(*)` }).from(analytics).where(previousCondition).get()?.count || 0;
+  const currentVisitors =
+    db.select({ count: sql<number>`count(distinct ip_hash)` }).from(analytics).where(currentCondition).get()?.count || 0;
+  const previousVisitors =
+    db.select({ count: sql<number>`count(distinct ip_hash)` }).from(analytics).where(previousCondition).get()?.count || 0;
 
-  const previousHits = db
-    .select({ count: sql<number>`count(*)` })
-    .from(analytics)
-    .where(previousCondition)
-    .get()?.count || 0;
-
-  const currentVisitors = db
-    .select({ count: sql<number>`count(distinct ip_hash)` })
-    .from(analytics)
-    .where(currentCondition)
-    .get()?.count || 0;
-
-  const previousVisitors = db
-    .select({ count: sql<number>`count(distinct ip_hash)` })
-    .from(analytics)
-    .where(previousCondition)
-    .get()?.count || 0;
-
-  // Session-based bounce rate and duration
   const sessionStats = db
     .select({
       sessionKey: sql<string>`coalesce(nullif(session_id, ''), ip_hash)`,
@@ -184,41 +180,21 @@ export async function getAnalyticsOverviewMetrics(
     .groupBy(sql`coalesce(nullif(session_id, ''), ip_hash)`)
     .all();
 
-  const totalSessions = sessionStats.length;
-  let bouncedSessions = 0;
-  let totalDurationSeconds = 0;
-
-  for (const s of sessionStats) {
-    if (s.pageviews === 1 || s.maxDuration < 10) {
-      bouncedSessions++;
-    }
-    totalDurationSeconds += s.maxDuration;
-  }
-
-  const bounceRate = totalSessions > 0 ? Math.round((bouncedSessions / totalSessions) * 100) : 0;
-  const avgDurationSeconds = totalSessions > 0 ? Math.round(totalDurationSeconds / totalSessions) : 0;
-
+  const { bounceRate, avgDurationSeconds } = summarizeSessionMetrics(sessionStats);
   const avgLoadTimeResult = db
-    .select({
-      avgLoad: sql<number>`coalesce(avg(load_time), 0)`,
-    })
+    .select({ avgLoad: sql<number>`coalesce(avg(load_time), 0)` })
     .from(analytics)
     .where(and(currentCondition, sql`load_time IS NOT NULL AND load_time > 0`))
     .get();
-
-  const avgLoadTime = Math.round(avgLoadTimeResult?.avgLoad || 0);
-
-  const viewsGrowth = previousHits > 0 ? Math.round(((currentHits - previousHits) / previousHits) * 100) : 0;
-  const visitorsGrowth = previousVisitors > 0 ? Math.round(((currentVisitors - previousVisitors) / previousVisitors) * 100) : 0;
 
   return {
     totalViews: currentHits,
     uniqueVisitors: currentVisitors,
     bounceRate,
     avgDurationSeconds,
-    avgLoadTime,
-    viewsGrowth,
-    visitorsGrowth,
+    avgLoadTime: Math.round(avgLoadTimeResult?.avgLoad || 0),
+    viewsGrowth: computeGrowthPct(currentHits, previousHits),
+    visitorsGrowth: computeGrowthPct(currentVisitors, previousVisitors),
     bounds,
   };
 }

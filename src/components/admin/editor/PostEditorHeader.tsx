@@ -11,13 +11,14 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import { POST_STATUS, type PostStatus } from "@/lib/config/constants";
 
 /** Props for {@link PostEditorHeader}. */
 export interface PostEditorHeaderProps {
   mode: "post" | "page";
-  status: "draft" | "published" | "scheduled" | "archived";
+  status: PostStatus;
   wordCount: number;
   readingTime: number;
   showInspector: boolean;
@@ -65,9 +66,7 @@ export function PostEditorHeader({
 
         <span className="w-px h-4 bg-border" />
 
-        <Badge variant={status === "published" ? "success" : status === "archived" ? "outline" : "warning"}>
-          {status === "published" ? t("published") : status === "archived" ? t("archived") : t("draft")}
-        </Badge>
+        <StatusBadge status={status} />
 
         <span className="text-[11px] text-text-muted hidden md:inline-flex items-center gap-1 font-mono">
           <Clock className="w-3 h-3" />
@@ -97,7 +96,7 @@ export function PostEditorHeader({
           {t("aiAssistant")}
         </Button>
 
-        {status !== "published" && status !== "scheduled" && (
+        {status !== POST_STATUS.PUBLISHED && status !== POST_STATUS.SCHEDULED && (
           <Button
             variant="outline"
             size="sm"
@@ -115,18 +114,18 @@ export function PostEditorHeader({
           onClick={onSavePrimary}
           loading={isPending}
           icon={
-            status === "scheduled" ? (
+            status === POST_STATUS.SCHEDULED ? (
               <CalendarClock className="w-3.5 h-3.5" />
             ) : (
               <CheckCircle2 className="w-3.5 h-3.5" />
             )
           }
         >
-          {status === "published"
+          {status === POST_STATUS.PUBLISHED
             ? t("saveChanges")
-            : status === "scheduled"
+            : status === POST_STATUS.SCHEDULED
             ? t("schedulePublication")
-            : status === "archived"
+            : status === POST_STATUS.ARCHIVED
             ? t("saveArchived")
             : t("publish")}
         </Button>

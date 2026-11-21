@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { posts } from "@/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
-import { getPublicPostCondition } from "@/lib/db/scheduled";
 import {
   extractReadablePostText,
   formatPostUrlForLocale,
   resolveLlmsContext,
 } from "@/lib/feeds/llms";
+import { getCachedLlmsFullPosts } from "@/lib/queries/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -23,25 +20,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  const db = getDb();
-  const { site, siteName, baseUrl } = ctx;
-
-  const topPosts = db
-    .select({
-      title: posts.title,
-      slug: posts.slug,
-      locale: posts.locale,
-      publishedAt: posts.publishedAt,
-      excerpt: posts.excerpt,
-      contentMd: posts.contentMd,
-      contentHtml: posts.contentHtml,
-      contentFormat: posts.contentFormat,
-    })
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.publishedAt))
-    .limit(20)
-    .all();
+  const { site, siteName, baseUrl, host } = ctx;
+  const topPosts = await getCachedLlmsFullPosts(site.id, host);
 
   let text = `# ${siteName} — Full Content Index\n\n`;
 

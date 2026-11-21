@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth/session";
+import { ROLES } from "@/lib/config/constants";
 import { getAdminSite } from "@/lib/tenant";
 import { getAllSites } from "@/actions/sites";
 import { redirect } from "@/i18n/routing";
@@ -53,7 +54,7 @@ export default async function AdminLayout({
 
   // Only a super administrator has a global view. Every other role is bound
   // to the site stored in its own account, regardless of stale cookies.
-  const isGlobalUser = user.role === "super_admin";
+  const isGlobalUser = user.role === ROLES.SUPER_ADMIN;
   const accessibleSites = isGlobalUser
     ? allSites
     : allSites.filter((s) => s.id === user.siteId);
@@ -84,7 +85,7 @@ export default async function AdminLayout({
     logoUrl: s.logoUrl || null,
   }));
 
-  const canManageSites = user.role === "super_admin";
+  const canManageSites = user.role === ROLES.SUPER_ADMIN;
 
   return (
     <AdminClientLayout

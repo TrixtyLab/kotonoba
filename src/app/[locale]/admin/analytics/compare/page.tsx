@@ -1,14 +1,9 @@
 import { getTranslations } from "next-intl/server";
 import { getAdminSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
-import { sql, desc } from "drizzle-orm";
 import { GitCompare, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import {
-  getDateRangeBounds,
-  buildAnalyticsFilterConditions,
-} from "@/lib/analytics/query";
+import { getDateRangeBounds } from "@/lib/analytics/query";
+import { getAnalyticsComparisonData } from "@/lib/queries/analytics-overview";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
 
 interface PageProps {
@@ -53,49 +48,18 @@ export default async function AnalyticsComparePage({
   if (!site) notFound();
 
   const bounds = getDateRangeBounds(sp.range);
-  const conditionA = buildAnalyticsFilterConditions(site.id, bounds.start, bounds.end, sp);
-  const conditionB = buildAnalyticsFilterConditions(site.id, bounds.previousStart, bounds.previousEnd, sp);
-  const db = getDb();
-
-  // Metric A
-  const hitsA = db.select({ count: sql<number>`count(*)` }).from(analytics).where(conditionA).get()?.count || 0;
-  const visitorsA = db.select({ count: sql<number>`count(distinct ip_hash)` }).from(analytics).where(conditionA).get()?.count || 0;
-
-  // Metric B
-  const hitsB = db.select({ count: sql<number>`count(*)` }).from(analytics).where(conditionB).get()?.count || 0;
-  const visitorsB = db.select({ count: sql<number>`count(distinct ip_hash)` }).from(analytics).where(conditionB).get()?.count || 0;
-
-  // Sessions A
-  const sessionsA = db
-    .select({
-      pageviews: sql<number>`count(*)`,
-      maxDuration: sql<number>`coalesce(max(time_on_page), 0)`,
-    })
-    .from(analytics)
-    .where(conditionA)
-    .groupBy(sql`coalesce(nullif(session_id, ''), ip_hash)`)
-    .all();
-
-  const totalSessionsA = sessionsA.length;
-  const bouncedA = sessionsA.filter((s) => s.pageviews === 1 || s.maxDuration < 10).length;
-  const bounceRateA = totalSessionsA > 0 ? Math.round((bouncedA / totalSessionsA) * 100) : 0;
-  const avgDurationA = totalSessionsA > 0 ? Math.round(sessionsA.reduce((acc, s) => acc + s.maxDuration, 0) / totalSessionsA) : 0;
-
-  // Sessions B
-  const sessionsB = db
-    .select({
-      pageviews: sql<number>`count(*)`,
-      maxDuration: sql<number>`coalesce(max(time_on_page), 0)`,
-    })
-    .from(analytics)
-    .where(conditionB)
-    .groupBy(sql`coalesce(nullif(session_id, ''), ip_hash)`)
-    .all();
-
-  const totalSessionsB = sessionsB.length;
-  const bouncedB = sessionsB.filter((s) => s.pageviews === 1 || s.maxDuration < 10).length;
-  const bounceRateB = totalSessionsB > 0 ? Math.round((bouncedB / totalSessionsB) * 100) : 0;
-  const avgDurationB = totalSessionsB > 0 ? Math.round(sessionsB.reduce((acc, s) => acc + s.maxDuration, 0) / totalSessionsB) : 0;
+  const {
+    hitsA,
+    visitorsA,
+    hitsB,
+    visitorsB,
+    bounceRateA,
+    avgDurationA,
+    bounceRateB,
+    avgDurationB,
+    pathsA,
+    pathsBMap,
+  } = getAnalyticsComparisonData(site.id, bounds, sp);
 
   const calcChange = (curr: number, prev: number): number => {
     if (prev === 0) return curr > 0 ? 100 : 0;
@@ -128,28 +92,6 @@ export default async function AnalyticsComparePage({
       change: calcChange(avgDurationA, avgDurationB),
     },
   ];
-
-  // Paths Comparison
-  const pathsA = db
-    .select({ path: analytics.path, count: sql<number>`count(*)` })
-    .from(analytics)
-    .where(conditionA)
-    .groupBy(analytics.path)
-    .orderBy(desc(sql`count(*)`))
-    .limit(15)
-    .all();
-
-  const pathsBMap = new Map<string, number>();
-  const pathsB = db
-    .select({ path: analytics.path, count: sql<number>`count(*)` })
-    .from(analytics)
-    .where(conditionB)
-    .groupBy(analytics.path)
-    .all();
-
-  for (const p of pathsB) {
-    pathsBMap.set(p.path, p.count);
-  }
 
   const pathComparisonRows: PathComparisonRow[] = pathsA.map((p) => {
     const viewsB = pathsBMap.get(p.path) || 0;

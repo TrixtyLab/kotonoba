@@ -1,12 +1,11 @@
-import { getPublicSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { categories } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
 import {
-  getLatestPublicPostsSummary,
-  getPaginatedPublicPosts,
+  getCachedLatestPublicPostsSummary,
+  getCachedPaginatedPublicPosts,
   parsePageNumber,
 } from "@/lib/queries/public-posts";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { LinePagination } from "@/components/blog/LinePagination";
@@ -16,7 +15,7 @@ import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/utils/media";
-import { getSidebarBanners } from "@/lib/banners";
+import { getCachedSidebarBanners } from "@/lib/banners";
 import { getDefaultSiteUrl } from "@/lib/config/env";
 
 /**
@@ -91,14 +90,19 @@ export default async function BlogHomePage({
     );
   }
 
-  const db = getDb();
-  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
-  const paginated = getPaginatedPublicPosts({
-    siteId: site.id,
-    page: requestedPage,
-    pageSize: 5,
-  });
-  const latestPosts = getLatestPublicPostsSummary(site.id, 5);
+  const host = await getRequestNormalizedHost();
+  const [allCategories, paginated, latestPosts, sidebarBanners] = await Promise.all([
+    getCachedSiteCategories(site.id, locale, host),
+    getCachedPaginatedPublicPosts({
+      siteId: site.id,
+      locale,
+      host,
+      page: requestedPage,
+      pageSize: DEFAULT_PUBLIC_PAGE_SIZE,
+    }),
+    getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+    getCachedSidebarBanners(site.id, host),
+  ]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
@@ -125,7 +129,7 @@ export default async function BlogHomePage({
           site={site}
           latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={await getSidebarBanners(site.id)}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>

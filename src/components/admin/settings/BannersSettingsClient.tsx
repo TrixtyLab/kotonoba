@@ -6,9 +6,9 @@ import { saveSiteSettings } from "@/actions/settings";
 import { MediaPickerModal } from "@/components/admin/MediaPickerModal";
 import { HeaderBannerSection } from "@/components/admin/settings/HeaderBannerSection";
 import { SidebarBannersSection } from "@/components/admin/settings/SidebarBannersSection";
-import { Button } from "@/components/ui/Button";
+import { SettingsForm } from "@/components/admin/settings/SettingsForm";
 import { useToast } from "@/components/ui/Toast";
-import { Image as ImageIcon, Save } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
 import type { SiteBannersConfig, SidebarBannerItem } from "@/lib/banners";
 import { generateId } from "@/lib/utils/slug";
 
@@ -29,6 +29,48 @@ export interface BannersSettingsClientProps {
  * @param {BannersSettingsClientProps} props - Component properties configuring site ID and initial banner states.
  * @returns {React.JSX.Element} React JSX banner settings management form.
  */
+function extractDefaultHeaderDefaults(def: NonNullable<SiteBannersConfig["headerBanner"]>["defaultBanner"]) {
+  return {
+    defaultImage: def?.imageUrl || "",
+    defaultLink: def?.linkUrl || "",
+    defaultTarget: def?.target || ("_blank" as const),
+    defaultAlt: def?.alt || "",
+  };
+}
+
+function extractScheduledHeaderDefaults(sched: NonNullable<SiteBannersConfig["headerBanner"]>["scheduledCampaign"]) {
+  return {
+    scheduledImage: sched?.imageUrl || "",
+    scheduledLink: sched?.linkUrl || "",
+    scheduledTarget: sched?.target || ("_blank" as const),
+    scheduledAlt: sched?.alt || "",
+    startDate: sched?.startDate || "",
+    endDate: sched?.endDate || "",
+  };
+}
+
+function extractInitialBannerDefaults(initialBanners: SiteBannersConfig) {
+  return {
+    ...extractDefaultHeaderDefaults(initialBanners.headerBanner?.defaultBanner ?? null),
+    ...extractScheduledHeaderDefaults(initialBanners.headerBanner?.scheduledCampaign ?? null),
+    scheduleEnabled: Boolean(initialBanners.headerBanner?.scheduleEnabled),
+    sidebarBanners: initialBanners.sidebarBanners || [],
+  };
+}
+
+function resolveCampaignStatus(scheduleEnabled: boolean, startDate: string, endDate: string, nowMs: number) {
+  if (!scheduleEnabled) return "disabled" as const;
+  if (startDate.trim()) {
+    const start = new Date(startDate).getTime();
+    if (!isNaN(start) && nowMs < start) return "scheduled" as const;
+  }
+  if (endDate.trim()) {
+    const end = new Date(endDate).getTime();
+    if (!isNaN(end) && nowMs > end) return "expired" as const;
+  }
+  return "active" as const;
+}
+
 export function BannersSettingsClient({
   siteId,
   initialBanners,
@@ -37,45 +79,22 @@ export function BannersSettingsClient({
   const tc = useTranslations("common");
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
+  const defaults = React.useMemo(() => extractInitialBannerDefaults(initialBanners), [initialBanners]);
 
-  const [defaultImage, setDefaultImage] = useState(
-    initialBanners.headerBanner?.defaultBanner?.imageUrl || ""
-  );
-  const [defaultLink, setDefaultLink] = useState(
-    initialBanners.headerBanner?.defaultBanner?.linkUrl || ""
-  );
-  const [defaultTarget, setDefaultTarget] = useState<"_blank" | "_self">(
-    initialBanners.headerBanner?.defaultBanner?.target || "_blank"
-  );
-  const [defaultAlt, setDefaultAlt] = useState(
-    initialBanners.headerBanner?.defaultBanner?.alt || ""
-  );
+  const [defaultImage, setDefaultImage] = useState(defaults.defaultImage);
+  const [defaultLink, setDefaultLink] = useState(defaults.defaultLink);
+  const [defaultTarget, setDefaultTarget] = useState<"_blank" | "_self">(defaults.defaultTarget);
+  const [defaultAlt, setDefaultAlt] = useState(defaults.defaultAlt);
 
-  const [scheduleEnabled, setScheduleEnabled] = useState(
-    initialBanners.headerBanner?.scheduleEnabled || false
-  );
-  const [scheduledImage, setScheduledImage] = useState(
-    initialBanners.headerBanner?.scheduledCampaign?.imageUrl || ""
-  );
-  const [scheduledLink, setScheduledLink] = useState(
-    initialBanners.headerBanner?.scheduledCampaign?.linkUrl || ""
-  );
-  const [scheduledTarget, setScheduledTarget] = useState<"_blank" | "_self">(
-    initialBanners.headerBanner?.scheduledCampaign?.target || "_blank"
-  );
-  const [scheduledAlt, setScheduledAlt] = useState(
-    initialBanners.headerBanner?.scheduledCampaign?.alt || ""
-  );
-  const [startDate, setStartDate] = useState(
-    initialBanners.headerBanner?.scheduledCampaign?.startDate || ""
-  );
-  const [endDate, setEndDate] = useState(
-    initialBanners.headerBanner?.scheduledCampaign?.endDate || ""
-  );
+  const [scheduleEnabled, setScheduleEnabled] = useState(defaults.scheduleEnabled);
+  const [scheduledImage, setScheduledImage] = useState(defaults.scheduledImage);
+  const [scheduledLink, setScheduledLink] = useState(defaults.scheduledLink);
+  const [scheduledTarget, setScheduledTarget] = useState<"_blank" | "_self">(defaults.scheduledTarget);
+  const [scheduledAlt, setScheduledAlt] = useState(defaults.scheduledAlt);
+  const [startDate, setStartDate] = useState(defaults.startDate);
+  const [endDate, setEndDate] = useState(defaults.endDate);
 
-  const [sidebarBanners, setSidebarBanners] = useState<SidebarBannerItem[]>(
-    initialBanners.sidebarBanners || []
-  );
+  const [sidebarBanners, setSidebarBanners] = useState<SidebarBannerItem[]>(defaults.sidebarBanners);
 
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [mediaPickerTarget, setMediaPickerTarget] = useState<
@@ -86,19 +105,10 @@ export function BannersSettingsClient({
   >(null);
 
   const [referenceNowMs] = useState(() => Date.now());
-
-  const campaignStatus = React.useMemo(() => {
-    if (!scheduleEnabled) return "disabled";
-    if (startDate && startDate.trim()) {
-      const start = new Date(startDate).getTime();
-      if (!isNaN(start) && referenceNowMs < start) return "scheduled";
-    }
-    if (endDate && endDate.trim()) {
-      const end = new Date(endDate).getTime();
-      if (!isNaN(end) && referenceNowMs > end) return "expired";
-    }
-    return "active";
-  }, [scheduleEnabled, startDate, endDate, referenceNowMs]);
+  const campaignStatus = React.useMemo(
+    () => resolveCampaignStatus(scheduleEnabled, startDate, endDate, referenceNowMs),
+    [scheduleEnabled, startDate, endDate, referenceNowMs]
+  );
 
   /**
    * Opens the media library modal to select an image for the permanent default header banner.
@@ -238,9 +248,7 @@ export function BannersSettingsClient({
    * @param {React.FormEvent} e - Form submission event.
    * @returns {void}
    */
-  function handleSave(e: React.FormEvent): void {
-    e.preventDefault();
-
+  function handleSave(): void {
     startTransition(async () => {
       const validSidebarBanners = sidebarBanners.filter(
         (b) => b.imageUrl && b.imageUrl.trim().length > 0
@@ -271,17 +279,15 @@ export function BannersSettingsClient({
   }
 
   return (
-    <form onSubmit={handleSave} className="space-y-10">
-      <div>
-        <h2 className="text-lg font-bold text-text tracking-tight flex items-center gap-2">
-          <ImageIcon className="w-5 h-5 text-accent" />
-          <span>{t("banners")}</span>
-        </h2>
-        <p className="text-xs text-text-muted mt-1">
-          {t("bannersDesc")}
-        </p>
-      </div>
-
+    <SettingsForm
+      title={t("banners")}
+      description={t("bannersDesc")}
+      icon={<ImageIcon className="w-5 h-5 text-accent" />}
+      onSave={handleSave}
+      saveLabel={isPending ? tc("saving") : tc("saveChanges")}
+      isPending={isPending}
+      maxWidthClass="max-w-4xl"
+    >
       <HeaderBannerSection
         defaultImage={defaultImage}
         onChangeDefaultImage={setDefaultImage}
@@ -319,26 +325,6 @@ export function BannersSettingsClient({
         onOpenMediaPicker={openMediaPickerForSidebar}
       />
 
-      <div className="flex justify-end pt-4">
-        <Button
-          type="submit"
-          disabled={isPending}
-          className="flex items-center gap-2 px-6"
-        >
-          {isPending ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>{tc("saving")}</span>
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              <span>{tc("saveChanges")}</span>
-            </>
-          )}
-        </Button>
-      </div>
-
       <MediaPickerModal
         isOpen={mediaPickerOpen}
         onClose={() => {
@@ -347,6 +333,6 @@ export function BannersSettingsClient({
         }}
         onSelect={handleMediaSelect}
       />
-    </form>
+    </SettingsForm>
   );
 }

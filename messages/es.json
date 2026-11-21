@@ -81,7 +81,11 @@
     "city": "Ciudad",
     "qrCode": "Código QR",
     "diagramSyntaxError": "Error de sintaxis del diagrama:",
-    "renderingDiagram": "Renderizando diagrama…"
+    "renderingDiagram": "Renderizando diagrama…",
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando más…",
+    "paginationLabel": "Navegación por páginas",
+    "downloadMyData": "Exportar mis datos"
   },
   "blog": {
     "top": "Inicio",
@@ -1089,5 +1093,17 @@
     "errorDomain": "Ingresa el dominio o host de destino.",
     "errorCategory": "Ingresa el nombre de la primera categoría.",
     "errorGeneric": "Error al inicializar el sitio."
+  },
+  "errors": {
+    "title": "Ocurrió un error inesperado",
+    "description": "Una falla imprevista interrumpió esta vista. Puedes reintentar de forma segura o volver al inicio.",
+    "adminTitle": "Error en el panel administrativo",
+    "adminDescription": "No fue posible cargar esta sección del panel. Reintenta o regresa al resumen principal.",
+    "retry": "Reintentar",
+    "backHome": "Volver al blog",
+    "backAdmin": "Volver al panel",
+    "digestLabel": "Referencia",
+    "notFoundTitle": "Página no encontrada",
+    "notFoundDescription": "El contenido o la ruta solicitada no existe o ya no está disponible en este sitio."
   }
 }

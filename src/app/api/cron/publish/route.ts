@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ROLES } from "@/lib/config/constants";
 import { getEnvConfig } from "@/lib/config/env";
+import { isAnalyticsPruningEnabled } from "@/lib/config/features";
 import { getCurrentUser } from "@/lib/auth/session";
 import { publishScheduledPosts } from "@/lib/db/scheduled";
 import { aggregateDailyAnalytics, pruneExpiredAnalytics } from "@/lib/analytics/retention";
 import { revalidatePostPaths } from "@/lib/cache/revalidate";
 import { getRequestId, verifyBearerSecret } from "@/lib/http/request";
 import { logError, logEvent } from "@/lib/observability/logger";
+import { notifyCriticalAlert } from "@/lib/observability/alerts";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +28,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let authorized = verifyBearerSecret(req.headers, cronSecret);
   if (!authorized) {
     const user = await getCurrentUser();
-    if (user?.exists && user.role === "super_admin") {
+    if (user?.exists && user.role === ROLES.SUPER_ADMIN) {
       authorized = true;
     }
   }
@@ -47,10 +50,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const result = await publishScheduledPosts(siteId);
     const aggregatedDailyCount = aggregateDailyAnalytics({ siteId });
-    const prunedAnalyticsCount = pruneExpiredAnalytics();
+    const prunedAnalyticsCount = isAnalyticsPruningEnabled() ? pruneExpiredAnalytics() : 0;
 
     if (result.publishedPostsCount > 0 || result.publishedPagesCount > 0) {
-      revalidatePostPaths();
+      revalidatePostPaths(null, null, siteId);
     }
 
     logEvent("info", "cron.publish.completed", {
@@ -77,6 +80,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       siteId,
       durationMs: Date.now() - startedAt,
     });
+    void notifyCriticalAlert("cron.publish.failed", { requestId, siteId });
     return NextResponse.json({ error: "Scheduled publish run failed" }, { status: 500 });
   }
 }

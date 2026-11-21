@@ -5,7 +5,10 @@
  * @param {string} [locale='en'] - BCP 47 language tag (e.g., 'en', 'es') for internationalization.
  * @returns {string} Formatted date string (e.g., 'August 18, 2026' or '18 de agosto de 2026').
  */
-export function formatDate(date: Date, locale = "en"): string {
+export function formatDate(date: Date | string, locale = "en"): string {
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "";
+
   const opts: Intl.DateTimeFormatOptions = {
     year: "numeric",
     month: "long",
@@ -13,8 +16,8 @@ export function formatDate(date: Date, locale = "en"): string {
   };
 
   try {
-    return new Intl.DateTimeFormat(locale, opts).format(date);
+    return new Intl.DateTimeFormat(locale, opts).format(parsed);
   } catch {
-    return new Intl.DateTimeFormat("en", opts).format(date);
+    return new Intl.DateTimeFormat("en", opts).format(parsed);
   }
 }

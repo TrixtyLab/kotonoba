@@ -1,9 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { getAdminSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
 import { notFound } from "next/navigation";
-import { sql, desc } from "drizzle-orm";
 import {
   Laptop,
   Globe,
@@ -11,10 +8,8 @@ import {
   Languages,
   Maximize2,
 } from "lucide-react";
-import {
-  getDateRangeBounds,
-  buildAnalyticsFilterConditions,
-} from "@/lib/analytics/query";
+import { getDateRangeBounds } from "@/lib/analytics/query";
+import { getAnalyticsVisitorsData } from "@/lib/queries/analytics-traffic";
 import { BarChart, BarChartItem } from "@/components/admin/analytics/BarChart";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
 import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
@@ -59,13 +54,8 @@ export default async function AnalyticsVisitorsPage({
   if (!site) notFound();
 
   const bounds = getDateRangeBounds(sp.range);
-  const filterCondition = buildAnalyticsFilterConditions(
-    site.id,
-    bounds.start,
-    bounds.end,
-    sp
-  );
-  const db = getDb();
+  const { deviceHits, osHits, browserHits, langHits, screenHits, geoHits } =
+    getAnalyticsVisitorsData(site.id, bounds, sp);
 
   const getFilterHref = (key: string, val: string) => {
     const params = new URLSearchParams();
@@ -79,17 +69,6 @@ export default async function AnalyticsVisitorsPage({
     return `/admin/analytics/visitors${qs ? `?${qs}` : ""}`;
   };
 
-  // Devices
-  const deviceHits = db
-    .select({
-      device: analytics.device,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.device)
-    .all();
-
   const totalDeviceViews = deviceHits.reduce((acc, curr) => acc + curr.count, 0);
   const deviceItems: BarChartItem[] = deviceHits.map((d) => ({
     label: t(d.device === "mobile" ? "mobile" : d.device === "tablet" ? "tablet" : "desktop"),
@@ -98,19 +77,6 @@ export default async function AnalyticsVisitorsPage({
     color: d.device === "mobile" ? "#10b981" : d.device === "tablet" ? "#8b5cf6" : "#3b82f6",
     href: d.device ? getFilterHref("device", d.device) : undefined,
   }));
-
-  // Operating Systems
-  const osHits = db
-    .select({
-      os: analytics.os,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.os)
-    .orderBy(desc(sql`count(*)`))
-    .limit(6)
-    .all();
 
   const totalOsViews = osHits.reduce((acc, curr) => acc + curr.count, 0);
   const osItems: BarChartItem[] = osHits.map((o) => ({
@@ -121,19 +87,6 @@ export default async function AnalyticsVisitorsPage({
     href: o.os && o.os !== "Other" ? getFilterHref("os", o.os) : undefined,
   }));
 
-  // Browsers
-  const browserHits = db
-    .select({
-      browser: analytics.browser,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.browser)
-    .orderBy(desc(sql`count(*)`))
-    .limit(6)
-    .all();
-
   const totalBrowserViews = browserHits.reduce((acc, curr) => acc + curr.count, 0);
   const browserItems: BarChartItem[] = browserHits.map((b) => ({
     label: b.browser || t("otherBrowser"),
@@ -143,19 +96,6 @@ export default async function AnalyticsVisitorsPage({
     href: b.browser && b.browser !== "Other" ? getFilterHref("browser", b.browser) : undefined,
   }));
 
-  // Languages
-  const langHits = db
-    .select({
-      language: analytics.language,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.language)
-    .orderBy(desc(sql`count(*)`))
-    .limit(6)
-    .all();
-
   const totalLangViews = langHits.reduce((acc, curr) => acc + curr.count, 0);
   const langItems: BarChartItem[] = langHits.map((l) => ({
     label: l.language || t("globalUnknown"),
@@ -164,38 +104,10 @@ export default async function AnalyticsVisitorsPage({
     color: "#14b8a6",
   }));
 
-  // Screen Resolutions
-  const screenHits = db
-    .select({
-      width: analytics.screenWidth,
-      height: analytics.screenHeight,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(sql`${filterCondition} AND screen_width IS NOT NULL AND screen_height IS NOT NULL`)
-    .groupBy(analytics.screenWidth, analytics.screenHeight)
-    .orderBy(desc(sql`count(*)`))
-    .limit(8)
-    .all();
-
   const screenRows: ScreenRow[] = screenHits.map((s) => ({
     resolution: `${s.width} × ${s.height}`,
     views: s.count,
   }));
-
-  // Countries & Cities
-  const geoHits = db
-    .select({
-      country: analytics.country,
-      city: analytics.city,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.country, analytics.city)
-    .orderBy(desc(sql`count(*)`))
-    .limit(20)
-    .all();
 
   const geoRows: GeoRow[] = geoHits.map((g) => ({
     country: g.country || t("globalUnknown"),

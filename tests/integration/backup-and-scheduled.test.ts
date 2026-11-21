@@ -5,7 +5,8 @@ import JSZip from "jszip";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createTempDb, type TempDbContext } from "../helpers/db";
 import { sites, users, posts, settings, notificationOutbox } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { runMigrations } from "@/lib/db/migrate";
 import { createSiteBackupZip } from "@/lib/backup/export";
 import { restoreSiteBackupZip } from "@/lib/backup/import";
 import { encryptBackupArchive, decryptBackupArchive } from "@/lib/backup/crypto";
@@ -129,7 +130,11 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
 
     const restoredPosts = db.select().from(posts).where(eq(posts.siteId, "site-b")).all();
     expect(restoredPosts).toHaveLength(1);
-    expect(restoredPosts[0].contentMd).not.toContain("<script");
+    expect(restoredPosts[0].contentFormat).toBe("html");
+    expect(restoredPosts[0].content).toContain("<p>Hello A</p>");
+    expect(restoredPosts[0].contentMd).toBe("");
+    expect(restoredPosts[0].contentHtml).toContain("<p>Hello A</p>");
+    expect(restoredPosts[0].contentHtml).not.toContain("<script");
   });
 
   it("rejects zip-slip paths and checksum tampering without modifying the database", async () => {
@@ -281,5 +286,45 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
 
     const futurePost = db.select().from(posts).where(eq(posts.id, "future-post")).get();
     expect(futurePost?.status).toBe("scheduled");
+  });
+
+  it("backfills unified content column idempotently across legacy HTML and Markdown rows", () => {
+    ctx = createTempDb("kotonoba-content-backfill-int");
+    const { db } = ctx;
+    const now = new Date();
+
+    db.insert(sites).values({ id: "s1", domain: "s1.test", name: "S1", createdAt: now, updatedAt: now }).run();
+    db.insert(users)
+      .values({
+        id: "u1",
+        email: "u@s1.test",
+        passwordHash: "hash",
+        displayName: "U",
+        role: "admin",
+        siteId: "s1",
+        tokenVersion: 1,
+        createdAt: now,
+      })
+      .run();
+
+    db.run(sql`
+      INSERT INTO posts (id, site_id, author_id, title, slug, content, content_md, content_html, content_format, status, created_at, updated_at)
+      VALUES
+        ('legacy-html', 's1', 'u1', 'Legacy HTML', 'legacy-html', '', '<p>Bad md</p>', '<p>Legacy HTML</p>', 'html', 'published', ${now.getTime()}, ${now.getTime()}),
+        ('legacy-md', 's1', 'u1', 'Legacy MD', 'legacy-md', '', '# Legacy Heading', '', 'markdown', 'published', ${now.getTime()}, ${now.getTime()})
+    `);
+
+    runMigrations(db);
+    runMigrations(db);
+
+    const htmlRow = db.select().from(posts).where(eq(posts.id, "legacy-html")).get();
+    expect(htmlRow?.contentFormat).toBe("html");
+    expect(htmlRow?.content).toBe("<p>Legacy HTML</p>");
+    expect(htmlRow?.contentMd).toBe("");
+
+    const mdRow = db.select().from(posts).where(eq(posts.id, "legacy-md")).get();
+    expect(mdRow?.contentFormat).toBe("markdown");
+    expect(mdRow?.content).toBe("# Legacy Heading");
+    expect(mdRow?.contentMd).toBe("# Legacy Heading");
   });
 });
