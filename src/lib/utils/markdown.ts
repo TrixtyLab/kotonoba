@@ -41,16 +41,23 @@ export function renderPostContent(rawContent: string, options?: RenderContentOpt
 }
 
 function decodeHtmlEntities(raw: string): string {
-  return raw
+  let value = raw
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&");
+
+  let previous: string;
+  do {
+    previous = value;
+    value = value.replace(/<[^>]+>/g, "");
+  } while (value !== previous);
+
+  return value;
 }
 
 /**
