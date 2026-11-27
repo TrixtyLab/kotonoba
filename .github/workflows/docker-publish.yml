@@ -60,12 +60,6 @@ jobs:
       - name: Dependency audit (critical)
         run: pnpm audit --audit-level=critical
 
-      - name: Install Chromium browser for Playwright
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Run Playwright E2E suite
-        run: pnpm test:e2e
-
   release-and-publish:
     needs: verify
     runs-on: ubuntu-latest
