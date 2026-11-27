@@ -193,12 +193,22 @@ function buildVideoEmbed(url: string): EmbedInfo | null {
   };
 }
 
+function stripHtmlTagsFully(input: string): string {
+  let current = input;
+  let previous: string;
+  do {
+    previous = current;
+    current = current.replace(/<[^>]+>/g, "");
+  } while (current !== previous);
+  return current;
+}
+
 function extractDirectiveTarget(clean: string): string {
   const iframeSrcMatch = clean.match(/<iframe[^>]*src=["']([^"']+)["'][^>]*>/i);
   if (iframeSrcMatch) return iframeSrcMatch[1];
   const linkHrefMatch = clean.match(/<a[^>]*href=["']([^"']+)["'][^>]*>/i);
   if (linkHrefMatch) return linkHrefMatch[1];
-  return clean.replace(/<[^>]+>/g, "").trim();
+  return stripHtmlTagsFully(clean).trim();
 }
 
 const DIRECTIVE_HANDLERS: Record<
