@@ -9,6 +9,7 @@ import { normalizeMediaUrl } from "@/lib/utils/media";
 import { sanitizeCss, sanitizeNavLinksJson, sanitizeUrl } from "@/lib/security/sanitize";
 import { recordAuditEvent } from "@/lib/security/audit";
 import { ROLES } from "@/lib/config/constants";
+import { resolveBrandFont } from "@/lib/config/brand";
 
 /** Result payload returned from site creation, update, or deletion operations. */
 export type SiteMutationResponse =
@@ -54,7 +55,7 @@ export function createSiteService(actor: TokenPayload, data: SiteInput): SiteMut
       locale: locale || "en",
       theme: theme || "dark",
       primaryColor: primaryColor || "#6366f1",
-      fontFamily: fontFamily || "Inter",
+      fontFamily: resolveBrandFont(fontFamily).id,
       supportedLocales: supportedLocales || '["en"]',
       createdAt: now,
       updatedAt: now,
@@ -119,7 +120,7 @@ function buildSanitizedSiteColumnPatch(data: SiteInput, cleanDomain: string) {
     theme: data.theme || "dark",
     customCss: sanitizeCss(data.customCss),
     primaryColor: data.primaryColor || "#6366f1",
-    fontFamily: data.fontFamily || "Inter",
+    fontFamily: resolveBrandFont(data.fontFamily).id,
     navLinks: sanitizeNavLinksJson(data.navLinks),
     navAlignment: data.navAlignment || "left",
     supportedLocales: data.supportedLocales !== undefined ? data.supportedLocales : '["en"]',

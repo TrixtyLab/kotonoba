@@ -1,6 +1,6 @@
 "use server";
 
-import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
+import { ROLE_ALL } from "@/lib/auth/roles";
 import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidatePagePaths } from "@/lib/cache/revalidate";
 import { validate } from "@/lib/security/validate";
@@ -55,7 +55,7 @@ export async function updatePage(pageId: string, inputData: Partial<PageInput>):
 
 /** Deletes a custom static page and cascades analytics removal. */
 export async function deletePage(pageId: string): Promise<{ success: boolean; error?: string }> {
-  const { user } = await requireResourceAccess("page", pageId, ROLE_PUBLISHERS);
+  const { user } = await requireResourceAccess("page", pageId, ROLE_ALL);
   const res = deletePageService(user, pageId);
   if (!res.success) {
     return { success: false, error: res.error };

@@ -17,6 +17,26 @@ import { emptyStats, type RestoreOptions, type RestoreResult } from "./types";
 import { validateAndParseBackupZip } from "./zip-safety";
 
 /**
+ * Rejects restores that would cross tenant boundaries unless the caller explicitly allows it.
+ *
+ * @param sourceSiteId - Site recorded inside the archive manifest.
+ * @param targetSiteId - Site receiving the restore.
+ * @param options - Restore options including the cross-site override.
+ * @returns Human-readable denial reason, or `null` when the restore is permitted.
+ */
+function resolveCrossSiteRestoreError(
+  sourceSiteId: string | undefined,
+  targetSiteId: string,
+  options: RestoreOptions
+): string | null {
+  if (options.allowCrossSite) return null;
+  if (sourceSiteId === targetSiteId) return null;
+  return sourceSiteId
+    ? "Only super administrators can restore a backup exported from another site."
+    : "This backup does not identify its source site; only super administrators can restore it.";
+}
+
+/**
  * Restores a tenant site's database records and media assets from an encrypted Kotonoba backup archive.
  */
 export async function restoreSiteBackupZip(
@@ -34,6 +54,12 @@ export async function restoreSiteBackupZip(
 
   const parsed = await validateAndParseBackupZip(zipBuffer, envCfg);
   if (!parsed.ok) return { success: false, stats: emptyStats(), error: parsed.error };
+
+  const sourceSiteId = parsed.rawData.site?.id;
+  const crossSiteError = resolveCrossSiteRestoreError(sourceSiteId, targetSiteId, options);
+  if (crossSiteError) {
+    return { success: false, stats: emptyStats(), sourceSiteId, error: crossSiteError };
+  }
 
   const uploadDir = getRuntimeUploadDir();
   const siteUploadDir = path.resolve(/*turbopackIgnore: true*/ uploadDir, "sites", targetSiteId);
@@ -71,5 +97,5 @@ export async function restoreSiteBackupZip(
   await removeDirectoryQuietly(backupRoot);
   stats.media = stageResult.staged.length;
 
-  return { success: true, stats, snapshotPath };
+  return { success: true, stats, snapshotPath, sourceSiteId };
 }

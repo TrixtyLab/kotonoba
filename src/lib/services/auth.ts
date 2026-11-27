@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword } from "@/lib/auth/password";
+import { LOGIN_TIMING_PASSWORD_HASH, verifyPassword } from "@/lib/auth/password";
 import { validate } from "@/lib/security/validate";
 import { loginSchema, type LoginInput } from "@/lib/contracts";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
@@ -18,10 +18,12 @@ export async function authenticateWithPasswordService(
   clientIp: string
 ): Promise<{ response: AuthResponse; session?: SessionCookieSubject }> {
   const candidateEmail = typeof formData.email === "string" ? formData.email.toLowerCase().trim() : "";
-  const rate = checkRateLimit(`login:${clientIp}:${candidateEmail}`, RATE_LIMITS.auth);
-  if (!rate.allowed) {
+  const ipRate = checkRateLimit(`login:ip:${clientIp}`, RATE_LIMITS.auth);
+  const emailRate = checkRateLimit(`login:${clientIp}:${candidateEmail}`, RATE_LIMITS.auth);
+  if (!ipRate.allowed || !emailRate.allowed) {
+    const retryAfter = Math.max(ipRate.retryAfter, emailRate.retryAfter);
     return {
-      response: { success: false, error: `Too many login attempts. Please retry in ${rate.retryAfter} seconds.` },
+      response: { success: false, error: `Too many login attempts. Please retry in ${retryAfter} seconds.` },
     };
   }
 
@@ -36,6 +38,7 @@ export async function authenticateWithPasswordService(
   const user = db.select().from(users).where(eq(users.email, cleanEmail)).get();
 
   if (!user) {
+    await verifyPassword(LOGIN_TIMING_PASSWORD_HASH, password);
     recordAuditEvent({
       actorEmail: cleanEmail,
       action: "auth.login",

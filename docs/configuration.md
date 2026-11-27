@@ -65,7 +65,7 @@ Comprehensive reference for every environment variable (`src/lib/config/env.ts` 
 | `RETENTION_DAYS` *(host script only)* | Positive integer (days) | `30` | Prunes `.db.gz*` host backup snapshots older than this age in `scripts/backup.sh`. |
 | `REQUIRE_ENCRYPTION` *(host script only)* | `"true"` \| `"false"` | `"true"` | Causes `scripts/backup.sh` to abort cleanly when `BACKUP_ENCRYPTION_KEY` is missing. |
 | `BACKUP_INCLUDE_UPLOADS` *(host script only)* | `"true"` \| `"false"` | `"false"` | When `"true"`, `scripts/backup.sh` also archives local `UPLOAD_DIR` media files alongside the SQLite snapshot. |
-| `CONTAINER_NAME` *(host script only)* | Docker container name | Auto (`blog-app-blue`, `blog-app-green`, or `kotonoba`) | Overrides auto-detected Docker container targeted by `scripts/backup.sh`. |
+| `CONTAINER_NAME` *(host script only)* | Docker container name | `kotonoba` | Container that `scripts/backup.sh` runs the SQLite snapshot inside. |
 
 ---
 
@@ -73,20 +73,19 @@ Comprehensive reference for every environment variable (`src/lib/config/env.ts` 
 
 | Variable | Allowed Values / Format | Default | Purpose |
 | :--- | :--- | :--- | :--- |
-| `CRON_SECRET` | Random bearer token string (`16+` recommended) | Unset (`null`) | Required as `Authorization: Bearer <CRON_SECRET>` by `POST /api/cron/publish` (used by the Compose `scheduler` service) and accepted by `GET /api/metrics`. Unconfigured prod requests without a `super_admin` session fail closed with HTTP `503` on `/api/cron/publish` and `401` on `/api/metrics`. |
+| `CRON_SECRET` | Random bearer token string (`16+` recommended) | Unset (`null`) | Required as `Authorization: Bearer <CRON_SECRET>` by `POST /api/cron/publish` (called by an external scheduler) and accepted by `GET /api/metrics`. Unconfigured prod requests without a `super_admin` session fail closed with HTTP `503` on `/api/cron/publish` and `401` on `/api/metrics`. |
 | `ALERT_WEBHOOK_URL` | Public HTTPS URL | Unset (`null`) | Optional SSRF-validated webhook receiving coalesced critical server (`onRequestError`) and cron error notifications (`src/lib/observability/alerts.ts`). |
 | `ANALYTICS_RETENTION_DAYS` | Non-negative integer (days; `0` disables pruning) | `365` | Deletes raw `analytics` rows older than this threshold during cron runs after summarizing counts into `analytics_daily` via `aggregateDailyAnalytics()`. |
 
 ---
 
-### F. External Object Storage, Link Shortening & Compose Image
+### F. External Object Storage & Link Shortening
 
 | Variable | Allowed Values / Format | Default | Purpose |
 | :--- | :--- | :--- | :--- |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Cloudflare R2 credentials & optional CDN base URL | `""` | Environment fallback configuring Cloudflare R2 when DB storage settings are unset (`R2_ACCOUNT_ID` is masked cleanly on UI reads). |
 | `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | AWS S3 / MinIO / Spaces credentials (`"us-east-1"` or `"auto"`) | `""` (`AWS_REGION="auto"` in `.env.example`, `"us-east-1"` S3 fallback) | Environment fallback configuring generic S3-compatible buckets when R2 is not configured. |
 | `DUB_API_KEY`, `DUB_DOMAIN` | Dub.co API token & custom link domain | `""` / `"dub.sh"` | Enables short-link & QR generation (`POST` Dub panel) on articles. |
-| `KOTONOBA_IMAGE`, `IMAGE_TAG` *(Compose only)* | Container image & SemVer tag | `ghcr.io/trixtylab/kotonoba` / `latest` | Selects the container image deployed by [`docker-compose.prod.yml`](../docker-compose.prod.yml) and `scripts/deploy.sh`. |
 
 ---
 

@@ -176,8 +176,8 @@ function resolveCampaignBadgeMeta(
     };
   }
   return {
-    pill: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-    dot: "bg-rose-500",
+    pill: "bg-danger/10 text-danger dark:text-danger border-danger/20",
+    dot: "bg-danger",
     label: t("campaignExpiredBadge"),
   };
 }

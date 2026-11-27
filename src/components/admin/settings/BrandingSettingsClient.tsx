@@ -4,6 +4,9 @@ import React, { useState, useTransition, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { updateSite } from "@/actions/sites";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Input";
+import { BRAND_FONTS, resolveBrandFont } from "@/lib/config/brand";
 import { useToast } from "@/components/ui/Toast";
 import { MediaPickerModal } from "@/components/admin/MediaPickerModal";
 import { SettingsForm } from "@/components/admin/settings/SettingsForm";
@@ -39,6 +42,7 @@ export interface BrandingSettingsClientProps {
     theme: string;
     primaryColor?: string | null;
     fontFamily?: string | null;
+    customCss?: string | null;
   };
 }
 
@@ -57,6 +61,8 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
 
   const [theme, setTheme] = useState<"dark" | "light">((site.theme as "dark" | "light") || "dark");
   const [primaryColor, setPrimaryColor] = useState(site.primaryColor || "#6366f1");
+  const [fontFamily, setFontFamily] = useState<string>(resolveBrandFont(site.fontFamily).id);
+  const [customCss, setCustomCss] = useState(site.customCss || "");
   const [logoUrl, setLogoUrl] = useState(site.logoUrl || "");
   const [faviconUrl, setFaviconUrl] = useState(site.faviconUrl || "");
 
@@ -127,7 +133,8 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
         locale: normalizeLocale(site.locale),
         theme,
         primaryColor,
-        fontFamily: site.fontFamily || "Inter",
+        fontFamily,
+        customCss,
       });
 
       if (res.success) {
@@ -185,6 +192,26 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <Select
+            label={t("fontFamily")}
+            value={fontFamily}
+            onChange={setFontFamily}
+            options={BRAND_FONTS.map((font) => ({ value: font.id, label: font.id }))}
+          />
+        </div>
+
+        <Textarea
+          label={t("customCss")}
+          helperText={t("customCssHint")}
+          value={customCss}
+          maxLength={50000}
+          rows={8}
+          spellCheck={false}
+          onChange={(event) => setCustomCss(event.target.value)}
+          className="font-mono"
+        />
+
         {/* Primary Accent Color */}
         <div className="space-y-2.5">
           <label className="text-xs font-semibold text-text">{t("primaryColor")}</label>
@@ -223,7 +250,7 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
               <button
                 type="button"
                 onClick={() => setLogoUrl("")}
-                className="text-[11px] text-rose-500 hover:underline flex items-center gap-1"
+                className="text-[11px] text-danger hover:underline flex items-center gap-1"
               >
                 <X className="w-3 h-3" /> {t("removeImage")}
               </button>
@@ -280,7 +307,7 @@ export function BrandingSettingsClient({ site }: BrandingSettingsClientProps) {
               <button
                 type="button"
                 onClick={() => setFaviconUrl("")}
-                className="text-[11px] text-rose-500 hover:underline flex items-center gap-1"
+                className="text-[11px] text-danger hover:underline flex items-center gap-1"
               >
                 <X className="w-3 h-3" /> {t("removeImage")}
               </button>

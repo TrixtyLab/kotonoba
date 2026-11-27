@@ -1,6 +1,6 @@
 "use server";
 
-import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
+import { ROLE_ALL } from "@/lib/auth/roles";
 import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
 import { revalidatePostPaths } from "@/lib/cache/revalidate";
 import { validate } from "@/lib/security/validate";
@@ -53,10 +53,13 @@ export async function updatePost(postId: string, inputData: Partial<PostInput>):
 }
 
 /** Permanently removes a blog article, its Dub link, and its analytics rows. */
-export async function deletePost(postId: string): Promise<{ success: true }> {
-  const { user } = await requireResourceAccess("post", postId, ROLE_PUBLISHERS);
-  const { deletedSlug, siteId } = await deletePostService(user, postId);
-  revalidatePostPaths(deletedSlug, null, siteId);
+export async function deletePost(postId: string): Promise<{ success: boolean; error?: string }> {
+  const { user } = await requireResourceAccess("post", postId, ROLE_ALL);
+  const res = await deletePostService(user, postId);
+  if (!res.success) {
+    return { success: false, error: res.error };
+  }
+  revalidatePostPaths(res.deletedSlug, null, res.siteId);
   return { success: true };
 }
 

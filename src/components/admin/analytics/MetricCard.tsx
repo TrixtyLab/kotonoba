@@ -20,7 +20,7 @@ const COLOR_MAP: Record<MetricColor, { bg: string; text: string }> = {
   amber: { bg: "bg-amber-500/10", text: "text-amber-500" },
   indigo: { bg: "bg-indigo-500/10", text: "text-indigo-500" },
   violet: { bg: "bg-violet-500/10", text: "text-violet-500" },
-  rose: { bg: "bg-rose-500/10", text: "text-rose-500" },
+  rose: { bg: "bg-danger/10", text: "text-danger" },
   teal: { bg: "bg-teal-500/10", text: "text-teal-500" },
 };
 
@@ -56,7 +56,7 @@ export function MetricCard({
               className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${
                 trend.value >= 0
                   ? "bg-emerald-500/10 text-emerald-500"
-                  : "bg-rose-500/10 text-rose-500"
+                  : "bg-danger/10 text-danger"
               }`}
             >
               {trend.value >= 0 ? "+" : ""}

@@ -49,7 +49,7 @@ All SQL queries are isolated in `src/lib/services/*`, `src/lib/queries/*`, and `
 ## 3. Architecture Decision Records (ADRs)
 
 ### ADR-001: Supported Locales (`en` / `es`) & Single-Locale Content
-- **Decision:** Interface UI and published articles/pages support strictly `en` and `es` (`SUPPORTED_LOCALES` in `src/i18n/routing.ts`). Every post or custom page owns a single `locale` column without linked bilingual translation variants.
+- **Decision:** Interface UI and published articles/pages support strictly `en` and `es` (`LOCALES` in `src/i18n/locales.ts`, re-exported by `src/i18n/routing.ts`). Every post or custom page owns a single `locale` column without linked bilingual translation variants.
 - **Rationale:** Matches verified UI translations (`messages/en.json`, `messages/es.json`), ensures `/sitemap.xml` `hreflang` alternates never point to non-existent localized URLs, and rejects unsupported locales at Zod contract boundaries.
 
 ### ADR-002: Key Separation (`JWT_SECRET`, `ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`)
@@ -65,5 +65,5 @@ All SQL queries are isolated in `src/lib/services/*`, `src/lib/queries/*`, and `
 - **Rationale:** Legacy unencrypted `.zip` imports remain disabled by default (`ALLOW_LEGACY_BACKUP_IMPORT=false`). Imports stream zip entries into staging directories enforcing decompression caps (`MAX_BACKUP_SIZE`, `MAX_BACKUP_FILES`, `MAX_BACKUP_UNCOMPRESSED_BYTES`, `MAX_BACKUP_JSON_BYTES`), rewrite SQLite state in a single transaction, and roll back staged media if the transaction fails.
 
 ### ADR-005: External Cron Trigger + Transactional Notification Outbox
-- **Decision:** Publishing due scheduled posts, Discord embeds, and Bluesky posts is triggered exclusively by `POST /api/cron/publish` (via Docker Compose `scheduler` or host cron) rather than inside page renders.
+- **Decision:** Publishing due scheduled posts, Discord embeds, and Bluesky posts is triggered exclusively by `POST /api/cron/publish` (via an external scheduler or host cron) rather than inside page renders.
 - **Rationale:** Eliminates database write contention during public page reads and guarantees idempotent once-only delivery per `(postId, channel)` via `notification_outbox`.

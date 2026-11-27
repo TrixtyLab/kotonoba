@@ -19,11 +19,11 @@ export function AdminPageHeader({ title, subtitle, icon, actions }: AdminPageHea
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
       <div className="space-y-0.5 min-w-0">
-        <h1 className="text-lg font-bold text-text flex items-center gap-2 truncate">
+        <h1 className="text-xl font-bold tracking-tight text-text flex items-center gap-2 truncate">
           {icon && <span className="text-accent shrink-0">{icon}</span>}
           <span className="truncate">{title}</span>
         </h1>
-        {subtitle && <p className="text-xs text-text-muted">{subtitle}</p>}
+        {subtitle && <p className="text-sm text-text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 flex-wrap shrink-0">{actions}</div>}
     </div>

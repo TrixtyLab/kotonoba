@@ -5,6 +5,7 @@ import {
   decryptBackupArchive,
   isEncryptedBackup,
   isLegacyBackupImportEnabled,
+  assertBackupEncryptionKey,
 } from "@/lib/backup/crypto";
 
 describe("backup encryption", () => {
@@ -26,9 +27,18 @@ describe("backup encryption", () => {
   it("fails closed when BACKUP_ENCRYPTION_KEY is missing or malformed", () => {
     delete process.env.BACKUP_ENCRYPTION_KEY;
     expect(() => encryptBackupArchive(Buffer.from("zip-bytes"))).toThrow();
+    expect(() => assertBackupEncryptionKey()).toThrow();
 
     process.env.BACKUP_ENCRYPTION_KEY = "too-short";
     expect(() => encryptBackupArchive(Buffer.from("zip-bytes"))).toThrow();
+    expect(() => assertBackupEncryptionKey()).toThrow();
+
+    process.env.BACKUP_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
+    process.env.BACKUP_KEY_ID = "invalid key id!";
+    expect(() => assertBackupEncryptionKey()).toThrow();
+
+    process.env.BACKUP_KEY_ID = "k1";
+    expect(() => assertBackupEncryptionKey()).not.toThrow();
   });
 
   it("round-trips encrypted backups with base64 and hex keys", () => {

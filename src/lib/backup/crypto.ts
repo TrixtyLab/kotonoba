@@ -52,6 +52,15 @@ function getBackupEncryptionConfig(): { key: Buffer; keyId: string } {
 }
 
 /**
+ * Validates the configured backup encryption key at server startup.
+ *
+ * @throws {Error} When `BACKUP_ENCRYPTION_KEY` or `BACKUP_KEY_ID` is missing or malformed.
+ */
+export function assertBackupEncryptionKey(): void {
+  getBackupEncryptionConfig();
+}
+
+/**
  * Checks whether a buffer starts with the encrypted backup magic header.
  *
  * @param buffer - Candidate backup archive.

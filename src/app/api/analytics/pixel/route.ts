@@ -5,6 +5,7 @@ import {
   checkAnalyticsIpRateLimit,
   checkAnalyticsSiteRateLimit,
   hashAnalyticsVisitor,
+  resolveAnalyticsCountry,
   resolveAnalyticsSite,
   sanitizeCampaignToken,
 } from "@/lib/analytics/ingest";
@@ -74,7 +75,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     const ipHash = hashAnalyticsVisitor(rawIp, userAgent);
-    const country = req.headers.get("cf-ipcountry") || req.headers.get("x-vercel-ip-country") || undefined;
+    const country = resolveAnalyticsCountry(
+      req.headers.get("cf-ipcountry"),
+      req.headers.get("x-vercel-ip-country")
+    );
     const { device, browser, os } = parseDeviceAndBrowser(userAgent);
 
     getDb()

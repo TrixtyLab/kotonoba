@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildMediaAssetHeaders, readStoredMediaObject } from "@/lib/storage";
-import { getSiteForHost } from "@/lib/tenant";
+import { getRequestNormalizedHost, getSiteForHost, normalizeDomain } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 import { sites } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 const VALID_SEGMENT = /^[a-zA-Z0-9._-]+$/;
+
+function isLocalMediaHost(host: string): boolean {
+  const clean = normalizeDomain(host);
+  return clean === "localhost" || clean === "127.0.0.1" || clean === "::1" || clean.endsWith(".localhost");
+}
 
 /**
  * Public file server endpoint resolving media asset paths dynamically while preserving
@@ -57,6 +62,13 @@ export async function GET(
     const siteExists = getDb().select({ id: sites.id }).from(sites).where(eq(sites.id, candidateSiteId)).get();
     if (!siteExists) {
       return new NextResponse("File Not Found", { status: 404 });
+    }
+    const requestHost = await getRequestNormalizedHost();
+    if (!isLocalMediaHost(requestHost)) {
+      const hostSite = await getSiteForHost();
+      if (!hostSite || hostSite.id !== candidateSiteId) {
+        return new NextResponse("File Not Found", { status: 404 });
+      }
     }
     siteIdForConfig = candidateSiteId;
   } else {

@@ -55,6 +55,19 @@ describe("trusted proxy IP and host resolution", () => {
     ).toBe("203.0.113.50");
   });
 
+  it("ignores CF-Connecting-IP even when proxies are trusted", () => {
+    vi.stubEnv("TRUSTED_PROXY_IPS", "10.0.0.0/8");
+
+    expect(
+      getClientIp(
+        headers({
+          "cf-connecting-ip": "198.51.100.99",
+          "x-forwarded-for": "203.0.113.8, 10.1.2.3",
+        })
+      )
+    ).toBe("203.0.113.8");
+  });
+
   it("prefers the Host header over x-forwarded-host unless a proxy is trusted", () => {
     vi.stubEnv("TRUSTED_PROXY_IPS", "");
 
@@ -77,6 +90,16 @@ describe("trusted proxy IP and host resolution", () => {
         })
       )
     ).toBe("blog.example.com");
+  });
+
+  it("fails closed when Host is missing in production and never trusts forwarded-host without a proxy", () => {
+    vi.stubEnv("TRUSTED_PROXY_IPS", "");
+    vi.stubEnv("NODE_ENV", "production");
+
+    expect(getRequestHost(headers({ "x-forwarded-host": "attacker.example.net" }))).toBe("");
+
+    vi.stubEnv("TRUSTED_PROXY_IPS", "172.18.0.0/16");
+    expect(getRequestHost(headers({ "x-forwarded-host": "blog.example.com" }))).toBe("blog.example.com");
   });
 
   it("verifies bearer secrets in constant time and fails closed on missing credentials", () => {

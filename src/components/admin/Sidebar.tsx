@@ -66,7 +66,7 @@ function SidebarNavSections({
     <div className="flex-1 overflow-y-auto p-2 space-y-4">
       {sections.map((section) => (
         <div key={section.title} className="space-y-1">
-          <p className={`px-2.5 py-1 text-[10px] font-bold text-text-muted uppercase tracking-wider ${!isOpen ? "lg:hidden" : ""}`}>
+          <p className={`px-2.5 py-1 text-[11px] font-semibold text-text-muted uppercase tracking-wide ${!isOpen ? "lg:hidden" : ""}`}>
             {section.title}
           </p>
           {section.items.map((item) => {
@@ -79,7 +79,8 @@ function SidebarNavSections({
                 key={item.href}
                 href={item.href}
                 onClick={onCloseMobile}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors min-h-[40px] ${
+                aria-current={isActive ? "page" : undefined}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${
                   isActive ? "bg-accent text-white font-semibold shadow-xs" : "text-text-muted hover:text-text hover:bg-surface-hover"
                 } ${!isOpen ? "lg:justify-center lg:px-0" : ""}`}
                 title={!isOpen ? item.label : undefined}
@@ -118,8 +119,8 @@ function SidebarUpdateBanner({
           title={`Kotonoba v${updateInfo.currentVersion} (${t("upToDate")})`}
         >
           <span>v{updateInfo.currentVersion}</span>
-          <span className={`flex items-center gap-1 text-[9px] text-emerald-500 font-sans font-medium ${!isOpen ? "lg:hidden" : ""}`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          <span className={`flex items-center gap-1 text-xs text-text-muted font-sans font-medium ${!isOpen ? "lg:hidden" : ""}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-success" />
             {t("upToDate")}
           </span>
         </a>
@@ -132,7 +133,7 @@ function SidebarUpdateBanner({
       <div className={!isOpen ? "lg:hidden" : ""}>
         <div className="p-2.5 rounded-xl bg-accent/10 border border-accent/20 text-xs space-y-2">
           <div className="flex items-center gap-1.5 font-bold text-accent">
-            <ArrowUpCircle className="w-4 h-4 shrink-0 text-accent animate-pulse" />
+            <ArrowUpCircle className="w-4 h-4 shrink-0 text-accent" />
             <span className="truncate">{t("updateAvailable")}</span>
           </div>
           <p className="text-[11px] text-text-muted leading-tight">
@@ -159,7 +160,6 @@ function SidebarUpdateBanner({
             title={`${t("updateAvailable")}: v${updateInfo.latestVersion}`}
           >
             <ArrowUpCircle className="w-4 h-4 shrink-0" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent animate-ping" />
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent" />
           </a>
         </div>
@@ -244,7 +244,7 @@ export function Sidebar({
           <img src="/icon.svg" alt="Kotonoba" className="w-7 h-7 object-contain shrink-0 transition-transform duration-200 group-hover:scale-110 drop-shadow-2xs" />
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="font-bold text-xs text-text tracking-tight block truncate">Kotonoba</span>
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent shrink-0">言の場</span>
+            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent shrink-0">言の場</span>
           </div>
         </Link>
 
@@ -281,12 +281,12 @@ export function Sidebar({
       <SidebarUpdateBanner updateInfo={updateInfo} isOpen={isOpen} t={t} />
 
       <div className="p-2 border-t border-border space-y-1">
-        <a href={blogPublicUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-h-[40px] ${collapsedCenterClass}`} title={!isOpen ? t("viewSite") : undefined}>
+        <a href={blogPublicUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-h-[40px] ${collapsedCenterClass}`} title={!isOpen ? t("viewSite") : undefined}>
           <ExternalLink className="w-4 h-4 shrink-0" />
           <span className={`truncate ${hideOnCollapsedClass}`}>{t("viewSite")}</span>
         </a>
 
-        <button type="button" onClick={handleLogout} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs text-danger/80 hover:text-danger hover:bg-danger/10 transition-colors min-h-[40px] ${collapsedCenterClass}`} title={!isOpen ? t("logout") : undefined}>
+        <button type="button" onClick={handleLogout} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-danger hover:bg-danger/10 transition-colors min-h-[40px] ${collapsedCenterClass}`} title={!isOpen ? t("logout") : undefined}>
           <LogOut className="w-4 h-4 shrink-0" />
           <span className={`truncate ${hideOnCollapsedClass}`}>{t("logout")}</span>
         </button>

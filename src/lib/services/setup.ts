@@ -7,6 +7,7 @@ import { z } from "zod";
 import { normalizeLocale } from "@/i18n/locales";
 import { strongPasswordSchema } from "@/lib/contracts";
 import { POST_STATUS, ROLES } from "@/lib/config/constants";
+import { resolveBrandFont } from "@/lib/config/brand";
 import { renderMarkdownToHtml } from "@/lib/utils/markdown";
 import type { SessionCookieSubject } from "@/lib/auth/cookies";
 
@@ -113,7 +114,7 @@ Feel free to edit or delete this post from your new admin dashboard. Happy blogg
         locale: siteLocale,
         theme: valid.theme || "dark",
         primaryColor: valid.primaryColor || "#3b82f6",
-        fontFamily: valid.fontFamily || "Inter",
+        fontFamily: resolveBrandFont(valid.fontFamily).id,
         supportedLocales: JSON.stringify([siteLocale]),
         createdAt: now,
         updatedAt: now,

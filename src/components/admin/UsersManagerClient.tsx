@@ -126,7 +126,7 @@ export function UsersManagerClient({
                     <div className="flex items-center gap-1.5">
                       <span className="font-semibold text-text truncate">{user.displayName}</span>
                       {isSelf && (
-                        <Badge variant="secondary" size="sm" className="text-[9px]">
+                        <Badge variant="secondary" size="sm">
                           Tú
                         </Badge>
                       )}
@@ -191,7 +191,7 @@ export function UsersManagerClient({
                     onClick={() => mgr.setUserToDelete(user)}
                     disabled={!canManage || isSelf}
                     title={tc("delete")}
-                    className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-rose-500 disabled:opacity-30"
+                    className="min-w-[36px] min-h-[36px] sm:h-7 sm:w-7 p-0 text-text-muted hover:text-danger disabled:opacity-30"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>

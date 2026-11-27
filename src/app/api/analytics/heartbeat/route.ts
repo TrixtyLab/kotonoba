@@ -7,6 +7,7 @@ import { getClientIp } from "@/lib/http/request";
 import {
   checkAnalyticsIpRateLimit,
   checkAnalyticsSiteRateLimit,
+  hashAnalyticsVisitor,
   resolveAnalyticsSite,
 } from "@/lib/analytics/ingest";
 
@@ -86,6 +87,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const db = getDb();
     const clampedDuration = Math.min(Math.round(timeOnPage), 7200);
+    const userAgent = req.headers.get("user-agent")?.slice(0, 500) || "";
+    const ipHash = hashAnalyticsVisitor(clientIp, userAgent);
 
     const existingRecord = db
       .select({ id: analytics.id, currentTime: analytics.timeOnPage })
@@ -94,7 +97,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         and(
           eq(analytics.siteId, siteId),
           eq(analytics.sessionId, sessionId),
-          eq(analytics.path, path)
+          eq(analytics.path, path),
+          eq(analytics.ipHash, ipHash)
         )
       )
       .orderBy(desc(analytics.createdAt))

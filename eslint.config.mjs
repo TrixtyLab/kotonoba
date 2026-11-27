@@ -20,7 +20,24 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["src/components/SafeHtml.tsx", "src/components/SafeSvg.tsx"],
+    // Tenant media and editor previews use arbitrary remote URLs and unknown
+    // dimensions; the self-hosted deployment does not run the Next.js image
+    // optimizer, so plain <img> is the intended primitive.
+    files: ["src/**/*.tsx"],
+    rules: {
+      "@next/next/no-img-element": "off",
+    },
+  },
+  {
+    // App Router loads the font stylesheet from the root layout <head>; the
+    // no-page-custom-font rule targets the legacy Pages Router document.
+    files: ["src/app/layout.tsx"],
+    rules: {
+      "@next/next/no-page-custom-font": "off",
+    },
+  },
+  {
+    files: ["src/components/SafeHtml.tsx", "src/components/SafeSvg.tsx", "src/components/SafeCustomCss.tsx"],
     rules: {
       "react/no-danger": "off",
     },

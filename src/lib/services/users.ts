@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db";
-import { users, sites, posts } from "@/lib/db/schema";
-import { eq, sql, desc, count } from "drizzle-orm";
+import { users, sites, posts, pages } from "@/lib/db/schema";
+import { and, eq, sql, desc, count, ne } from "drizzle-orm";
 import type { TokenPayload } from "@/lib/auth/jwt";
 import { hashPassword } from "@/lib/auth/password";
 import { generateId } from "@/lib/utils/slug";
@@ -144,6 +144,16 @@ export async function createUserService(
   return { success: true, id };
 }
 
+function isLastSiteAdmin(siteId: string | null, excludedUserId: string): boolean {
+  if (!siteId) return false;
+  const row = getDb()
+    .select({ count: count() })
+    .from(users)
+    .where(and(eq(users.siteId, siteId), eq(users.role, ROLES.ADMIN), ne(users.id, excludedUserId)))
+    .get();
+  return (row?.count ?? 0) === 0;
+}
+
 function validateTenantAdminUserScope(
   actor: TokenPayload,
   targetUser: typeof users.$inferSelect,
@@ -152,6 +162,12 @@ function validateTenantAdminUserScope(
   if (!actor.siteId) return { success: false, error: "Your account is not assigned to a site." };
   if (targetUser.role === ROLES.SUPER_ADMIN) {
     return { success: false, error: "You cannot edit a super administrator account." };
+  }
+  if (targetUser.role === ROLES.ADMIN && targetUser.id !== actor.userId) {
+    return { success: false, error: "Administrators cannot modify other administrator accounts." };
+  }
+  if (targetUser.id === actor.userId && inputData.role && inputData.role !== targetUser.role) {
+    return { success: false, error: "You cannot change your own role." };
   }
   if (inputData.role === ROLES.SUPER_ADMIN || inputData.role === ROLES.ADMIN) {
     return { success: false, error: "You cannot assign administrator roles." };
@@ -173,6 +189,15 @@ function authorizeUserUpdatePermission(
   if (actor.role === ROLES.ADMIN) {
     const scopeError = validateTenantAdminUserScope(actor, targetUser, inputData);
     if (scopeError) return scopeError;
+  }
+
+  if (
+    targetUser.role === ROLES.ADMIN &&
+    inputData.role &&
+    inputData.role !== ROLES.ADMIN &&
+    isLastSiteAdmin(targetUser.siteId, targetUser.id)
+  ) {
+    return { success: false, error: "Cannot demote the last administrator of this site." };
   }
 
   if (targetUser.role === ROLES.SUPER_ADMIN && inputData.role && inputData.role !== ROLES.SUPER_ADMIN) {
@@ -317,9 +342,29 @@ export function deleteUserService(actor: TokenPayload, userId: string): UserMuta
     if (!actor.siteId || targetUser.siteId !== actor.siteId) {
       return { success: false, error: "You can only delete users assigned to your site." };
     }
+    if (targetUser.role === ROLES.ADMIN) {
+      return { success: false, error: "Administrators cannot delete other administrator accounts." };
+    }
   }
 
-  db.delete(users).where(eq(users.id, userId)).run();
+  if (targetUser.role === ROLES.ADMIN && isLastSiteAdmin(targetUser.siteId, targetUser.id)) {
+    return { success: false, error: "Cannot delete the last administrator of this site." };
+  }
+
+  const { reassignedPosts, reassignedPages } = db.transaction((tx) => {
+    const postResult = tx
+      .update(posts)
+      .set({ authorId: actor.userId })
+      .where(eq(posts.authorId, userId))
+      .run();
+    const pageResult = tx
+      .update(pages)
+      .set({ authorId: actor.userId })
+      .where(eq(pages.authorId, userId))
+      .run();
+    tx.delete(users).where(eq(users.id, userId)).run();
+    return { reassignedPosts: postResult.changes, reassignedPages: pageResult.changes };
+  });
 
   recordAuditEvent({
     actorId: actor.userId,
@@ -329,7 +374,14 @@ export function deleteUserService(actor: TokenPayload, userId: string): UserMuta
     action: "user.delete",
     targetType: "user",
     targetId: userId,
-    metadata: { email: targetUser.email, role: targetUser.role },
+    metadata: {
+      email: targetUser.email,
+      role: targetUser.role,
+      previousAuthorId: userId,
+      reassignedPosts,
+      reassignedPages,
+      nextAuthorId: actor.userId,
+    },
   });
 
   return { success: true };

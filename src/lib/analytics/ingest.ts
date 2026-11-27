@@ -6,7 +6,7 @@ import { sites } from "@/lib/db/schema";
 import { getSiteForHost, normalizeDomain } from "@/lib/tenant";
 import { getRequestHost } from "@/lib/http/request";
 import { getJwtSecretString } from "@/lib/config/secrets";
-import { isProductionEnv, isSingleTenantFallbackEnabled } from "@/lib/config/env";
+import { getEnvConfig, isProductionEnv, isSingleTenantFallbackEnabled } from "@/lib/config/env";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
 
 /** Result of resolving the tenant allowed to receive an analytics event. */
@@ -73,6 +73,33 @@ export async function resolveAnalyticsSite(
   }
 
   return { ok: true, siteId };
+}
+
+/**
+ * Normalizes an edge-provided country header to a two-letter ISO-3166 alpha-2 code.
+ *
+ * @param value - Raw `CF-IPCountry` / `X-Vercel-IP-Country` value.
+ * @returns Uppercase country code, or `undefined` when absent or malformed.
+ */
+export function normalizeCountryCode(value: string | null | undefined): string | undefined {
+  const code = (value || "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : undefined;
+}
+
+/**
+ * Accepts a country code only when the process trusts a reverse proxy.
+ * Without `TRUSTED_PROXY_IPS`, country headers are caller-controlled and are stored empty.
+ *
+ * @param headerValues - Candidate country headers, first match wins.
+ * @returns A two-letter code, or `undefined` when proxies are untrusted or the value is malformed.
+ */
+export function resolveAnalyticsCountry(...headerValues: Array<string | null | undefined>): string | undefined {
+  if (getEnvConfig().trustedProxyIps.length === 0) return undefined;
+  for (const value of headerValues) {
+    const code = normalizeCountryCode(value);
+    if (code) return code;
+  }
+  return undefined;
 }
 
 /**

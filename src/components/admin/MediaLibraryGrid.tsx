@@ -68,7 +68,7 @@ export function MediaLibraryGrid({
                 <button
                   type="button"
                   onClick={() => onRequestDelete({ path: f.path, name: f.name, isFolder: true })}
-                  className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded hover:bg-rose-500/10 text-rose-500 transition-opacity ml-1 shrink-0"
+                  className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded hover:bg-danger/10 text-danger transition-opacity ml-1 shrink-0"
                   title={t("deleteFolder")}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -123,7 +123,7 @@ export function MediaLibraryGrid({
                     <button
                       type="button"
                       onClick={() => onPreviewFile(file)}
-                      className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                      className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                       title={t("preview")}
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -131,7 +131,7 @@ export function MediaLibraryGrid({
                     <button
                       type="button"
                       onClick={() => onStartMoveFile(file)}
-                      className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                      className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                       title={t("moveFile")}
                     >
                       <FolderInput className="w-3.5 h-3.5" />
@@ -139,7 +139,7 @@ export function MediaLibraryGrid({
                     <button
                       type="button"
                       onClick={() => onCopyUrl(file.url)}
-                      className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                      className="p-2 sm:p-1.5 rounded-lg bg-black/40 lg:bg-white/20 hover:bg-white text-white hover:text-black transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                       title={t("copyUrl")}
                     >
                       <Copy className="w-3.5 h-3.5" />
@@ -147,7 +147,7 @@ export function MediaLibraryGrid({
                     <button
                       type="button"
                       onClick={() => onRequestDelete({ path: file.path, name: file.filename, isFolder: false })}
-                      className="p-2 sm:p-1.5 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white backdrop-blur-xs transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                      className="p-2 sm:p-1.5 rounded-lg bg-danger/80 hover:bg-danger text-white transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                       title={tc("delete")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />

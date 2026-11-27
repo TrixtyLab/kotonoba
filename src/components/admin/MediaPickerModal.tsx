@@ -160,7 +160,7 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, title }: MediaPick
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70  animate-fade-in">
       <div className="w-full max-w-3xl max-h-[85vh] bg-surface border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div className="flex items-center gap-2">

@@ -116,10 +116,20 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
     expect(entryNames).toContain("uploads/a.png");
     expect(entryNames.some((n) => n.includes("b-secret.png"))).toBe(false);
 
-    // Restore into site-b using replace mode -> verifies pre-restore snapshot + sanitization + tenant media isolation
+    // A site admin cannot import an archive exported from another site.
+    const deniedCrossSite = await restoreSiteBackupZip(exported.buffer, "site-b", {
+      mode: "replace",
+      currentUserId: "admin-1",
+    });
+    expect(deniedCrossSite.success).toBe(false);
+    expect(deniedCrossSite.error).toContain("super administrators");
+
+    // A super administrator restores site-a into site-b using replace mode:
+    // verifies pre-restore snapshot + sanitization + tenant media isolation.
     const restoreRes = await restoreSiteBackupZip(exported.buffer, "site-b", {
       mode: "replace",
       currentUserId: "admin-1",
+      allowCrossSite: true,
     });
 
     expect(restoreRes.success).toBe(true);
@@ -214,6 +224,7 @@ describe("Encrypted backups tenant isolation, safety limits & scheduled outbox",
     const res = await restoreSiteBackupZip(exported.buffer, "site-b", {
       mode: "merge",
       currentUserId: "u1",
+      allowCrossSite: true,
     });
     transactionSpy.mockRestore();
 

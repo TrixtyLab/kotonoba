@@ -1,0 +1,2 @@
+# Place fullchain.pem and privkey.pem in this directory before starting the
+# production compose stack. Certificate material is intentionally gitignored.

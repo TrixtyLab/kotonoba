@@ -68,12 +68,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-xl border shadow-2xl backdrop-blur-2xl animate-slide-up transition-all ${
+            className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-xl border shadow-md bg-surface text-text ${
               t.type === "success"
-                ? "bg-surface/95 border-success/40 text-text"
+                ? "border-success/40"
                 : t.type === "error"
-                ? "bg-surface/95 border-danger/40 text-text"
-                : "bg-surface/95 border-primary/40 text-text"
+                ? "border-danger/40"
+                : "border-border"
             }`}
           >
             <div className="shrink-0 mt-0.5">
@@ -81,10 +81,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               {t.type === "error" && <AlertCircle className="w-4 h-4 text-danger" />}
               {t.type === "info" && <Info className="w-4 h-4 text-primary" />}
             </div>
-            <p className="text-xs font-medium leading-relaxed flex-1">{t.message}</p>
+            <p className="text-sm font-medium leading-relaxed flex-1">{t.message}</p>
             <button
+              type="button"
               onClick={() => removeToast(t.id)}
-              className="shrink-0 text-text-muted hover:text-text p-0.5 rounded transition-colors"
+              className="shrink-0 text-text-muted hover:text-text min-w-[32px] min-h-[32px] rounded-md transition-colors inline-flex items-center justify-center"
               aria-label={tc("closeNotification")}
             >
               <X className="w-3.5 h-3.5" />

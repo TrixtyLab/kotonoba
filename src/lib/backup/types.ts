@@ -136,6 +136,8 @@ export interface BackupData {
 export interface RestoreOptions {
   mode: "merge" | "replace";
   currentUserId: string;
+  /** Allows restoring an archive exported from a different site (super administrators only). */
+  allowCrossSite?: boolean;
 }
 
 export interface RestoreStats {
@@ -154,6 +156,8 @@ export interface RestoreResult {
   stats: RestoreStats;
   snapshotPath?: string;
   error?: string;
+  /** Site identifier recorded inside the archive, when present. */
+  sourceSiteId?: string;
 }
 
 export interface PendingMediaEntry {

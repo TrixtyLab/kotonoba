@@ -1,6 +1,6 @@
 # Docker Deployment & Operations Guide
 
-Complete reference for deploying and scaling **Kotonoba** in single-instance and high-availability zero-downtime blue-green production setups.
+Complete reference for deploying **Kotonoba** as a single container, with an optional reverse proxy in front.
 
 ---
 
@@ -50,51 +50,19 @@ volumes:
 
 ---
 
-## 2. Zero-Downtime Blue-Green Deployment (< 2s Downtime)
+## 2. Optional Reverse Proxy
 
-For zero-downtime updates with automated health validation and instant rollback:
+`docker compose up -d` publishes the app on port `3000`. TLS, HTTP redirects, and extra hostnames belong to a proxy you run yourself. The files under [`nginx/`](../nginx) are snippets for that proxy. Compose does not start nginx.
 
-```
-                  ┌──────────────────────┐
-                  │ Nginx Proxy (:80/443) │
-                  └──────────┬───────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              ▼                             ▼
-      ┌──────────────┐              ┌──────────────┐
-      │  app-blue    │              │  app-green   │
-      │ (Port: 3000) │              │ (Port: 3000) │
-      │   ACTIVE     │              │   STANDBY    │
-      └───────┬──────┘              └───────┬──────┘
-              │                             │
-              └──────────────┬──────────────┘
-                             ▼
-                 ┌───────────────────────┐
-                 │  /app/data (SQLite)   │
-                 └───────────────────────┘
+Point the proxy at the single upstream in [`nginx/conf.d/upstream.conf`](../nginx/conf.d/upstream.conf):
+
+```nginx
+upstream blog_backend {
+    server kotonoba:3000;
+}
 ```
 
-### Initial Production Boot
-
-```bash
-docker compose -f docker-compose.prod.yml up -d nginx app-blue scheduler
-```
-
-### Deploying Updates
-
-Execute the automated deployment script:
-
-```bash
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh v1.1.0
-```
-
-### How the Blue-Green Script Works:
-1. Identifies the currently active slot (`app-blue` or `app-green`).
-2. Starts the idle container with the updated Docker image.
-3. Polls `/api/health` for up to 45 seconds.
-4. **On Success**: Updates `nginx/conf.d/upstream.conf`, executes `nginx -s reload` (hot reload in < 100ms), and gracefully shuts down the old container.
-5. **On Failure**: Aborts deployment, terminates the target container, and leaves the active container serving traffic uninterrupted.
+Copy the snippets you need (`proxy-headers.conf`, `security-headers.conf`, `cloudflare-real-ip.conf`) into the proxy `http` or `server` block. Certificate files, if you use the sample server block, are `fullchain.pem` and `privkey.pem`. Scheduled publishing is an external call to `POST /api/cron/publish` with `CRON_SECRET`. Roll back a bad release by restoring the database with [`scripts/restore.sh`](../scripts/restore.sh) and starting the previous image with `docker compose up -d`.
 
 ---
 
@@ -126,7 +94,7 @@ chmod +x scripts/deploy.sh
 
 > [!NOTE]
 > Storage and AI configurations can also be configured directly via the **Admin Settings UI** (`/admin/settings/*`) and are stored securely in SQLite with AES-256 encryption.
-> For production HTTPS deployments, replace `./nginx/nginx.conf` in [`docker-compose.prod.yml`](../docker-compose.prod.yml) with [`nginx/nginx.tls.conf`](../nginx/nginx.tls.conf) and mount your TLS certificate chain under `/etc/nginx/certs/`.
+> TLS is terminated by your reverse proxy when you put one in front of the container. The Compose file publishes port `3000` only. Nginx snippets under [`nginx/`](../nginx) are optional and are not started by Compose.
 
 ---
 
@@ -146,7 +114,10 @@ chmod +x scripts/backup.sh scripts/restore.sh
 BACKUP_ENCRYPTION_KEY=your-backup-key ./scripts/backup.sh
 ```
 
-Backups are encrypted as `./backups/blog_backup_YYYYMMDD_HHMMSS.db.gz.enc` alongside a `.sha256` checksum and rotated with a 30-day retention window (`RETENTION_DAYS`). See [`docs/runbook.md`](./runbook.md) for restoration via `scripts/restore.sh` and legacy media tenant migration (`scripts/migrate-media-tenants.mjs`).
+Backups are encrypted as `./backups/blog_backup_YYYYMMDD_HHMMSS.db.gz.enc` alongside a `.sha256` checksum and rotated with a 30-day retention window (`RETENTION_DAYS`). See [`docs/operations.md`](./operations.md) for restoration via `scripts/restore.sh` and legacy media tenant migration (`scripts/migrate-media-tenants.mjs`).
+
+> [!IMPORTANT]
+> `scripts/backup.sh` produces an AES-256-CBC `.db.gz.enc` snapshot for CLI disaster recovery. It is **not** the same format as the AES-256-GCM `.kotonoba-backup` archives exported from the admin UI, and it cannot be imported through `/api/backup/import`.
 
 ---
 

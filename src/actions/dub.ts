@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth/session";
 import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
 import { bindPostDubShortLink, createDubLink, isDubConfigured } from "@/lib/dub";
 import { sanitizeUrl } from "@/lib/security/sanitize";
+import { validateOutboundUrl } from "@/lib/security/ssrf";
 import { getSiteById } from "@/lib/services/sites";
 
 /** Input parameters for creating a short link via Dub.co. */
@@ -40,6 +41,13 @@ export async function generateDubLinkAction(params: GenerateDubLinkParams): Prom
   const safeOriginalUrl = sanitizeUrl(params.originalUrl, { allowRelative: false });
   if (!safeOriginalUrl) {
     return { success: false, error: "Invalid destination URL" };
+  }
+
+  // Every destination is validated, including URLs supplied alongside a post or
+  // site id, so a shortener cannot be pointed at internal services.
+  const outboundCheck = await validateOutboundUrl(safeOriginalUrl);
+  if (!outboundCheck.valid) {
+    return { success: false, error: "Destination URL is not allowed." };
   }
 
   if (params.postId) {

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import net from "net";
-import { getEnvConfig } from "@/lib/config/env";
+import { getEnvConfig, isProductionEnv } from "@/lib/config/env";
 
 /**
  * Minimal header lookup contract satisfied by Web `Headers` and Next.js `ReadonlyHeaders`.
@@ -72,10 +72,10 @@ function ipv4ToInt(ip: string): number {
  * Extracts the client IP address for rate limiting and analytics deduplication.
  *
  * When `TRUSTED_PROXY_IPS` is configured, `x-forwarded-for` is parsed from the
- * right-most untrusted hop and `cf-connecting-ip` is accepted as a proxy-set
- * header. Without an explicit proxy allowlist, `x-forwarded-for` is ignored
- * entirely because any client can spoof it; only `x-real-ip` is used, matching
- * the bundled nginx configuration that overwrites it with `$remote_addr`.
+ * right-most untrusted hop. `cf-connecting-ip` is ignored. The reverse proxy
+ * rewrites `x-real-ip` and `x-forwarded-for` from the socket address after
+ * `real_ip`. Without an explicit proxy allowlist, `x-forwarded-for` is ignored
+ * entirely because any client can spoof it; only `x-real-ip` is used.
  *
  * The application port must not be exposed directly to the internet: `x-real-ip`
  * is only trustworthy when a reverse proxy sets it.
@@ -86,14 +86,9 @@ function ipv4ToInt(ip: string): number {
 export function getClientIp(headers: HeaderReadable): string {
   const realIp = normalizeIp(headers.get("x-real-ip") || "");
   const forwardedFor = headers.get("x-forwarded-for") || "";
-  const cfConnectingIp = normalizeIp(headers.get("cf-connecting-ip") || "");
   const trustedProxies = getEnvConfig().trustedProxyIps;
 
   if (trustedProxies.length > 0) {
-    if (cfConnectingIp && net.isIP(cfConnectingIp)) {
-      return cfConnectingIp;
-    }
-
     const hops = forwardedFor
       .split(",")
       .map((part) => normalizeIp(part))
@@ -123,17 +118,21 @@ export function getClientIp(headers: HeaderReadable): string {
  *
  * @param headers - Incoming HTTP headers.
  * @returns Normalized `host` header value, preferring `x-forwarded-host` only when
- * `TRUSTED_PROXY_IPS` is configured or local proxy headers match `host`.
+ * `TRUSTED_PROXY_IPS` is configured. In production a missing host resolves to an
+ * empty string so tenant lookups fail closed instead of falling back to localhost.
  */
 export function getRequestHost(headers: HeaderReadable): string {
   const hostHeader = headers.get("host")?.split(",")[0]?.trim().toLowerCase() || "";
   const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim().toLowerCase() || "";
   const trustedProxies = getEnvConfig().trustedProxyIps;
 
-  if (forwardedHost && (trustedProxies.length > 0 || !hostHeader)) {
+  if (forwardedHost && trustedProxies.length > 0) {
     return forwardedHost;
   }
-  return hostHeader || forwardedHost || "localhost:3000";
+  if (hostHeader) {
+    return hostHeader;
+  }
+  return isProductionEnv() ? "" : "localhost:3000";
 }
 
 /**

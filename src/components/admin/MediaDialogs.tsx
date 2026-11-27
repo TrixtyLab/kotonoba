@@ -112,7 +112,7 @@ export function MediaDialogs({
       {previewFile && (() => {
         const modalUrl = previewDisplayUrl || previewFile.url;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80  animate-fade-in">
             <div className="w-full max-w-xl bg-surface border border-border rounded-xl p-5 shadow-xl space-y-3 animate-slide-up">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <h4 className="text-xs font-bold text-text truncate max-w-[80%]">

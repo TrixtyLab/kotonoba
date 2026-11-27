@@ -283,7 +283,7 @@ export default async function AnalyticsPagesPage({
         {/* Exit Pages */}
         <div className="bg-surface border border-border rounded-xl p-4 shadow-2xs space-y-3">
           <div className="flex items-center gap-2 pb-2 border-b border-border">
-            <LogOut className="w-4 h-4 text-rose-500" />
+            <LogOut className="w-4 h-4 text-danger" />
             <h3 className="text-xs font-bold text-text">{t("exitPages")}</h3>
           </div>
           <div className="divide-y divide-border/60">

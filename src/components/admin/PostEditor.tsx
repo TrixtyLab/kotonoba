@@ -47,6 +47,8 @@ export interface PostEditorProps {
   supportedLocales?: string[];
   /** Flag indicating whether the Dub.co link shortening integration is enabled. */
   isDubEnabled?: boolean;
+  /** Whether the current actor may pin articles to the homepage (authors cannot). */
+  canPin?: boolean;
   /** Pre-existing article data when editing an existing post. */
   initialPost?: InitialPostRecord;
   /** List of available categories for taxonomy assignment. */
@@ -63,6 +65,7 @@ export function PostEditor({
   mode = "post",
   supportedLocales,
   isDubEnabled,
+  canPin,
   initialPost,
   availableCategories = [],
   availableTags = [],
@@ -278,6 +281,7 @@ export function PostEditor({
                 onAiGenerateExcerpt={aiActions.handleAiGenerateExcerpt}
                 pinned={pinned}
                 onPinnedChange={setPinned}
+                canPin={canPin}
               />
 
               {mode === "post" && (

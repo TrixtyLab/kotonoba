@@ -229,5 +229,7 @@ export function sanitizeCss(css: string | null | undefined): string {
     .replace(/(?:javascript|vbscript|data)\s*:/gi, "")
     .replace(/behavior\s*:[^;]*;?/gi, "")
     .replace(/-moz-binding\s*:[^;]*;?/gi, "")
+    .replace(/url\s*\([^)]*\)/gi, "")
+    .replace(/url\s*\(/gi, "")
     .trim();
 }

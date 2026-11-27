@@ -193,7 +193,7 @@ export function AiSettingsClient({ siteId, initialSettings }: AiSettingsClientPr
               className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
                 testResult.success
                   ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500"
-                  : "bg-rose-500/10 border-rose-500/30 text-rose-500"
+                  : "bg-danger/10 border-danger/30 text-danger"
               }`}
             >
               {testResult.success ? (

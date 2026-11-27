@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
+import { normalizeCountryCode, resolveAnalyticsCountry } from "@/lib/analytics/ingest";
 import { getDateRangeBounds } from "@/lib/analytics/query";
 import {
   aggregateDailyAnalytics,
@@ -32,6 +33,27 @@ describe("analytics helpers and retention", () => {
     expect(desktop.device).toBe("desktop");
     expect(desktop.os).toBe("Windows");
     expect(desktop.browser).toBe("Edge");
+  });
+
+  it("normalizes edge country headers to ISO alpha-2 codes", () => {
+    expect(normalizeCountryCode(" es ")).toBe("ES");
+    expect(normalizeCountryCode("us")).toBe("US");
+    expect(normalizeCountryCode("XX")).toBe("XX");
+    expect(normalizeCountryCode("")).toBeUndefined();
+    expect(normalizeCountryCode("ESP")).toBeUndefined();
+    expect(normalizeCountryCode("1A")).toBeUndefined();
+    expect(normalizeCountryCode(null)).toBeUndefined();
+  });
+
+  it("drops country codes unless a trusted proxy is configured", () => {
+    vi.stubEnv("TRUSTED_PROXY_IPS", "");
+    expect(resolveAnalyticsCountry("ES")).toBeUndefined();
+
+    vi.stubEnv("TRUSTED_PROXY_IPS", "10.0.0.0/8");
+    expect(resolveAnalyticsCountry(" es ", null)).toBe("ES");
+    expect(resolveAnalyticsCountry(null, "us")).toBe("US");
+    expect(resolveAnalyticsCountry("nope")).toBeUndefined();
+    vi.unstubAllEnvs();
   });
 
   it("computes date range bounds accurately", () => {

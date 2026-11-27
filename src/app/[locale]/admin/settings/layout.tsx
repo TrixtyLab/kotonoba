@@ -56,7 +56,7 @@ export default function SettingsLayout({
           <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-accent" />
           <span>{t("title")}</span>
         </h1>
-        <p className="text-xs text-text-muted mt-1 max-w-2xl">
+        <p className="text-sm text-text-muted mt-1 max-w-2xl">
           {t("subtitle")}
         </p>
       </div>
@@ -73,10 +73,10 @@ export default function SettingsLayout({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex items-center gap-2.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-lg text-xs font-semibold shrink-0 transition-all ${
+                className={`flex items-center gap-2.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-lg text-sm font-semibold shrink-0 transition-colors min-h-[40px] border ${
                   isActive
-                    ? "bg-accent/10 text-accent border border-accent/20 shadow-xs"
-                    : "text-text-muted hover:text-text hover:bg-surface-hover"
+                    ? "bg-accent/10 text-accent border-accent/20"
+                    : "text-text-muted hover:text-text hover:bg-surface-hover border-transparent"
                 }`}
               >
                 <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-accent" : "text-text-muted"}`} />

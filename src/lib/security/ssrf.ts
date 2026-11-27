@@ -1,5 +1,7 @@
 import dns from "dns/promises";
 import net from "net";
+import type { LookupFunction } from "net";
+import { Agent, type Dispatcher } from "undici";
 import { isProductionEnv } from "@/lib/config/env";
 
 /**
@@ -159,14 +161,44 @@ export async function validateOutboundUrl(
 }
 
 /**
- * Executes a `fetch` call after performing SSRF validation with `redirect: "manual"`,
- * a strict abort timeout, and optional domain allowlist.
+ * DNS lookup that always returns one already-validated public address.
+ * The original hostname stays on the request for Host and TLS SNI.
+ *
+ * @param address - Public IP chosen during {@link validateOutboundUrl}.
+ * @returns A lookup function for undici's connect options.
+ */
+export function pinnedDnsLookup(address: string): LookupFunction {
+  const family = net.isIP(address) === 6 ? 6 : 4;
+  return ((
+    _hostname: string,
+    options: unknown,
+    callback?: (err: NodeJS.ErrnoException | null, address: string | { address: string; family: number }[], family?: number) => void
+  ) => {
+    const cb = typeof options === "function" ? options : callback;
+    if (!cb) return;
+    const all =
+      typeof options === "object" &&
+      options !== null &&
+      "all" in options &&
+      Boolean((options as { all?: boolean }).all);
+    if (all) {
+      cb(null, [{ address, family }]);
+      return;
+    }
+    cb(null, address, family);
+  }) as LookupFunction;
+}
+
+/**
+ * Executes `fetch` after SSRF validation.
+ * The socket is pinned to the first validated public IP. Host and SNI stay on the original URL.
+ * Redirects are not followed.
  *
  * @param rawUrl - Destination URL string.
  * @param init - Standard `RequestInit` options.
  * @param options - SSRF validation options plus optional timeout in milliseconds (default 10s).
  * @returns HTTP `Response` from `fetch`.
- * @throws {Error} When SSRF validation fails or redirect/timeout occurs.
+ * @throws {Error} When SSRF validation fails, no public IP was pinned, or a redirect occurs.
  */
 export async function safeOutboundFetch(
   rawUrl: string,
@@ -178,16 +210,27 @@ export async function safeOutboundFetch(
     throw new Error(check.error);
   }
 
-  const controller = new AbortController();
+  const pinnedIp = check.resolvedIps[0];
+  if (!pinnedIp) {
+    throw new Error("Outbound destination has no validated address");
+  }
+
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = init.signal ? AbortSignal.any([timeoutSignal, init.signal]) : timeoutSignal;
+  const agent = new Agent({
+    connect: {
+      lookup: pinnedDnsLookup(pinnedIp),
+    },
+  });
 
   try {
     const response = await fetch(check.url.toString(), {
       ...init,
       redirect: "manual",
-      signal: init.signal ?? controller.signal,
-    });
+      signal,
+      dispatcher: agent,
+    } as RequestInit & { dispatcher: Dispatcher });
 
     if (response.status >= 300 && response.status < 400) {
       throw new Error(`Outbound redirects are disabled for security (status ${response.status})`);
@@ -195,6 +238,6 @@ export async function safeOutboundFetch(
 
     return response;
   } finally {
-    clearTimeout(timer);
+    await agent.close();
   }
 }

@@ -1,9 +1,11 @@
 import { getAdminSite } from "@/lib/tenant";
+import { getCurrentUser } from "@/lib/auth/session";
 import { getAdminEditablePost } from "@/lib/queries/admin-dashboard";
 import { getCategories } from "@/actions/categories";
 import { getTags } from "@/actions/tags";
 import { PostEditor } from "@/components/admin/PostEditor";
 import { isDubConfigured } from "@/lib/dub";
+import { ROLES } from "@/lib/config/constants";
 import { notFound } from "next/navigation";
 
 /**
@@ -21,6 +23,8 @@ export default async function EditPostPage({
   const { id } = await params;
   const site = await getAdminSite();
   if (!site) notFound();
+
+  const user = await getCurrentUser();
 
   const editable = getAdminEditablePost(site.id, id);
   if (!editable) notFound();
@@ -42,6 +46,7 @@ export default async function EditPostPage({
       siteId={site.id}
       supportedLocales={supportedLocales}
       isDubEnabled={isDubConfigured()}
+      canPin={user?.role !== ROLES.AUTHOR}
       initialPost={{
         id: post.id,
         title: post.title,

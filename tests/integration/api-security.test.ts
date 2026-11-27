@@ -249,6 +249,31 @@ describe("HTTP API endpoint security, tenant isolation, uploads, backups & analy
     expect(legacySvgRes.headers.get("content-security-policy")).toContain("sandbox");
     expect(legacySvgRes.headers.get("x-content-type-options")).toBe("nosniff");
 
+    const foreignDir = path.join(uploadTmpDir!, "sites", "site-b", "covers");
+    fs.mkdirSync(foreignDir, { recursive: true });
+    fs.writeFileSync(path.join(foreignDir, "secret.png"), VALID_PNG_BYTES);
+
+    const foreignRes = await getUploadedFile(
+      new NextRequest("https://site-a.test/api/uploads/sites/site-b/covers/secret.png"),
+      { params: Promise.resolve({ path: ["sites", "site-b", "covers", "secret.png"] }) }
+    );
+    expect(foreignRes.status).toBe(404);
+
+    mockAuthState.host = "localhost";
+    const localForeignRes = await getUploadedFile(
+      new NextRequest("http://localhost/api/uploads/sites/site-b/covers/secret.png"),
+      { params: Promise.resolve({ path: ["sites", "site-b", "covers", "secret.png"] }) }
+    );
+    expect(localForeignRes.status).toBe(200);
+
+    mockAuthState.host = "site-b.test";
+    const ownerRes = await getUploadedFile(
+      new NextRequest("https://site-b.test/api/uploads/sites/site-b/covers/secret.png"),
+      { params: Promise.resolve({ path: ["sites", "site-b", "covers", "secret.png"] }) }
+    );
+    expect(ownerRes.status).toBe(200);
+    mockAuthState.host = "site-a.test";
+
     // Media API enforces site scope and blocks author from mutations
     const listMediaRes = await getMedia(new NextRequest("https://site-a.test/api/media?folder=covers&siteId=site-a"));
     expect(listMediaRes.status).toBe(200);

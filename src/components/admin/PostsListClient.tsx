@@ -25,18 +25,26 @@ export interface PostItem {
   pinned: boolean;
   publishedAtFormatted?: string | null;
   createdAtFormatted: string;
+  authorId?: string | null;
   authorName?: string | null;
+}
+
+/** Signed-in editor viewing the list. Authors only see delete on their own rows. */
+export interface ContentListViewer {
+  id: string;
+  role: string;
 }
 
 /** Properties configuring the administrative posts list view. */
 export interface PostsListClientProps {
   initialPosts: PostItem[];
+  viewer: ContentListViewer;
 }
 
 /**
  * Administrative posts management table with real-time search, tab status filtering, and delete confirmation.
  */
-export function PostsListClient({ initialPosts }: PostsListClientProps): React.JSX.Element {
+export function PostsListClient({ initialPosts, viewer }: PostsListClientProps): React.JSX.Element {
   const t = useTranslations("admin");
   const tc = useTranslations("common");
   const ta = useTranslations("analytics");
@@ -55,6 +63,11 @@ export function PostsListClient({ initialPosts }: PostsListClientProps): React.J
       return matchSearch && matchStatus;
     });
   }, [posts, search, statusFilter]);
+
+  function canDelete(post: PostItem): boolean {
+    if (viewer.role === "author") return post.authorId === viewer.id;
+    return true;
+  }
 
   async function handleConfirmDelete(): Promise<void> {
     if (!postToDelete) return;
@@ -102,7 +115,7 @@ export function PostsListClient({ initialPosts }: PostsListClientProps): React.J
             placeholder={t("searchPostsPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-surface-hover/50 border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text placeholder-text-muted/50 focus:outline-hidden focus:border-accent"
+            className="w-full bg-input border border-border rounded-lg pl-9 pr-3 py-2 min-h-[40px] text-sm text-text placeholder:text-text-muted placeholder:italic focus:outline-hidden focus:border-accent"
           />
         </div>
 
@@ -116,7 +129,7 @@ export function PostsListClient({ initialPosts }: PostsListClientProps): React.J
           { key: "language", label: tc("language"), className: "hidden md:table-cell" },
           { key: "views", label: tc("views"), className: "hidden sm:table-cell" },
           { key: "date", label: tc("date"), className: "hidden md:table-cell" },
-          { key: "actions", label: tc("actions"), className: "text-right" },
+          { key: "actions", label: tc("actions"), className: "text-right hidden sm:table-cell" },
         ]}
         isEmpty={filteredPosts.length === 0}
         emptyIcon={<FileText className="w-6 h-6" />}
@@ -127,21 +140,39 @@ export function PostsListClient({ initialPosts }: PostsListClientProps): React.J
             <td className="p-3.5 font-medium max-w-xs sm:max-w-md">
               <div className="flex items-center gap-2">
                 {post.pinned && <Pin className="w-3.5 h-3.5 text-accent shrink-0" />}
-                <Link href={`/admin/posts/${post.id}`} className="font-semibold text-xs text-text group-hover:text-accent transition-colors block truncate">
+                <Link href={`/admin/posts/${post.id}`} className="font-semibold text-sm text-text group-hover:text-accent transition-colors block truncate">
                   {post.title}
                 </Link>
               </div>
-              <span className="text-[10px] text-text-muted font-mono block truncate mt-0.5">/entry/{post.slug}</span>
+              <span className="text-xs text-text-muted font-mono block truncate mt-0.5">/entry/{post.slug}</span>
 
               <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
-                <StatusBadge status={post.status} className="text-[9px] py-0 px-1.5" />
-                <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
+                <StatusBadge status={post.status} />
+                <span className="uppercase text-[11px] font-semibold px-1.5 py-0.5 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
                   {post.locale}
                 </span>
                 <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
                   <Eye className="w-2.5 h-2.5" /> {post.views}
                 </span>
                 <span className="text-[10px] text-text-muted">{post.publishedAtFormatted || post.createdAtFormatted}</span>
+              </div>
+              <div className="flex items-center gap-1 mt-2 sm:hidden">
+                <Link href={`/admin/analytics/${post.id}`} className="p-2 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={ta("viewDetailedAnalytics")}>
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </Link>
+                {post.status === POST_STATUS.PUBLISHED && (
+                  <Link href={`/entry/${post.slug}`} target="_blank" className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={tc("view")}>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </Link>
+                )}
+                <Link href={`/admin/posts/${post.id}`} className="p-2 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={tc("edit")}>
+                  <Edit3 className="w-3.5 h-3.5" />
+                </Link>
+                {canDelete(post) && (
+                  <button type="button" onClick={() => setPostToDelete(post.id)} className="p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={tc("delete")}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </td>
             <td className="p-3.5 hidden sm:table-cell">
@@ -157,8 +188,8 @@ export function PostsListClient({ initialPosts }: PostsListClientProps): React.J
             <td className="p-3.5 text-text-muted text-xs whitespace-nowrap hidden md:table-cell">
               {post.publishedAtFormatted || post.createdAtFormatted}
             </td>
-            <td className="p-3.5 text-right whitespace-nowrap">
-              <div className="flex items-center justify-end gap-1">
+            <td className="p-3.5 text-right hidden sm:table-cell">
+              <div className="flex items-center justify-end gap-1 flex-wrap">
                 <Link href={`/admin/analytics/${post.id}`} className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={ta("viewDetailedAnalytics")}>
                   <BarChart3 className="w-3.5 h-3.5" />
                 </Link>
@@ -170,9 +201,11 @@ export function PostsListClient({ initialPosts }: PostsListClientProps): React.J
                 <Link href={`/admin/posts/${post.id}`} className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("edit")}>
                   <Edit3 className="w-3.5 h-3.5" />
                 </Link>
-                <button type="button" onClick={() => setPostToDelete(post.id)} className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("delete")}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {canDelete(post) && (
+                  <button type="button" onClick={() => setPostToDelete(post.id)} className="p-2 sm:p-1.5 rounded-lg text-danger hover:bg-danger/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("delete")}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </td>
           </tr>

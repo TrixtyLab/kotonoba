@@ -82,7 +82,6 @@ export function revalidatePostPaths(
     revalidatePath(`/[locale]/entry/${previousSlug}`, "page");
   }
   revalidateFeedsAndSitemap();
-  revalidatePath("/", "layout");
   safeRevalidateTag(siteId ? sitePostsCacheTag(siteId) : "public-posts");
 }
 
@@ -106,7 +105,6 @@ export function revalidatePagePaths(
     revalidatePath(`/[locale]/p/${previousSlug}`, "page");
   }
   revalidatePath("/sitemap.xml", "page");
-  revalidatePath("/", "layout");
   safeRevalidateTag(siteId ? sitePostsCacheTag(siteId) : "public-posts");
 }
 
@@ -124,8 +122,6 @@ function revalidateFeedsAndSitemap(): void {
  * @param siteId - Optional owning site identifier for surgical tenant cache invalidation.
  */
 export function revalidateSiteShell(siteId?: string | null): void {
-  revalidatePath("/", "layout");
-  revalidatePath("/[locale]", "layout");
   revalidateFeedsAndSitemap();
   safeRevalidateTag(tenantRegistryCacheTag());
   safeRevalidateTag(siteId ? sitePostsCacheTag(siteId) : "public-posts");
@@ -135,7 +131,6 @@ export function revalidateSiteShell(siteId?: string | null): void {
  * Revalidates user management admin views after role, assignment, or account updates.
  */
 export function revalidateUsersAdmin(): void {
-  revalidatePath("/", "layout");
   revalidatePath("/[locale]/admin/users", "page");
 }
 

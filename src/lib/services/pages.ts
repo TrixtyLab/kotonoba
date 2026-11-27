@@ -30,6 +30,7 @@ export interface AdminPageRecord {
   publishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  authorId: string;
   authorName: string | null;
 }
 
@@ -182,6 +183,9 @@ export function deletePageService(
   if (!existing) {
     return { success: false, error: "Page not found" };
   }
+  if (actor.role === ROLES.AUTHOR && existing.authorId !== actor.userId) {
+    return { success: false, error: "You can only delete your own pages." };
+  }
 
   db.delete(analytics).where(eq(analytics.pageId, pageId)).run();
   db.delete(pages).where(eq(pages.id, pageId)).run();
@@ -213,6 +217,7 @@ export function listAdminPages(siteId: string): AdminPageRecord[] {
       publishedAt: pages.publishedAt,
       createdAt: pages.createdAt,
       updatedAt: pages.updatedAt,
+      authorId: pages.authorId,
       authorName: users.displayName,
     })
     .from(pages)

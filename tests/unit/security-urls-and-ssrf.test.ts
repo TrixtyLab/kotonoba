@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach } from "vitest";
+import dns from "dns/promises";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   sanitizeCss,
   sanitizeNavLinksJson,
@@ -6,6 +7,7 @@ import {
 } from "@/lib/security/sanitize";
 import {
   isPrivateOrReservedIp,
+  pinnedDnsLookup,
   validateOutboundUrl,
 } from "@/lib/security/ssrf";
 import { renderPostContent } from "@/lib/utils/markdown";
@@ -48,7 +50,7 @@ describe("URL, CSS, navigation, and markdown/HTML XSS protections", () => {
     const dirty = `
       </style><script>alert(1)</script>
       @import url("https://evil.tld/leak.css");
-      body { background: expression(alert(1)); behavior: url(xss.htc); color: #fff; }
+      body { background: expression(alert(1)); behavior: url(xss.htc); background-image: url(https://evil.tld/pixel.png); color: #fff; }
     `;
     const clean = sanitizeCss(dirty);
     expect(clean).not.toContain("<script");
@@ -56,6 +58,7 @@ describe("URL, CSS, navigation, and markdown/HTML XSS protections", () => {
     expect(clean.toLowerCase()).not.toContain("@import");
     expect(clean.toLowerCase()).not.toContain("expression(");
     expect(clean.toLowerCase()).not.toContain("behavior:");
+    expect(clean.toLowerCase()).not.toContain("url(");
     expect(clean).toContain("color: #fff;");
   });
 
@@ -116,6 +119,30 @@ describe("SSRF outbound URL protections", () => {
       skipDnsLookup: true,
     });
     expect(r5.valid).toBe(true);
+  });
+
+  it("pins DNS lookup to the address chosen during validation", () => {
+    const lookup = pinnedDnsLookup("1.1.1.1");
+    lookup("example.com", { all: true }, (err, addresses) => {
+      expect(err).toBeNull();
+      expect(addresses).toEqual([{ address: "1.1.1.1", family: 4 }]);
+    });
+    lookup("example.com", {}, (err, address, family) => {
+      expect(err).toBeNull();
+      expect(address).toBe("1.1.1.1");
+      expect(family).toBe(4);
+    });
+  });
+
+  it("rejects a hostname that resolves to a mix of public and private addresses", async () => {
+    vi.spyOn(dns, "lookup").mockResolvedValue([
+      { address: "1.1.1.1", family: 4 },
+      { address: "10.0.0.5", family: 4 },
+    ] as never);
+
+    const result = await validateOutboundUrl("https://example.com/hook");
+    expect(result.valid).toBe(false);
+    vi.restoreAllMocks();
   });
 
   it("builds strict nonce CSP headers and neutralizes storage path traversal segments", () => {

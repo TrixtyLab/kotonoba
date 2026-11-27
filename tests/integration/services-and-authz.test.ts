@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTempDb, type TempDbContext } from "../helpers/db";
-import { sites, users, posts, categories, tags, settings, analytics } from "@/lib/db/schema";
+import { sites, users, posts, pages, categories, tags, settings, analytics } from "@/lib/db/schema";
 import type { TokenPayload } from "@/lib/auth/jwt";
 import { createPostService, getExistingPostMeta, updatePostService, deletePostService } from "@/lib/services/posts";
+import { deletePageService } from "@/lib/services/pages";
 import { createUserService, updateUserService, deleteUserService } from "@/lib/services/users";
 import {
   getRedactedSiteSettings,
@@ -57,6 +58,16 @@ describe("Domain services authorization, uniqueness, and secret encryption", () 
           email: "admin-a@test.com",
           passwordHash: "hash",
           displayName: "Admin A",
+          role: "admin",
+          siteId: "site-a",
+          tokenVersion: 1,
+          createdAt: now,
+        },
+        {
+          id: "admin-a2",
+          email: "admin-a2@test.com",
+          passwordHash: "hash",
+          displayName: "Admin A2",
           role: "admin",
           siteId: "site-a",
           tokenVersion: 1,
@@ -163,6 +174,34 @@ describe("Domain services authorization, uniqueness, and secret encryption", () 
     });
     expect(deniedEdit.result.success).toBe(false);
 
+    const authorPinnedCreate = await createPostService(author1Token, "site-a", {
+      title: "Pinned Attempt",
+      slug: "pinned-attempt",
+      excerpt: "",
+      contentMd: "<p>Pinned</p>",
+      contentHtml: "<p>Pinned</p>",
+      status: "published",
+      locale: "en",
+      pinned: true,
+      categoryIds: [],
+      tagIds: [],
+    });
+    expect(authorPinnedCreate.result.success).toBe(false);
+
+    const authorPinChange = await updatePostService(author1Token, meta, {
+      title: "Launch Post",
+      slug: "launch-post",
+      excerpt: "",
+      contentMd: "<p>Safe</p>",
+      contentHtml: "<p>Safe</p>",
+      status: "published",
+      locale: "en",
+      pinned: true,
+      categoryIds: [catA.success ? catA.id! : ""],
+      tagIds: [tagA.success ? tagA.id : ""],
+    });
+    expect(authorPinChange.result.success).toBe(false);
+
     const adminToken: TokenPayload = {
       userId: "admin-a",
       email: "admin-a@test.com",
@@ -170,6 +209,21 @@ describe("Domain services authorization, uniqueness, and secret encryption", () 
       siteId: "site-a",
       tokenVersion: 1,
     };
+
+    const adminPin = await updatePostService(adminToken, meta, {
+      title: "Launch Post",
+      slug: "launch-post",
+      excerpt: "",
+      contentMd: "<p>Safe</p>",
+      contentHtml: "<p>Safe</p>",
+      status: "published",
+      locale: "en",
+      pinned: true,
+      categoryIds: [catA.success ? catA.id! : ""],
+      tagIds: [tagA.success ? tagA.id : ""],
+    });
+    expect(adminPin.result.success).toBe(true);
+
     await deletePostService(adminToken, createdId);
     expect(db.select().from(posts).where(eq(posts.id, createdId)).get()).toBeUndefined();
     expect(db.select().from(categories).where(eq(categories.siteId, "site-a")).all()).toHaveLength(1);
@@ -216,6 +270,56 @@ describe("Domain services authorization, uniqueness, and secret encryption", () 
 
     const selfDelete = deleteUserService(superAdmin, "super-1");
     expect(selfDelete.success).toBe(false);
+  });
+
+  it("blocks lateral admin takeover and protects the last site administrator", async () => {
+    const db = seedBaseTenants();
+
+    const siteAdmin: TokenPayload = {
+      userId: "admin-a",
+      email: "admin-a@test.com",
+      role: "admin",
+      siteId: "site-a",
+      tokenVersion: 1,
+    };
+    const superAdmin: TokenPayload = {
+      userId: "super-1",
+      email: "super@test.com",
+      role: "super_admin",
+      siteId: null,
+      tokenVersion: 1,
+    };
+
+    const peerBefore = db.select().from(users).where(eq(users.id, "admin-a2")).get();
+
+    const passwordReset = await updateUserService(siteAdmin, "admin-a2", {
+      password: "AnotherStrongPassword123",
+    });
+    expect(passwordReset.success).toBe(false);
+
+    const peerDemotion = await updateUserService(siteAdmin, "admin-a2", { role: "author" });
+    expect(peerDemotion.success).toBe(false);
+
+    const peerDeletion = deleteUserService(siteAdmin, "admin-a2");
+    expect(peerDeletion.success).toBe(false);
+
+    const peerAfter = db.select().from(users).where(eq(users.id, "admin-a2")).get();
+    expect(peerAfter?.passwordHash).toBe(peerBefore?.passwordHash);
+    expect(peerAfter?.tokenVersion).toBe(peerBefore?.tokenVersion);
+    expect(peerAfter?.role).toBe("admin");
+
+    const selfDemotion = await updateUserService(siteAdmin, "admin-a", { role: "author" });
+    expect(selfDemotion.success).toBe(false);
+
+    // super_admin may reorganize admins, but never leaves a site without one.
+    const promoted = await updateUserService(superAdmin, "admin-a2", { role: "editor" });
+    expect(promoted.success).toBe(true);
+
+    const lastAdminDemotion = await updateUserService(superAdmin, "admin-a", { role: "author" });
+    expect(lastAdminDemotion.success).toBe(false);
+
+    const lastAdminDeletion = deleteUserService(superAdmin, "admin-a");
+    expect(lastAdminDeletion.success).toBe(false);
   });
 
   it("encrypts sensitive settings, redacts secrets on read, and preserves saved secrets on blank updates", async () => {
@@ -361,5 +465,160 @@ describe("Domain services authorization, uniqueness, and secret encryption", () 
     const siteBLogs = listAuditLogsForActor(superAdmin, "site-b");
     expect(siteBLogs).toHaveLength(1);
     expect(siteBLogs[0].action).toBe("site.domain_change");
+
+    const globalLogs = listAuditLogsForActor(superAdmin, null);
+    expect(globalLogs.some((l) => l.siteId === "site-a")).toBe(true);
+    expect(globalLogs.some((l) => l.siteId === "site-b")).toBe(true);
+  });
+
+  it("keeps posts and pages when their author is deleted and reassigns them to the actor", () => {
+    const db = seedBaseTenants();
+    const now = new Date();
+    db.insert(posts)
+      .values({
+        id: "post-kept",
+        siteId: "site-a",
+        authorId: "author-a1",
+        title: "Kept",
+        slug: "kept",
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    db.insert(pages)
+      .values({
+        id: "page-kept",
+        siteId: "site-a",
+        authorId: "author-a1",
+        title: "Kept page",
+        slug: "kept-page",
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    const postsSql = db.$client
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'posts'")
+      .get() as { sql: string };
+    const pagesSql = db.$client
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pages'")
+      .get() as { sql: string };
+    expect(postsSql.sql).toMatch(/author_id[^,]*ON DELETE RESTRICT/i);
+    expect(pagesSql.sql).toMatch(/author_id[^,]*ON DELETE RESTRICT/i);
+
+    const admin: TokenPayload = {
+      userId: "admin-a",
+      email: "admin-a@test.com",
+      role: "admin",
+      siteId: "site-a",
+      tokenVersion: 1,
+    };
+    const deleted = deleteUserService(admin, "author-a1");
+    expect(deleted.success).toBe(true);
+    expect(db.select().from(users).where(eq(users.id, "author-a1")).get()).toBeUndefined();
+    expect(db.select().from(posts).where(eq(posts.id, "post-kept")).get()?.authorId).toBe("admin-a");
+    expect(db.select().from(pages).where(eq(pages.id, "page-kept")).get()?.authorId).toBe("admin-a");
+  });
+
+  it("lets an author delete only their own content and lets an editor delete another author's post", async () => {
+    const db = seedBaseTenants();
+    const now = new Date();
+    db.insert(users)
+      .values({
+        id: "editor-a",
+        email: "editor-a@test.com",
+        passwordHash: "hash",
+        displayName: "Editor",
+        role: "editor",
+        siteId: "site-a",
+        tokenVersion: 1,
+        createdAt: now,
+      })
+      .run();
+    db.insert(posts)
+      .values([
+        {
+          id: "own-post",
+          siteId: "site-a",
+          authorId: "author-a1",
+          title: "Own",
+          slug: "own",
+          status: "draft",
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: "other-post",
+          siteId: "site-a",
+          authorId: "admin-a",
+          title: "Other",
+          slug: "other",
+          status: "draft",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run();
+    db.insert(pages)
+      .values([
+        {
+          id: "own-page",
+          siteId: "site-a",
+          authorId: "author-a1",
+          title: "Own page",
+          slug: "own-page",
+          status: "draft",
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: "other-page",
+          siteId: "site-a",
+          authorId: "admin-a",
+          title: "Other page",
+          slug: "other-page",
+          status: "draft",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run();
+
+    const author: TokenPayload = {
+      userId: "author-a1",
+      email: "author1@test.com",
+      role: "author",
+      siteId: "site-a",
+      tokenVersion: 1,
+    };
+    const editor: TokenPayload = {
+      userId: "editor-a",
+      email: "editor-a@test.com",
+      role: "editor",
+      siteId: "site-a",
+      tokenVersion: 1,
+    };
+
+    const deniedPost = await deletePostService(author, "other-post");
+    expect(deniedPost.success).toBe(false);
+    expect(db.select().from(posts).where(eq(posts.id, "other-post")).get()).toBeTruthy();
+
+    const ownPost = await deletePostService(author, "own-post");
+    expect(ownPost.success).toBe(true);
+    expect(db.select().from(posts).where(eq(posts.id, "own-post")).get()).toBeUndefined();
+
+    const deniedPage = deletePageService(author, "other-page");
+    expect(deniedPage.success).toBe(false);
+    expect(db.select().from(pages).where(eq(pages.id, "other-page")).get()).toBeTruthy();
+
+    const ownPage = deletePageService(author, "own-page");
+    expect(ownPage.success).toBe(true);
+    expect(db.select().from(pages).where(eq(pages.id, "own-page")).get()).toBeUndefined();
+
+    const editorDelete = await deletePostService(editor, "other-post");
+    expect(editorDelete.success).toBe(true);
+    expect(db.select().from(posts).where(eq(posts.id, "other-post")).get()).toBeUndefined();
   });
 });

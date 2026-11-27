@@ -48,7 +48,7 @@ export const users = sqliteTable("users", {
 export const posts = sqliteTable("posts", {
   id: text("id").primaryKey(),
   siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
-  authorId: text("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authorId: text("author_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   title: text("title").notNull(),
   slug: text("slug").notNull(),
   content: text("content").default(""),
@@ -78,7 +78,7 @@ export const posts = sqliteTable("posts", {
 export const pages = sqliteTable("pages", {
   id: text("id").primaryKey(),
   siteId: text("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
-  authorId: text("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authorId: text("author_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   title: text("title").notNull(),
   slug: text("slug").notNull(),
   content: text("content").default(""),

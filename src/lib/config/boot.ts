@@ -22,5 +22,10 @@ export async function assertServerBootConfig(): Promise<void> {
     const { getJwtSecretString, getEncryptionSecretString } = await import("./secrets");
     getJwtSecretString();
     getEncryptionSecretString();
+
+    if (process.env.NODE_ENV === "production") {
+      const { assertBackupEncryptionKey } = await import("../backup/crypto");
+      assertBackupEncryptionKey();
+    }
   }
 }

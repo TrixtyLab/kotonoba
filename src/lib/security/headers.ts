@@ -41,6 +41,7 @@ export function buildContentSecurityPolicy({ nonce, isDev = false, isHttps = fal
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
+    "report-uri /api/csp-report",
   ];
 
   if (isHttps) {

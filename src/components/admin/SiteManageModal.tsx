@@ -230,7 +230,7 @@ export function SiteManageModal({
                       <button
                         type="button"
                         onClick={() => onRequestDelete(s.id)}
-                        className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
+                        className="p-1.5 rounded-md hover:bg-danger/10 text-danger transition-colors"
                         title={t("deleteSite")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />

@@ -48,7 +48,7 @@ export function AnalyticsNav(): React.JSX.Element {
   );
 
   return (
-    <nav aria-label={t("navAriaLabel")} className="w-full border-b border-border bg-surface/50 backdrop-blur-xs">
+    <nav aria-label={t("navAriaLabel")} className="w-full border-b border-border bg-surface">
       <div className="px-1 py-1.5 sm:px-2">
         <Tabs
           variant="pills"

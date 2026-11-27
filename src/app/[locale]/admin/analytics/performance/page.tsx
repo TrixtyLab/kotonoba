@@ -83,7 +83,7 @@ export default async function AnalyticsPerformancePage({
               ? "text-emerald-500"
               : row.avgLoadTime <= 3000
               ? "text-amber-500"
-              : "text-rose-500"
+              : "text-danger"
           }`}
         >
           {row.avgLoadTime}ms
@@ -143,7 +143,7 @@ export default async function AnalyticsPerformancePage({
         {/* Slowest Pages Table */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-500" />
+            <AlertTriangle className="w-4 h-4 text-danger" />
             <h3 className="text-xs font-bold text-text">{t("slowestPages")}</h3>
           </div>
           <DataTable

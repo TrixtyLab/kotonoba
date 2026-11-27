@@ -32,6 +32,8 @@ export interface PostPublishPanelProps {
   onAiGenerateExcerpt: () => void;
   pinned: boolean;
   onPinnedChange: (pinned: boolean) => void;
+  /** Hides the homepage pin control for roles that cannot change it. */
+  canPin?: boolean;
 }
 
 /**
@@ -57,6 +59,7 @@ export function PostPublishPanel({
   onAiGenerateExcerpt,
   pinned,
   onPinnedChange,
+  canPin = true,
 }: PostPublishPanelProps) {
   const t = useTranslations("editor");
   const toast = useToast();
@@ -169,7 +172,7 @@ export function PostPublishPanel({
         />
       </div>
 
-      {mode === "post" && (
+      {mode === "post" && canPin && (
         <div className="pt-1">
           <Checkbox checked={pinned} onChange={onPinnedChange} label={t("pinPost")} />
         </div>

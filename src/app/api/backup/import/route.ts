@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { canAccessSite } from "@/lib/auth/site-access";
 import { canManageBackups } from "@/lib/auth/roles";
+import { ROLES } from "@/lib/config/constants";
 import { restoreSiteBackupZip } from "@/lib/backup/import";
 import { getEnvConfig } from "@/lib/config/env";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const result = await restoreSiteBackupZip(buffer, requestedSiteId, {
       mode,
       currentUserId: user.userId,
+      allowCrossSite: user.role === ROLES.SUPER_ADMIN,
     });
 
     if (!result.success) {
@@ -103,16 +105,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         targetId: requestedSiteId,
         status: "failure",
         ipAddress: clientIp,
-        metadata: { mode, error: result.error },
+        metadata: { mode, error: result.error, sourceSiteId: result.sourceSiteId },
       });
       logEvent("warn", "backup.import.failed", {
         route: "/api/backup/import",
         requestId,
         siteId: requestedSiteId,
         mode,
+        error: result.error,
         durationMs: Date.now() - startedAt,
       });
-      return NextResponse.json({ error: result.error || "Failed to restore backup." }, { status: 400 });
+      // The precise validation/target error stays in logs and the audit trail.
+      return NextResponse.json(
+        { error: "Backup import failed. The archive is invalid or cannot be restored into this site." },
+        { status: 400 }
+      );
     }
 
     recordAuditEvent({
@@ -125,7 +132,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       targetId: requestedSiteId,
       status: "success",
       ipAddress: clientIp,
-      metadata: { mode, stats: result.stats, hasPreRestoreSnapshot: Boolean(result.snapshotPath) },
+      metadata: { mode, stats: result.stats, sourceSiteId: result.sourceSiteId, hasPreRestoreSnapshot: Boolean(result.snapshotPath) },
     });
 
     logEvent("info", "backup.import.completed", {
@@ -162,6 +169,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       mode,
       durationMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Backup import failed due to an internal error." }, { status: 500 });
   }
 }

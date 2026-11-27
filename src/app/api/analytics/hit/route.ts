@@ -10,6 +10,7 @@ import {
   checkAnalyticsIpRateLimit,
   checkAnalyticsSiteRateLimit,
   hashAnalyticsVisitor,
+  resolveAnalyticsCountry,
   resolveAnalyticsSite,
 } from "@/lib/analytics/ingest";
 
@@ -220,7 +221,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const referrer = req.headers.get("referer") || undefined;
-    const country = req.headers.get("cf-ipcountry") || req.headers.get("x-vercel-ip-country") || undefined;
+    const country = resolveAnalyticsCountry(
+      req.headers.get("cf-ipcountry"),
+      req.headers.get("x-vercel-ip-country")
+    );
     const { device, browser, os } = parseDeviceAndBrowser(userAgent);
     const headerLang = req.headers.get("accept-language")?.split(",")[0]?.split(";")[0]?.trim();
     const language = (rawLanguage?.trim() || headerLang || "").slice(0, 20);

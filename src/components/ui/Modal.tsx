@@ -54,7 +54,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "md" }: Mod
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/60 transition-opacity" onClick={onClose} aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"

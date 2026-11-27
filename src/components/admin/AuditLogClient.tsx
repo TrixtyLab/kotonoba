@@ -10,6 +10,7 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 /** Serialized audit log item passed from the Server Component page. */
 export interface AuditLogRowItem {
   id: string;
+  siteId: string | null;
   actorEmail: string | null;
   actorRole: string | null;
   action: string;
@@ -24,12 +25,14 @@ export interface AuditLogRowItem {
 /** Props for {@link AuditLogClient}. */
 export interface AuditLogClientProps {
   initialLogs: AuditLogRowItem[];
+  /** Shows the originating site column for platform-wide super administrator views. */
+  showSite?: boolean;
 }
 
 /**
  * Security and administrative audit trail viewer scoped to authorized administrators.
  */
-export function AuditLogClient({ initialLogs }: AuditLogClientProps): React.JSX.Element {
+export function AuditLogClient({ initialLogs, showSite = false }: AuditLogClientProps): React.JSX.Element {
   const t = useTranslations("admin");
   const tc = useTranslations("common");
   const [search, setSearch] = useState("");
@@ -43,6 +46,7 @@ export function AuditLogClient({ initialLogs }: AuditLogClientProps): React.JSX.
       if (!q) return true;
       return (
         entry.action.toLowerCase().includes(q) ||
+        (entry.siteId || "").toLowerCase().includes(q) ||
         (entry.actorEmail || "").toLowerCase().includes(q) ||
         (entry.targetId || "").toLowerCase().includes(q) ||
         (entry.ipAddress || "").toLowerCase().includes(q)
@@ -73,7 +77,7 @@ export function AuditLogClient({ initialLogs }: AuditLogClientProps): React.JSX.
             placeholder={t("searchAuditPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-surface-hover/50 border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text placeholder-text-muted/50 focus:outline-hidden focus:border-accent"
+            className="w-full bg-input border border-border rounded-lg pl-9 pr-3 py-2 min-h-[40px] text-sm text-text placeholder:text-text-muted placeholder:italic focus:outline-hidden focus:border-accent"
           />
         </div>
 
@@ -99,6 +103,7 @@ export function AuditLogClient({ initialLogs }: AuditLogClientProps): React.JSX.
       <AdminDataTable
         columns={[
           { key: "action", label: t("auditAction") },
+          ...(showSite ? [{ key: "site", label: t("auditSite"), className: "hidden lg:table-cell" }] : []),
           { key: "actor", label: t("auditActor"), className: "hidden sm:table-cell" },
           { key: "target", label: t("auditTarget"), className: "hidden md:table-cell" },
           { key: "status", label: t("auditStatus") },
@@ -115,6 +120,11 @@ export function AuditLogClient({ initialLogs }: AuditLogClientProps): React.JSX.
               <div>{entry.action}</div>
               <div className="text-[10px] text-text-muted sm:hidden mt-0.5">{entry.actorEmail || "system"}</div>
             </td>
+            {showSite && (
+              <td className="p-3.5 hidden lg:table-cell text-[11px] font-mono text-text-muted">
+                {entry.siteId || "—"}
+              </td>
+            )}
             <td className="p-3.5 hidden sm:table-cell text-xs">
               <div className="text-text font-medium">{entry.actorEmail || "—"}</div>
               {entry.actorRole && <div className="text-[10px] text-text-muted font-mono">{entry.actorRole}</div>}

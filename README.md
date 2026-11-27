@@ -211,4 +211,4 @@ docker compose up -d
 ## 📄 License
 
 This software is licensed under the **UnSetSoft Public License (UPL) 1.0 (Non-Commercial Only)**.
-See the [`LICENSE.md`](file:///e:/proyects/blog-cms/LICENSE.md) file for complete licensing terms and restrictions.
+See the [`LICENSE.md`](LICENSE.md) file for complete licensing terms and restrictions.

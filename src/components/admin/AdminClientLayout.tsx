@@ -146,7 +146,7 @@ export function AdminClientLayout({
         <div
           role="presentation"
           aria-hidden="true"
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs lg:hidden transition-opacity cursor-pointer touch-manipulation"
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden cursor-pointer touch-manipulation"
           onClick={() => setMobileSidebarOpen(false)}
         />
       )}
@@ -171,7 +171,7 @@ export function AdminClientLayout({
           user={user}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         />
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto animate-fade-in">
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto">
           {children}
         </main>
       </div>

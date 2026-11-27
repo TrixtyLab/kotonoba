@@ -131,7 +131,7 @@ export default async function AnalyticsComparePage({
         return (
           <span
             className={`inline-flex items-center gap-1 font-mono font-bold text-xs tabular-nums ${
-              isNeutral ? "text-text-muted" : isPositive ? "text-emerald-500" : "text-rose-500"
+              isNeutral ? "text-text-muted" : isPositive ? "text-success" : "text-danger"
             }`}
           >
             {isPositive ? (
@@ -176,7 +176,7 @@ export default async function AnalyticsComparePage({
         return (
           <span
             className={`font-mono font-bold text-xs tabular-nums ${
-              isNeutral ? "text-text-muted" : isPositive ? "text-emerald-500" : "text-rose-500"
+              isNeutral ? "text-text-muted" : isPositive ? "text-success" : "text-danger"
             }`}
           >
             {row.change > 0 ? `+${row.change}%` : `${row.change}%`}

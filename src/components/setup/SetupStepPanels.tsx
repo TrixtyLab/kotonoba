@@ -20,6 +20,16 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { SetupWizardData } from "@/lib/services/setup";
 
+function swatchNeedsDarkInk(hex: string): boolean {
+  const raw = hex.replace("#", "");
+  if (raw.length !== 6) return false;
+  const value = Number.parseInt(raw, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55;
+}
+
 /** Color preset options shown in Step 3 of the setup wizard. */
 const SETUP_COLOR_PRESETS = [
   { hex: "#6366f1", nameKey: "colorIndigo" },
@@ -56,62 +66,60 @@ export function SetupStepPanels({
   onViewPublicBlog,
 }: SetupStepPanelsProps) {
   const t = useTranslations("setup");
+  const tc = useTranslations("common");
 
   if (step === 1) {
     return (
       <div className="space-y-4 animate-fade-in">
         <div className="border-b border-border/60 pb-2.5">
-          <h2 className="text-sm font-bold text-text flex items-center gap-2">
+          <h2 className="text-base font-bold text-text flex items-center gap-2">
             <User className="w-4 h-4 text-accent" />
             {t("step1_heading")}
           </h2>
-          <p className="text-xs text-text-muted mt-0.5">{t("step1_description")}</p>
+          <p className="text-sm text-text-muted mt-0.5">{t("step1_description")}</p>
         </div>
 
         <div className="space-y-3 pt-1">
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("fullName")}</label>
-            <Input
-              placeholder={t("fullNamePlaceholder")}
-              value={formData.adminName}
-              onChange={(e) => onUpdateField("adminName", e.target.value)}
-              autoFocus
-            />
-          </div>
+          <Input
+            id="setup-admin-name"
+            label={t("fullName")}
+            placeholder={t("fullNamePlaceholder")}
+            value={formData.adminName}
+            onChange={(e) => onUpdateField("adminName", e.target.value)}
+            autoComplete="name"
+            autoFocus
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("email")}</label>
-            <Input
-              type="email"
-              placeholder={t("emailPlaceholder")}
-              value={formData.adminEmail}
-              onChange={(e) => onUpdateField("adminEmail", e.target.value)}
-              autoComplete="email"
-            />
-          </div>
+          <Input
+            id="setup-admin-email"
+            type="email"
+            label={t("email")}
+            placeholder={t("emailPlaceholder")}
+            value={formData.adminEmail}
+            onChange={(e) => onUpdateField("adminEmail", e.target.value)}
+            autoComplete="email"
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">
-              {t("password")} <span className="text-text-muted font-normal">{t("passwordMinHint")}</span>
-            </label>
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                placeholder={t("passwordPlaceholder")}
-                value={formData.adminPassword}
-                onChange={(e) => onUpdateField("adminPassword", e.target.value)}
-                autoComplete="new-password"
-              />
+          <Input
+            id="setup-admin-password"
+            type={showPassword ? "text" : "password"}
+            label={t("password")}
+            helperText={t("passwordMinHint")}
+            placeholder={t("passwordPlaceholder")}
+            value={formData.adminPassword}
+            onChange={(e) => onUpdateField("adminPassword", e.target.value)}
+            autoComplete="new-password"
+            endAdornment={
               <button
                 type="button"
                 onClick={onToggleShowPassword}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text p-1 transition-colors"
-                tabIndex={-1}
+                aria-label={showPassword ? tc("hidePassword") : tc("showPassword")}
+                className="w-9 h-9 inline-flex items-center justify-center rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
               >
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
-            </div>
-          </div>
+            }
+          />
         </div>
       </div>
     );
@@ -121,41 +129,40 @@ export function SetupStepPanels({
     return (
       <div className="space-y-4 animate-fade-in">
         <div className="border-b border-border/60 pb-2.5">
-          <h2 className="text-sm font-bold text-text flex items-center gap-2">
+          <h2 className="text-base font-bold text-text flex items-center gap-2">
             <Globe className="w-4 h-4 text-accent" />
             {t("step2_heading")}
           </h2>
-          <p className="text-xs text-text-muted mt-0.5">{t("step2_description")}</p>
+          <p className="text-sm text-text-muted mt-0.5">{t("step2_description")}</p>
         </div>
 
         <div className="space-y-3 pt-1">
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("blogName")}</label>
-            <Input
-              placeholder={t("blogNamePlaceholder")}
-              value={formData.siteName}
-              onChange={(e) => onUpdateField("siteName", e.target.value)}
-              autoFocus
-            />
-          </div>
+          <Input
+            id="setup-site-name"
+            label={t("blogName")}
+            placeholder={t("blogNamePlaceholder")}
+            value={formData.siteName}
+            onChange={(e) => onUpdateField("siteName", e.target.value)}
+            autoFocus
+          />
+
+          <Input
+            id="setup-site-subtitle"
+            label={t("blogSubtitle")}
+            placeholder={t("blogSubtitlePlaceholder")}
+            value={formData.siteSubtitle}
+            onChange={(e) => onUpdateField("siteSubtitle", e.target.value)}
+          />
 
           <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("blogSubtitle")}</label>
             <Input
-              placeholder={t("blogSubtitlePlaceholder")}
-              value={formData.siteSubtitle}
-              onChange={(e) => onUpdateField("siteSubtitle", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("domain")}</label>
-            <Input
+              id="setup-domain"
+              label={t("domain")}
               placeholder={t("domainPlaceholder")}
               value={formData.domain}
               onChange={(e) => onUpdateField("domain", e.target.value)}
             />
-            <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-text-muted">
               <span>{t("canonicalUrl")}</span>
               <span className="font-mono text-accent font-semibold px-1.5 py-0.5 bg-accent/10 rounded-sm border border-accent/20">
                 {cleanDomainPreview.includes("localhost")
@@ -173,11 +180,11 @@ export function SetupStepPanels({
     return (
       <div className="space-y-4 animate-fade-in">
         <div className="border-b border-border/60 pb-2.5">
-          <h2 className="text-sm font-bold text-text flex items-center gap-2">
+          <h2 className="text-base font-bold text-text flex items-center gap-2">
             <Palette className="w-4 h-4 text-accent" />
             {t("step3_heading")}
           </h2>
-          <p className="text-xs text-text-muted mt-0.5">{t("step3_description")}</p>
+          <p className="text-sm text-text-muted mt-0.5">{t("step3_description")}</p>
         </div>
 
         <div className="space-y-4 pt-1">
@@ -191,19 +198,22 @@ export function SetupStepPanels({
                     key={preset.hex}
                     type="button"
                     onClick={() => onUpdateField("primaryColor", preset.hex)}
-                    className={`p-2 rounded-md border flex flex-col items-center gap-1 transition-all ${
+                    aria-pressed={isSelected}
+                    className={`p-2 min-h-[64px] rounded-md border flex flex-col items-center justify-center gap-1 transition-colors ${
                       isSelected
                         ? "border-accent bg-accent/10 font-bold"
                         : "border-border bg-surface-hover/30 hover:border-text-muted hover:bg-surface-hover"
                     }`}
                   >
                     <span
-                      className="w-5 h-5 rounded-sm flex items-center justify-center text-white"
+                      className={`w-5 h-5 rounded-sm flex items-center justify-center ${
+                        swatchNeedsDarkInk(preset.hex) ? "text-slate-950" : "text-white"
+                      }`}
                       style={{ backgroundColor: preset.hex }}
                     >
-                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                      {isSelected && <Check className="w-3 h-3" />}
                     </span>
-                    <span className="text-[10px] text-text truncate">{t(preset.nameKey)}</span>
+                    <span className="text-xs text-text truncate">{t(preset.nameKey)}</span>
                   </button>
                 );
               })}
@@ -216,7 +226,8 @@ export function SetupStepPanels({
               <button
                 type="button"
                 onClick={() => onUpdateField("theme", "dark")}
-                className={`p-3 rounded-md border flex items-center gap-3 transition-all text-left ${
+                aria-pressed={formData.theme === "dark"}
+                className={`p-3 min-h-[64px] rounded-md border flex items-center gap-3 transition-colors text-left ${
                   formData.theme === "dark"
                     ? "border-accent bg-accent/10 text-accent font-bold"
                     : "border-border bg-surface-hover/30 text-text-muted hover:text-text hover:border-text-muted"
@@ -226,15 +237,16 @@ export function SetupStepPanels({
                   <Moon className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-text">{t("darkTheme")}</p>
-                  <p className="text-[10px] text-text-muted">{t("darkThemeHint")}</p>
+                  <p className="text-sm font-bold text-text">{t("darkTheme")}</p>
+                  <p className="text-xs text-text-muted">{t("darkThemeHint")}</p>
                 </div>
               </button>
 
               <button
                 type="button"
                 onClick={() => onUpdateField("theme", "light")}
-                className={`p-3 rounded-md border flex items-center gap-3 transition-all text-left ${
+                aria-pressed={formData.theme === "light"}
+                className={`p-3 min-h-[64px] rounded-md border flex items-center gap-3 transition-colors text-left ${
                   formData.theme === "light"
                     ? "border-accent bg-accent/10 text-accent font-bold"
                     : "border-border bg-surface-hover/30 text-text-muted hover:text-text hover:border-text-muted"
@@ -244,8 +256,8 @@ export function SetupStepPanels({
                   <Sun className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-text">{t("lightTheme")}</p>
-                  <p className="text-[10px] text-text-muted">{t("lightThemeHint")}</p>
+                  <p className="text-sm font-bold text-text">{t("lightTheme")}</p>
+                  <p className="text-xs text-text-muted">{t("lightThemeHint")}</p>
                 </div>
               </button>
             </div>
@@ -259,30 +271,29 @@ export function SetupStepPanels({
     return (
       <div className="space-y-4 animate-fade-in">
         <div className="border-b border-border/60 pb-2.5">
-          <h2 className="text-sm font-bold text-text flex items-center gap-2">
+          <h2 className="text-base font-bold text-text flex items-center gap-2">
             <FolderPlus className="w-4 h-4 text-accent" />
             {t("step4_heading")}
           </h2>
-          <p className="text-xs text-text-muted mt-0.5">{t("step4_description")}</p>
+          <p className="text-sm text-text-muted mt-0.5">{t("step4_description")}</p>
         </div>
 
         <div className="space-y-3 pt-1">
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("categoryName")}</label>
-            <Input
-              placeholder={t("categoryNamePlaceholder")}
-              value={formData.categoryName}
-              onChange={(e) => onUpdateField("categoryName", e.target.value)}
-              autoFocus
-            />
-          </div>
+          <Input
+            id="setup-category"
+            label={t("categoryName")}
+            placeholder={t("categoryNamePlaceholder")}
+            value={formData.categoryName}
+            onChange={(e) => onUpdateField("categoryName", e.target.value)}
+            autoFocus
+          />
 
-          <div className="p-3.5 rounded-md bg-surface-hover/40 border border-border text-xs space-y-1.5">
-            <div className="flex items-center gap-2 font-bold text-text">
-              <Sparkles className="w-3.5 h-3.5 text-accent" />
+          <div className="p-3.5 rounded-md bg-surface-hover/40 border border-border text-sm space-y-1.5">
+            <div className="flex items-center gap-2 font-semibold text-text">
+              <Sparkles className="w-4 h-4 text-accent" />
               <span>{t("starterSeedTitle")}</span>
             </div>
-            <p className="text-text-muted leading-relaxed text-[11px]">{t("starterSeedDescription")}</p>
+            <p className="text-text-muted leading-relaxed text-sm">{t("starterSeedDescription")}</p>
           </div>
         </div>
       </div>
@@ -291,32 +302,32 @@ export function SetupStepPanels({
 
   return (
     <div className="space-y-5 text-center py-3 animate-fade-in">
-      <div className="w-12 h-12 bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 rounded-md flex items-center justify-center mx-auto">
+      <div className="w-12 h-12 bg-primary text-bg rounded-md flex items-center justify-center mx-auto">
         <Sparkles className="w-6 h-6" />
       </div>
 
       <div className="space-y-1 max-w-md mx-auto">
         <h2 className="text-lg font-bold text-text tracking-tight">{t("step5_heading")}</h2>
-        <p className="text-xs text-text-muted leading-relaxed">
+        <p className="text-sm text-text-muted leading-relaxed">
           {t("step5_description", { siteName: formData.siteName })}
         </p>
       </div>
 
-      <div className="p-3.5 rounded-md bg-surface-hover/30 border border-border text-xs text-left max-w-md mx-auto grid grid-cols-2 gap-2.5">
+      <div className="p-3.5 rounded-md bg-surface-hover/30 border border-border text-sm text-left max-w-md mx-auto grid grid-cols-2 gap-3">
         <div>
-          <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryAdmin")}</span>
+          <span className="text-xs text-text-muted font-medium block">{t("summaryAdmin")}</span>
           <span className="font-medium text-text truncate block">{formData.adminEmail}</span>
         </div>
         <div>
-          <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryDomain")}</span>
+          <span className="text-xs text-text-muted font-medium block">{t("summaryDomain")}</span>
           <span className="font-mono text-accent font-semibold truncate block">{cleanDomainPreview}</span>
         </div>
         <div>
-          <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryTheme")}</span>
+          <span className="text-xs text-text-muted font-medium block">{t("summaryTheme")}</span>
           <span className="font-medium text-text capitalize block">{formData.theme}</span>
         </div>
         <div>
-          <span className="text-[10px] text-text-muted uppercase font-bold block">{t("summaryCategory")}</span>
+          <span className="text-xs text-text-muted font-medium block">{t("summaryCategory")}</span>
           <span className="font-medium text-text block">{formData.categoryName}</span>
         </div>
       </div>
@@ -327,6 +338,7 @@ export function SetupStepPanels({
           size="sm"
           onClick={onGoToDashboard}
           icon={<ArrowRight className="w-3.5 h-3.5" />}
+          iconPosition="end"
         >
           {t("goToDashboard")}
         </Button>

@@ -15,6 +15,8 @@ import { getCachedSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
 import { getAdminDomainEnv, getDefaultSiteUrl } from "@/lib/config/env";
 import { getRequestHost } from "@/lib/http/request";
 import { normalizeMediaUrl } from "@/lib/utils/media";
+import { resolveBrandFont } from "@/lib/config/brand";
+import { SafeCustomCss } from "@/components/SafeCustomCss";
 
 export const dynamic = "force-dynamic";
 
@@ -138,11 +140,13 @@ export default async function BlogLayout({
   const enableLlmsTxt = !isAiBlocked && seoSettings.llmsTxtEnabled;
 
   const primaryColor = site?.primaryColor || "#3b82f6";
+  const brandFont = resolveBrandFont(site?.fontFamily);
   const themeStyles = {
     "--color-primary": primaryColor,
     "--color-accent": primaryColor,
     "--color-primary-hover": `color-mix(in srgb, ${primaryColor} 85%, black)`,
     "--color-accent-hover": `color-mix(in srgb, ${primaryColor} 85%, black)`,
+    fontFamily: brandFont.stack,
   } as React.CSSProperties;
 
   const activeHeaderBanner = bannersConfig.headerBanner
@@ -154,6 +158,7 @@ export default async function BlogLayout({
       className="min-h-screen flex flex-col justify-between bg-bg text-text"
       style={themeStyles}
     >
+      <SafeCustomCss css={site?.customCss} />
       {site && <AnalyticsTracker siteId={site.id} />}
       {activeHeaderBanner && (
         <HeaderBanner

@@ -21,6 +21,39 @@ export type PostMutationResponse =
   | { success: true; postId: string }
   | { success: false; error?: string; errors?: Record<string, string[]> };
 
+function rejectAuthorPinChange(
+  actor: TokenPayload,
+  pinned: boolean | undefined,
+  previousPinned?: boolean
+): PostMutationResponse | null {
+  if (actor.role !== ROLES.AUTHOR) return null;
+  if (previousPinned === undefined) {
+    return pinned ? { success: false, error: "Authors cannot pin articles to the homepage." } : null;
+  }
+  return pinned !== previousPinned
+    ? { success: false, error: "Authors cannot change the homepage pin." }
+    : null;
+}
+
+/**
+ * Applies the creation-time authorization and tenant checks shared by the create service.
+ *
+ * @returns A rejection payload, or `null` when creation may proceed.
+ */
+function rejectInvalidPostCreation(
+  actor: TokenPayload,
+  siteId: string,
+  pinned: boolean | undefined,
+  categoryIds: string[] | undefined,
+  tagIds: string[] | undefined
+): PostMutationResponse | null {
+  const pinError = rejectAuthorPinChange(actor, pinned);
+  if (pinError) return pinError;
+  return taxonomyBelongsToSite(siteId, categoryIds, tagIds)
+    ? null
+    : { success: false, error: "Invalid taxonomy selection" };
+}
+
 /**
  * Overview post structure formatted for administration dashboard listings.
  */
@@ -35,6 +68,7 @@ export interface AdminPostRecord {
   shortUrl: string | null;
   publishedAt: Date | null;
   createdAt: Date;
+  authorId: string;
   authorName: string | null;
 }
 
@@ -107,9 +141,8 @@ export async function createPostService(
     dubLinkId,
   } = data;
 
-  if (!taxonomyBelongsToSite(siteId, categoryIds, tagIds)) {
-    return { result: { success: false, error: "Invalid taxonomy selection" } };
-  }
+  const creationError = rejectInvalidPostCreation(actor, siteId, pinned, categoryIds, tagIds);
+  if (creationError) return { result: creationError };
 
   const db = getDb();
   const postId = generateId();
@@ -201,6 +234,7 @@ export function getExistingPostMeta(postId: string) {
       dubLinkId: posts.dubLinkId,
       locale: posts.locale,
       status: posts.status,
+      pinned: posts.pinned,
     })
     .from(posts)
     .where(eq(posts.id, postId))
@@ -245,6 +279,9 @@ export async function updatePostService(
   if (actor.role === ROLES.AUTHOR && existing.authorId !== actor.userId) {
     return { result: { success: false, error: "You can only edit your own articles." } };
   }
+
+  const pinError = rejectAuthorPinChange(actor, data.pinned, existing.pinned);
+  if (pinError) return { result: pinError };
 
   const { title, slug, content, contentMd, contentHtml, contentFormat, excerpt, coverImage, status, publishedAt, locale, categoryIds, tagIds, pinned, shortUrl, dubLinkId } = data;
   if (!taxonomyBelongsToSite(existing.siteId, categoryIds, tagIds)) {
@@ -312,10 +349,16 @@ export async function updatePostService(
 /**
  * Deletes a post, cleans up Dub.co short link & analytics rows by exact postId, and writes audit log.
  */
-export async function deletePostService(actor: TokenPayload, postId: string): Promise<{ deletedSlug?: string; siteId?: string }> {
+export async function deletePostService(
+  actor: TokenPayload,
+  postId: string
+): Promise<{ success: boolean; error?: string; deletedSlug?: string; siteId?: string }> {
   const db = getDb();
   const existing = db.select().from(posts).where(eq(posts.id, postId)).get();
-  if (!existing) return {};
+  if (!existing) return { success: false, error: "Article not found" };
+  if (actor.role === ROLES.AUTHOR && existing.authorId !== actor.userId) {
+    return { success: false, error: "You can only delete your own articles." };
+  }
 
   if (existing.dubLinkId) {
     try {
@@ -339,7 +382,7 @@ export async function deletePostService(actor: TokenPayload, postId: string): Pr
     metadata: { slug: existing.slug },
   });
 
-  return { deletedSlug: existing.slug, siteId: existing.siteId };
+  return { success: true, deletedSlug: existing.slug, siteId: existing.siteId };
 }
 
 /** Lists all posts for admin management tables for a specific tenant site. */
@@ -357,6 +400,7 @@ export function listAdminPosts(siteId: string): AdminPostRecord[] {
       shortUrl: posts.shortUrl,
       publishedAt: posts.publishedAt,
       createdAt: posts.createdAt,
+      authorId: posts.authorId,
       authorName: users.displayName,
     })
     .from(posts)

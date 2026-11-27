@@ -62,7 +62,7 @@ export function SetupWizardClient() {
     }
     const pwd = formData.adminPassword;
     const isStrong = pwd.length >= 10 && /[A-Z]/.test(pwd) && /[a-z]/.test(pwd) && /[0-9]/.test(pwd);
-    return isStrong ? null : `${t("errorPasswordLength")} (10+ chars, uppercase, lowercase, number)`;
+    return isStrong ? null : t("errorPasswordLength");
   }
 
   function validateStep(currentStep: number): boolean {
@@ -125,7 +125,7 @@ export function SetupWizardClient() {
   const cleanDomainPreview = formData.domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "localhost:3000";
 
   return (
-    <main className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-bg relative select-none">
+    <main className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-bg relative">
       {/* Top Floating Controls */}
       <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center gap-2">
         <LocaleSwitcher />
@@ -146,11 +146,11 @@ export function SetupWizardClient() {
           <div className="space-y-1">
             <div className="flex items-center justify-center gap-2">
               <h1 className="text-xl font-bold tracking-tight text-text">{t("title")}</h1>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-accent">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-accent">
                 {t("badge")}
               </span>
             </div>
-            <p className="text-xs text-text-muted">
+            <p className="text-sm text-text-muted">
               {t("subtitle")}
             </p>
           </div>
@@ -162,7 +162,7 @@ export function SetupWizardClient() {
           <div className="relative px-2 sm:px-4">
             <div className="absolute left-6 right-6 top-4 sm:top-5 -translate-y-1/2 h-0.5 bg-border -z-0">
               <div
-                className="h-full bg-gradient-to-r from-accent to-emerald-500 transition-all duration-300"
+                className="h-full bg-accent transition-all duration-300"
                 style={{ width: `${((step - 1) / (steps.length - 1)) * 100}%` }}
               />
             </div>
@@ -177,9 +177,9 @@ export function SetupWizardClient() {
                     <div
                       className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 ${
                         isCurrent
-                          ? "bg-accent text-white ring-4 ring-accent/20 font-bold scale-105"
+                          ? "bg-accent text-white"
                           : isCompleted
-                          ? "bg-emerald-500 text-white"
+                          ? "bg-primary text-bg"
                           : "bg-surface-hover text-text-muted border border-border"
                       }`}
                     >
@@ -195,7 +195,7 @@ export function SetupWizardClient() {
                           isCurrent
                             ? "text-accent"
                             : isCompleted
-                            ? "text-emerald-500"
+                            ? "text-text"
                             : "text-text-muted"
                         }`}
                       >
@@ -206,13 +206,14 @@ export function SetupWizardClient() {
                 );
               })}
             </div>
+            <p className="sm:hidden text-center text-xs font-semibold text-accent pt-2">
+              {steps[step - 1]?.label}
+            </p>
           </div>
 
-          {/* Validation Alert */}
           {error && (
-            <div className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-md text-xs font-medium flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-              <span>{error}</span>
+            <div role="alert" className="p-3 bg-danger/10 text-danger border border-danger/30 rounded-lg text-sm font-medium">
+              {error}
             </div>
           )}
 
@@ -252,6 +253,7 @@ export function SetupWizardClient() {
                   size="sm"
                   onClick={handleNext}
                   icon={<ArrowRight className="w-3.5 h-3.5" />}
+                  iconPosition="end"
                 >
                   {t("continue")}
                 </Button>

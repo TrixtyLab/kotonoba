@@ -224,7 +224,7 @@ export function BackupSettingsClient({ siteId }: BackupSettingsClientProps) {
                       onChange={() => setImportMode("replace")}
                       className="accent-accent"
                     />
-                    <span className="text-rose-500 font-semibold">{t("modeReplace")}</span>
+                    <span className="text-danger font-semibold">{t("modeReplace")}</span>
                   </label>
                 </div>
               </div>

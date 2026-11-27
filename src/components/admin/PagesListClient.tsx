@@ -24,18 +24,26 @@ export interface PageItem {
   views: number;
   publishedAtFormatted?: string | null;
   createdAtFormatted: string;
+  authorId?: string | null;
   authorName?: string | null;
+}
+
+/** Signed-in editor viewing the list. Authors only see delete on their own rows. */
+export interface ContentListViewer {
+  id: string;
+  role: string;
 }
 
 /** Properties configuring the administrative pages list view. */
 export interface PagesListClientProps {
   initialPages: PageItem[];
+  viewer: ContentListViewer;
 }
 
 /**
  * Administrative custom pages management table with search, tab status filters, and deletion.
  */
-export function PagesListClient({ initialPages }: PagesListClientProps): React.JSX.Element {
+export function PagesListClient({ initialPages, viewer }: PagesListClientProps): React.JSX.Element {
   const t = useTranslations("admin");
   const tc = useTranslations("common");
   const toast = useToast();
@@ -53,6 +61,11 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
       return matchSearch && matchStatus;
     });
   }, [pagesList, search, statusFilter]);
+
+  function canDelete(page: PageItem): boolean {
+    if (viewer.role === "author") return page.authorId === viewer.id;
+    return true;
+  }
 
   async function handleConfirmDelete(): Promise<void> {
     if (!pageToDelete) return;
@@ -94,7 +107,7 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
       />
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3 rounded-xl border border-border">
-        <Tabs items={statusOptions} activeKey={statusFilter} onSelect={setStatusFilter} variant="pills" />
+        <Tabs items={statusOptions} activeKey={statusFilter} onSelect={setStatusFilter} variant="surface" />
 
         <div className="relative w-full sm:w-64">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -103,7 +116,7 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={tc("search")}
-            className="w-full pl-8.5 pr-3 py-1.5 bg-input border border-border rounded-lg text-xs text-text placeholder:text-text-muted focus:outline-none focus:border-accent"
+            className="w-full pl-9 pr-3 py-2 min-h-[40px] bg-input border border-border rounded-lg text-sm text-text placeholder:text-text-muted placeholder:italic focus:outline-hidden focus:border-accent"
           />
         </div>
       </div>
@@ -115,7 +128,7 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
           { key: "language", label: tc("language"), className: "hidden md:table-cell" },
           { key: "views", label: tc("views"), className: "hidden sm:table-cell" },
           { key: "date", label: tc("date"), className: "hidden md:table-cell" },
-          { key: "actions", label: tc("actions"), className: "text-right" },
+          { key: "actions", label: tc("actions"), className: "text-right hidden sm:table-cell" },
         ]}
         isEmpty={filteredPages.length === 0}
         emptyIcon={<Files className="w-8 h-8" />}
@@ -133,14 +146,29 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
               </div>
 
               <div className="flex items-center gap-1.5 mt-1.5 sm:hidden flex-wrap">
-                <StatusBadge status={page.status} className="text-[9px] py-0 px-1.5" />
-                <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
+                <StatusBadge status={page.status} />
+                <span className="uppercase text-[11px] font-semibold px-1.5 py-0.5 rounded bg-surface-hover text-text-muted border border-border/50 font-mono">
                   {page.locale}
                 </span>
                 <span className="text-[10px] text-text-muted flex items-center gap-0.5 font-mono">
                   <Eye className="w-2.5 h-2.5" /> {page.views.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-text-muted">{page.publishedAtFormatted || page.createdAtFormatted}</span>
+              </div>
+              <div className="flex items-center gap-1 mt-2 sm:hidden">
+                {page.status === POST_STATUS.PUBLISHED && (
+                  <a href={`/p/${page.slug}`} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={tc("preview")}>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                <Link href={`/admin/pages/${page.id}`} className="p-2 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={tc("edit")}>
+                  <Edit3 className="w-3.5 h-3.5" />
+                </Link>
+                {canDelete(page) && (
+                  <button type="button" onClick={() => setPageToDelete(page.id)} className="p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title={tc("delete")}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </td>
 
@@ -165,8 +193,8 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
               {page.publishedAtFormatted || page.createdAtFormatted}
             </td>
 
-            <td className="py-3 px-4 text-right">
-              <div className="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
+            <td className="py-3 px-4 text-right hidden sm:table-cell">
+              <div className="flex items-center justify-end gap-1 flex-wrap">
                 {page.status === POST_STATUS.PUBLISHED && (
                   <a href={`/p/${page.slug}`} target="_blank" rel="noopener noreferrer" className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("preview")}>
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -175,9 +203,11 @@ export function PagesListClient({ initialPages }: PagesListClientProps): React.J
                 <Link href={`/admin/pages/${page.id}`} className="p-2 sm:p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-accent/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title={tc("edit")}>
                   <Edit3 className="w-3.5 h-3.5" />
                 </Link>
-                <button type="button" onClick={() => setPageToDelete(page.id)} className="p-2 sm:p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer" title={tc("delete")}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {canDelete(page) && (
+                  <button type="button" onClick={() => setPageToDelete(page.id)} className="p-2 sm:p-1.5 rounded-lg text-danger hover:bg-danger/10 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer" title={tc("delete")}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </td>
           </tr>

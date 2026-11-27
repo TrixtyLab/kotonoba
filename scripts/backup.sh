@@ -32,7 +32,7 @@ resolve_container() {
     return 1
   fi
 
-  for candidate in blog-app-blue blog-app-green kotonoba; do
+  for candidate in kotonoba; do
     if docker ps --format '{{.Names}}' | grep -q "^${candidate}$"; then
       echo "${candidate}"
       return 0

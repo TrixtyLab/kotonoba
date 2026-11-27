@@ -83,7 +83,7 @@ export function PostTaxonomyPanel({
                   <button
                     type="button"
                     onClick={() => onChangeTags(selectedTags.filter((id) => id !== tId))}
-                    className="hover:text-rose-500 ml-0.5 cursor-pointer"
+                    className="hover:text-danger ml-0.5 cursor-pointer"
                   >
                     ✕
                   </button>

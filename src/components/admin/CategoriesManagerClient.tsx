@@ -148,7 +148,7 @@ export function CategoriesManagerClient({
             placeholder={tc("search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-surface-hover/50 border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text placeholder-text-muted/50 focus:outline-hidden focus:border-accent"
+            className="w-full bg-input border border-border rounded-lg pl-9 pr-3 py-2 min-h-[40px] text-sm text-text placeholder:text-text-muted placeholder:italic focus:outline-hidden focus:border-accent"
           />
         </div>
       </div>
@@ -181,7 +181,7 @@ export function CategoriesManagerClient({
               <button
                 type="button"
                 onClick={() => setCategoryToDelete(cat.id)}
-                className="p-2 sm:p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                className="p-2 sm:p-1.5 rounded-lg hover:bg-danger/10 text-danger transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                 title={tc("delete")}
               >
                 <Trash2 className="w-3.5 h-3.5" />

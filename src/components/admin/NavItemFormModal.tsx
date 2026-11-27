@@ -236,7 +236,7 @@ export function NavItemFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-black/60  flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-surface border border-border rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
         <h4 className="text-sm font-bold text-text">{isEditingExisting ? tc("edit") : tc("add")}</h4>
 

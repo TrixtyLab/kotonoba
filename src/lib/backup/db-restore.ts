@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema";
 import { LOCALES } from "@/i18n/locales";
 import { POST_STATUS, ROLES, type PostStatus } from "@/lib/config/constants";
+import { resolveBrandFont } from "@/lib/config/brand";
 import { resolveCanonicalContent } from "@/lib/content/canonical";
 import { sanitizeCss, sanitizeNavLinksJson, sanitizeUrl } from "@/lib/security/sanitize";
 import { generateId } from "@/lib/utils/slug";
@@ -335,7 +336,7 @@ function updateRestoredSiteConfig(
       theme: s.theme === "light" || s.theme === "dark" ? s.theme : targetSite.theme,
       customCss: s.customCss !== undefined ? sanitizeCss(s.customCss) : targetSite.customCss,
       primaryColor: s.primaryColor || targetSite.primaryColor,
-      fontFamily: s.fontFamily || targetSite.fontFamily,
+      fontFamily: resolveBrandFont(s.fontFamily || targetSite.fontFamily).id,
       navLinks: s.navLinks ? sanitizeNavLinksJson(s.navLinks) : targetSite.navLinks,
       navAlignment: s.navAlignment || targetSite.navAlignment,
       supportedLocales: s.supportedLocales || targetSite.supportedLocales,

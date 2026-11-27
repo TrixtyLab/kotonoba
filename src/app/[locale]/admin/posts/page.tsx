@@ -1,5 +1,6 @@
 import { getAdminSite } from "@/lib/tenant";
 import { getAdminPosts } from "@/actions/posts";
+import { getCurrentUser } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils/date";
 import { PostsListClient } from "@/components/admin/PostsListClient";
 
@@ -16,8 +17,9 @@ export default async function AdminPostsPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const site = await getAdminSite();
+  const [site, user] = await Promise.all([getAdminSite(), getCurrentUser()]);
   const rawPosts = site ? await getAdminPosts(site.id) : [];
+  const viewer = { id: user?.userId ?? "", role: user?.role ?? "author" };
 
   const postList = rawPosts.map((p) => ({
     ...p,
@@ -25,5 +27,5 @@ export default async function AdminPostsPage({
     createdAtFormatted: formatDate(p.createdAt, locale),
   }));
 
-  return <PostsListClient initialPosts={postList} />;
+  return <PostsListClient initialPosts={postList} viewer={viewer} />;
 }

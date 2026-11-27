@@ -19,8 +19,8 @@ export function Table({ columns, children }: TableProps): React.JSX.Element {
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-xs">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
-          <thead className="bg-surface-hover/50 text-text-muted border-b border-border font-semibold uppercase tracking-wider text-[10px]">
+        <table className="w-full text-left text-sm border-collapse">
+          <thead className="bg-surface-hover/50 text-text-muted border-b border-border font-semibold uppercase tracking-wide text-[11px]">
             <tr>
               {columns.map((col) => (
                 <th key={col.key} className={`p-3.5 ${col.className || ""}`}>

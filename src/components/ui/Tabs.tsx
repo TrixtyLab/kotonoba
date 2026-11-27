@@ -29,7 +29,7 @@ export function Tabs({
 }: TabsProps): React.JSX.Element {
   const containerClass =
     variant === "surface"
-      ? "flex items-center gap-1 bg-surface-hover/60 p-1 rounded-lg w-full sm:w-auto border border-border/50 overflow-x-auto no-scrollbar"
+      ? "flex flex-wrap items-center gap-1 bg-surface-hover/60 p-1 rounded-lg w-full sm:w-auto border border-border/50"
       : "flex items-center gap-1 overflow-x-auto no-scrollbar";
 
   return (
@@ -42,8 +42,10 @@ export function Tabs({
               ? "bg-surface text-text shadow-2xs border border-border"
               : "text-text-muted hover:text-text"
             : isActive
-            ? "bg-accent/10 text-accent font-bold shadow-2xs"
-            : "text-text-muted hover:text-text hover:bg-surface-hover/80";
+            ? "bg-accent/10 text-accent font-semibold"
+            : "text-text-muted hover:text-text hover:bg-surface-hover";
+
+        const idleBorder = variant === "surface" && !isActive ? "border border-transparent" : "";
 
         return (
           <button
@@ -52,7 +54,7 @@ export function Tabs({
             type="button"
             aria-selected={isActive}
             onClick={() => onSelect(item.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all shrink-0 cursor-pointer ${buttonClass}`}
+            className={`flex items-center gap-1.5 px-3 py-2 min-h-[36px] text-sm font-semibold rounded-lg whitespace-nowrap transition-colors shrink-0 cursor-pointer ${idleBorder} ${buttonClass}`}
           >
             {item.icon}
             <span>{item.label}</span>

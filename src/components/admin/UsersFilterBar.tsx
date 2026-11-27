@@ -95,7 +95,7 @@ export function UsersFilterBar({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t("searchPlaceholder")}
-          className="w-full pl-9 pr-3 py-1.5 text-xs bg-surface-hover/50 border border-border rounded-lg text-text placeholder:text-text-muted focus:outline-none focus:border-accent"
+          className="w-full pl-9 pr-3 py-2 min-h-[40px] text-sm bg-input border border-border rounded-lg text-text placeholder:text-text-muted placeholder:italic focus:outline-hidden focus:border-accent"
         />
       </div>
 

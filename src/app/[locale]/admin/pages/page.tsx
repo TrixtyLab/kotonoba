@@ -1,5 +1,6 @@
 import { getAdminSite } from "@/lib/tenant";
 import { getPages } from "@/actions/pages";
+import { getCurrentUser } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils/date";
 import { PagesListClient } from "@/components/admin/PagesListClient";
 
@@ -16,8 +17,9 @@ export default async function AdminPagesPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const site = await getAdminSite();
+  const [site, user] = await Promise.all([getAdminSite(), getCurrentUser()]);
   const rawPages = site ? await getPages(site.id) : [];
+  const viewer = { id: user?.userId ?? "", role: user?.role ?? "author" };
 
   const pageList = rawPages.map((p) => ({
     ...p,
@@ -25,5 +27,5 @@ export default async function AdminPagesPage({
     createdAtFormatted: formatDate(p.createdAt, locale),
   }));
 
-  return <PagesListClient initialPages={pageList} />;
+  return <PagesListClient initialPages={pageList} viewer={viewer} />;
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Option item definition for custom select dropdowns.
@@ -41,50 +42,178 @@ export interface SelectProps {
   className?: string;
 }
 
+function nextHighlight(current: number, key: string, length: number): number | null {
+  if (length === 0) return null;
+  if (key === "ArrowDown") return (current + 1) % length;
+  if (key === "ArrowUp") return (current - 1 + length) % length;
+  if (key === "Home") return 0;
+  if (key === "End") return length - 1;
+  return null;
+}
+
 function SelectOptionsDropdown({
   options,
   value,
+  highlight,
+  listId,
+  onHighlight,
   onSelect,
 }: {
   options: SelectOption[];
   value: string;
+  highlight: number;
+  listId: string;
+  onHighlight: (index: number) => void;
   onSelect: (value: string) => void;
 }) {
   return (
-    <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface border border-border rounded-xl shadow-xl p-1 max-h-56 overflow-y-auto animate-slide-up">
-      {options.map((opt) => {
+    <div
+      id={listId}
+      role="listbox"
+      className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface border border-border rounded-xl shadow-xl p-1 max-h-56 overflow-y-auto"
+    >
+      {options.map((opt, index) => {
         const isSelected = opt.value === value;
+        const isHighlighted = index === highlight;
         return (
           <button
             key={opt.value}
+            id={`${listId}-opt-${index}`}
             type="button"
+            role="option"
+            aria-selected={isSelected}
+            onMouseEnter={() => onHighlight(index)}
             onClick={() => onSelect(opt.value)}
-            className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg text-left transition-colors cursor-pointer ${
+            className={`w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[40px] text-sm rounded-lg text-left transition-colors cursor-pointer ${
               isSelected
-                ? "bg-accent text-white font-medium shadow-xs"
-                : "text-text hover:bg-surface-hover"
+                ? "bg-accent text-white font-medium"
+                : isHighlighted
+                  ? "bg-surface-hover text-text"
+                  : "text-text hover:bg-surface-hover"
             }`}
           >
             <div className="flex items-center gap-2 min-w-0">
               {opt.icon && (
-                <span className={`shrink-0 ${isSelected ? "text-white" : "text-accent"}`}>
-                  {opt.icon}
-                </span>
+                <span className={`shrink-0 ${isSelected ? "text-white" : "text-accent"}`}>{opt.icon}</span>
               )}
               <div className="min-w-0">
                 <p className="truncate leading-tight">{opt.label}</p>
                 {opt.description && (
-                  <p className={`text-[10px] truncate mt-0.5 ${isSelected ? "text-white/80" : "text-text-muted"}`}>
+                  <p className={`text-xs truncate mt-0.5 ${isSelected ? "text-white/80" : "text-text-muted"}`}>
                     {opt.description}
                   </p>
                 )}
               </div>
             </div>
-            {isSelected && <Check className="w-3.5 h-3.5 shrink-0 stroke-[3]" />}
+            {isSelected && <Check className="w-4 h-4 shrink-0" />}
           </button>
         );
       })}
     </div>
+  );
+}
+
+function clampHighlight(highlight: number, length: number): number {
+  if (length === 0) return 0;
+  return Math.min(highlight, length - 1);
+}
+
+function feedbackDescribedBy(
+  error: string | undefined,
+  helperText: string | undefined,
+  errorId: string,
+  helperId: string
+): string | undefined {
+  if (error) return errorId;
+  if (helperText) return helperId;
+  return undefined;
+}
+
+function onSelectKeyDown(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+  ctx: {
+    disabled: boolean;
+    isOpen: boolean;
+    highlight: number;
+    options: SelectOption[];
+    onOpen: () => void;
+    onClose: () => void;
+    onHighlight: (index: number) => void;
+    onCommit: (value: string) => void;
+  }
+): void {
+  if (ctx.disabled) return;
+  const moved = nextHighlight(ctx.highlight, event.key, ctx.options.length);
+  if (moved !== null) {
+    event.preventDefault();
+    if (ctx.isOpen) ctx.onHighlight(moved);
+    else ctx.onOpen();
+    return;
+  }
+  if (event.key === "Escape") {
+    ctx.onClose();
+    return;
+  }
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  if (!ctx.isOpen) {
+    ctx.onOpen();
+    return;
+  }
+  const option = ctx.options[ctx.highlight];
+  if (option) ctx.onCommit(option.value);
+}
+
+function SelectTrigger({
+  buttonId,
+  listId,
+  isOpen,
+  disabled,
+  borderClass,
+  describedBy,
+  activeDescendant,
+  selectedOption,
+  placeholder,
+  onClick,
+  onKeyDown,
+}: {
+  buttonId: string;
+  listId: string;
+  isOpen: boolean;
+  disabled: boolean;
+  borderClass: string;
+  describedBy?: string;
+  activeDescendant?: string;
+  selectedOption?: SelectOption;
+  placeholder: string;
+  onClick: () => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+}) {
+  const valueClass = selectedOption ? "font-medium" : "text-text-muted";
+  const stateClass = disabled ? "opacity-50 cursor-not-allowed" : "";
+  const chevronClass = isOpen ? "rotate-180 text-accent" : "";
+
+  return (
+    <button
+      id={buttonId}
+      type="button"
+      role="combobox"
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      disabled={disabled}
+      aria-haspopup="listbox"
+      aria-expanded={isOpen}
+      aria-controls={listId}
+      aria-describedby={describedBy}
+      aria-activedescendant={activeDescendant}
+      className={`w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[40px] text-sm rounded-lg border bg-input text-text transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${borderClass} ${stateClass}`}
+    >
+      <div className="flex items-center gap-2 min-w-0 truncate">
+        {selectedOption?.icon && <span className="shrink-0 text-accent">{selectedOption.icon}</span>}
+        <span className={`truncate ${valueClass}`}>{selectedOption?.label ?? placeholder}</span>
+      </div>
+      <ChevronDown className={`w-4 h-4 text-text-muted shrink-0 transition-transform duration-150 ${chevronClass}`} />
+    </button>
   );
 }
 
@@ -94,9 +223,19 @@ function resolveSelectTriggerBorder(error: string | undefined, isOpen: boolean):
   return "border-border hover:border-border-hover";
 }
 
-function SelectFieldFeedback({ error, helperText }: { error?: string; helperText?: string }) {
-  if (error) return <p className="text-[11px] text-danger font-medium mt-0.5">{error}</p>;
-  if (helperText) return <p className="text-[11px] text-text-muted mt-0.5 leading-normal">{helperText}</p>;
+function SelectFieldFeedback({
+  error,
+  helperText,
+  errorId,
+  helperId,
+}: {
+  error?: string;
+  helperText?: string;
+  errorId: string;
+  helperId: string;
+}) {
+  if (error) return <p id={errorId} className="text-xs text-danger font-medium mt-0.5">{error}</p>;
+  if (helperText) return <p id={helperId} className="text-xs text-text-muted mt-0.5 leading-normal">{helperText}</p>;
   return null;
 }
 
@@ -111,15 +250,23 @@ export function Select({
   value,
   onChange,
   options,
-  placeholder = "Seleccionar...",
+  placeholder,
   disabled = false,
   error,
   helperText,
   className = "",
 }: SelectProps) {
+  const t = useTranslations("common");
   const [isOpen, setIsOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const listId = useId();
+  const buttonId = useId();
+  const errorId = `${buttonId}-error`;
+  const helperId = `${buttonId}-helper`;
   const selectedOption = options.find((opt) => opt.value === value);
+  const resolvedPlaceholder = placeholder ?? t("selectPlaceholder");
+  const safeHighlight = clampHighlight(highlight, options.length);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -131,47 +278,71 @@ export function Select({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
+  function openAtSelection() {
+    const selectedIndex = options.findIndex((opt) => opt.value === value);
+    setHighlight(selectedIndex >= 0 ? selectedIndex : 0);
+    setIsOpen(true);
+  }
+
+  function commitValue(next: string) {
+    onChange(next);
+    setIsOpen(false);
+  }
+
   const borderClass = resolveSelectTriggerBorder(error, isOpen);
+  const describedBy = feedbackDescribedBy(error, helperText, errorId, helperId);
 
   return (
     <div className={`w-full space-y-1 text-left ${className}`} ref={containerRef}>
-      {label && <label className="block text-xs font-semibold text-text select-none">{label}</label>}
+      {label && (
+        <label htmlFor={buttonId} className="block text-xs font-semibold text-text">
+          {label}
+        </label>
+      )}
 
       <div className="relative">
-        <button
-          type="button"
-          onClick={() => !disabled && setIsOpen(!isOpen)}
+        <SelectTrigger
+          buttonId={buttonId}
+          listId={listId}
+          isOpen={isOpen}
           disabled={disabled}
-          className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg border bg-input text-text transition-all select-none cursor-pointer ${borderClass} ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-        >
-          <div className="flex items-center gap-2 min-w-0 truncate">
-            {selectedOption?.icon && <span className="shrink-0 text-accent">{selectedOption.icon}</span>}
-            <span className={`truncate ${selectedOption ? "font-medium" : "text-text-muted"}`}>
-              {selectedOption?.label ?? placeholder}
-            </span>
-          </div>
-          <ChevronDown
-            className={`w-3.5 h-3.5 text-text-muted shrink-0 transition-transform duration-150 ${
-              isOpen ? "rotate-180 text-accent" : ""
-            }`}
-          />
-        </button>
+          borderClass={borderClass}
+          describedBy={describedBy}
+          activeDescendant={isOpen ? `${listId}-opt-${safeHighlight}` : undefined}
+          selectedOption={selectedOption}
+          placeholder={resolvedPlaceholder}
+          onClick={() => {
+            if (disabled) return;
+            if (isOpen) setIsOpen(false);
+            else openAtSelection();
+          }}
+          onKeyDown={(event) =>
+            onSelectKeyDown(event, {
+              disabled,
+              isOpen,
+              highlight: safeHighlight,
+              options,
+              onOpen: openAtSelection,
+              onClose: () => setIsOpen(false),
+              onHighlight: setHighlight,
+              onCommit: commitValue,
+            })
+          }
+        />
 
         {isOpen && (
           <SelectOptionsDropdown
             options={options}
             value={value}
-            onSelect={(val) => {
-              onChange(val);
-              setIsOpen(false);
-            }}
+            highlight={safeHighlight}
+            listId={listId}
+            onHighlight={setHighlight}
+            onSelect={commitValue}
           />
         )}
       </div>
 
-      <SelectFieldFeedback error={error} helperText={helperText} />
+      <SelectFieldFeedback error={error} helperText={helperText} errorId={errorId} helperId={helperId} />
     </div>
   );
 }

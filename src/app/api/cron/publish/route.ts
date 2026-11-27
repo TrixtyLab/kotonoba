@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ROLES } from "@/lib/config/constants";
-import { getEnvConfig } from "@/lib/config/env";
-import { isAnalyticsPruningEnabled } from "@/lib/config/features";
-import { getCurrentUser } from "@/lib/auth/session";
 import { publishScheduledPosts } from "@/lib/db/scheduled";
-import { aggregateDailyAnalytics, pruneExpiredAnalytics } from "@/lib/analytics/retention";
+import { authorizeCronRequest } from "@/lib/cron/auth";
 import { revalidatePostPaths } from "@/lib/cache/revalidate";
-import { getRequestId, verifyBearerSecret } from "@/lib/http/request";
+import { getRequestId } from "@/lib/http/request";
 import { logError, logEvent } from "@/lib/observability/logger";
 import { notifyCriticalAlert } from "@/lib/observability/alerts";
 
@@ -22,60 +18,37 @@ export const dynamic = "force-dynamic";
  * @returns JSON summary of published items and delivered notifications.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const { cronSecret, nodeEnv } = getEnvConfig();
+  const route = "/api/cron/publish";
+  const unauthorized = await authorizeCronRequest(req, route);
+  if (unauthorized) return unauthorized;
+
   const requestId = getRequestId(req.headers);
-
-  let authorized = verifyBearerSecret(req.headers, cronSecret);
-  if (!authorized) {
-    const user = await getCurrentUser();
-    if (user?.exists && user.role === ROLES.SUPER_ADMIN) {
-      authorized = true;
-    }
-  }
-
-  if (!authorized) {
-    if (!cronSecret && nodeEnv === "production") {
-      logEvent("error", "cron.publish.unconfigured", { route: "/api/cron/publish", requestId });
-      return NextResponse.json(
-        { error: "CRON_SECRET is not configured in production." },
-        { status: 503 }
-      );
-    }
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const startedAt = Date.now();
   const siteId = req.nextUrl.searchParams.get("siteId") || undefined;
 
   try {
     const result = await publishScheduledPosts(siteId);
-    const aggregatedDailyCount = aggregateDailyAnalytics({ siteId });
-    const prunedAnalyticsCount = isAnalyticsPruningEnabled() ? pruneExpiredAnalytics() : 0;
 
     if (result.publishedPostsCount > 0 || result.publishedPagesCount > 0) {
       revalidatePostPaths(null, null, siteId);
     }
 
     logEvent("info", "cron.publish.completed", {
-      route: "/api/cron/publish",
+      route,
       requestId,
       siteId,
       durationMs: Date.now() - startedAt,
       publishedPostsCount: result.publishedPostsCount,
       publishedPagesCount: result.publishedPagesCount,
-      aggregatedDailyCount,
-      prunedAnalyticsCount,
     });
 
     return NextResponse.json({
       success: true,
       ...result,
-      aggregatedDailyCount,
-      prunedAnalyticsCount,
     });
   } catch (error) {
     logError("cron.publish.failed", error, {
-      route: "/api/cron/publish",
+      route,
       requestId,
       siteId,
       durationMs: Date.now() - startedAt,

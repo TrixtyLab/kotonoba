@@ -27,6 +27,7 @@ export interface LoginClientProps {
  */
 export function LoginClient({ showSetupLink }: LoginClientProps) {
   const t = useTranslations("auth");
+  const tc = useTranslations("common");
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -53,7 +54,7 @@ export function LoginClient({ showSetupLink }: LoginClientProps) {
   }
 
   return (
-    <main className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-bg relative select-none">
+    <main className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-bg relative">
       {/* Top Floating Controls */}
       <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center gap-2">
         <LocaleSwitcher />
@@ -73,66 +74,64 @@ export function LoginClient({ showSetupLink }: LoginClientProps) {
           <div className="space-y-1">
             <div className="flex items-center justify-center gap-2">
               <h1 className="text-xl font-bold tracking-tight text-text">{t("title")}</h1>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-accent">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-accent">
                 {t("badge")}
               </span>
             </div>
-            <p className="text-xs text-text-muted">
+            <p className="text-sm text-text-muted">
               {t("subtitle")}
             </p>
           </div>
         </div>
 
         {error && (
-          <div className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-md text-xs font-medium flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-            <span>{error}</span>
+          <div role="alert" className="p-3 bg-danger/10 text-danger border border-danger/30 rounded-lg text-sm font-medium">
+            {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("email")}</label>
-            <Input
-              type="email"
-              placeholder={t("emailPlaceholder")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              autoFocus
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            id="login-email"
+            type="email"
+            label={t("email")}
+            placeholder={t("emailPlaceholder")}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            autoFocus
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">{t("password")}</label>
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                placeholder={t("passwordPlaceholder")}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
+          <Input
+            id="login-password"
+            type={showPassword ? "text" : "password"}
+            label={t("password")}
+            placeholder={t("passwordPlaceholder")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+            endAdornment={
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text p-1 transition-colors"
-                tabIndex={-1}
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? tc("hidePassword") : tc("showPassword")}
+                className="w-9 h-9 inline-flex items-center justify-center rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
               >
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
-            </div>
-          </div>
+            }
+          />
 
           <Button
             type="submit"
             variant="primary"
             size="md"
-            className="w-full font-bold mt-2"
+            className="w-full mt-1"
             loading={isPending}
             icon={<ArrowRight className="w-4 h-4" />}
+            iconPosition="end"
           >
             {t("signIn")}
           </Button>
@@ -142,7 +141,7 @@ export function LoginClient({ showSetupLink }: LoginClientProps) {
           <div className="pt-4 border-t border-border text-center">
             <Link
               href="/setup"
-              className="text-xs text-accent hover:text-accent/80 font-bold transition-colors inline-flex items-center gap-1.5"
+              className="text-sm text-accent hover:text-accent-hover font-semibold transition-colors inline-flex items-center gap-1.5"
             >
               <span>{t("setupPrompt")}</span>
               <ArrowRight className="w-3.5 h-3.5" />

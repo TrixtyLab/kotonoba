@@ -24,6 +24,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { POST as postCronPublish } from "@/app/api/cron/publish/route";
+import { POST as postCronAnalytics } from "@/app/api/cron/analytics/route";
 import { GET as getLlmsTxt } from "@/app/llms.txt/route";
 import { GET as getLlmsFullTxt } from "@/app/llms-full.txt/route";
 
@@ -122,7 +123,7 @@ describe("Cron publish endpoint authorization, retention pruning & LLMs feeds", 
     );
     expect(badRes.status).toBe(401);
 
-    // Valid token transitions due scheduled post and prunes expired analytics
+    // Valid token transitions due scheduled posts only.
     vi.stubEnv("ANALYTICS_RETENTION_DAYS", "365");
     const okRes = await postCronPublish(
       new NextRequest("http://cron.test/api/cron/publish", {
@@ -134,7 +135,19 @@ describe("Cron publish endpoint authorization, retention pruning & LLMs feeds", 
     const json = await okRes.json();
     expect(json.success).toBe(true);
     expect(json.publishedPostsCount).toBe(1);
-    expect(json.prunedAnalyticsCount).toBe(1);
+    expect(json.prunedAnalyticsCount).toBeUndefined();
+
+    // Analytics maintenance is a separate daily run.
+    const analyticsRes = await postCronAnalytics(
+      new NextRequest("http://cron.test/api/cron/analytics", {
+        method: "POST",
+        headers: { authorization: "Bearer super-secret-cron-token-123" },
+      })
+    );
+    expect(analyticsRes.status).toBe(200);
+    const analyticsJson = await analyticsRes.json();
+    expect(analyticsJson.aggregatedDailyCount).toBeGreaterThanOrEqual(1);
+    expect(analyticsJson.prunedAnalyticsCount).toBe(1);
 
     expect(db.select().from(posts).where(eq(posts.id, "due-1")).get()?.status).toBe("published");
     expect(db.select().from(posts).where(eq(posts.id, "future-1")).get()?.status).toBe("scheduled");

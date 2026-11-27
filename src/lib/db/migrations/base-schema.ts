@@ -54,7 +54,7 @@ export function ensureBaseTablesAndColumns(db: DatabaseInstance): void {
 
   db.run(sql`CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY, site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, slug TEXT NOT NULL,
+    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, title TEXT NOT NULL, slug TEXT NOT NULL,
     content TEXT DEFAULT '', content_md TEXT DEFAULT '', content_html TEXT DEFAULT '', content_format TEXT NOT NULL DEFAULT 'html',
     excerpt TEXT DEFAULT '', cover_image TEXT, status TEXT NOT NULL DEFAULT 'draft',
     locale TEXT NOT NULL DEFAULT 'en', published_at INTEGER, created_at INTEGER NOT NULL,
@@ -79,7 +79,7 @@ export function ensureBaseTablesAndColumns(db: DatabaseInstance): void {
 
   db.run(sql`CREATE TABLE IF NOT EXISTS pages (
     id TEXT PRIMARY KEY, site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, slug TEXT NOT NULL,
+    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, title TEXT NOT NULL, slug TEXT NOT NULL,
     content TEXT DEFAULT '', content_md TEXT DEFAULT '', content_html TEXT DEFAULT '', content_format TEXT NOT NULL DEFAULT 'html',
     excerpt TEXT DEFAULT '', cover_image TEXT, status TEXT NOT NULL DEFAULT 'draft',
     locale TEXT NOT NULL DEFAULT 'en', published_at INTEGER, created_at INTEGER NOT NULL,

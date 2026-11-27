@@ -4,6 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { AlertTriangle, RefreshCw, LayoutDashboard } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 interface AdminErrorProps {
   error: unknown;
@@ -33,31 +34,24 @@ export default function AdminErrorPage({
   return (
     <div className="min-h-[55vh] flex items-center justify-center p-6">
       <div className="max-w-md w-full rounded-2xl border border-border bg-surface p-6 text-center space-y-4 shadow-xs">
-        <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+        <div className="w-10 h-10 rounded-lg bg-danger/10 text-danger flex items-center justify-center mx-auto">
           <AlertTriangle className="w-5 h-5" />
         </div>
         <h1 className="text-lg font-bold text-text">{t("adminTitle")}</h1>
-        <p className="text-xs text-text-muted leading-relaxed">{t("adminDescription")}</p>
+        <p className="text-sm text-text-muted leading-relaxed">{t("adminDescription")}</p>
         {digest && (
-          <p className="text-[11px] font-mono text-text-muted">
+          <p className="text-xs font-mono text-text-muted">
             {t("digestLabel")}: {digest}
           </p>
         )}
         <div className="pt-2 flex items-center justify-center gap-3 flex-wrap">
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>{t("retry")}</span>
-          </button>
-          <Link
-            href="/admin"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-surface-hover/50 text-text text-xs font-semibold hover:bg-surface-hover transition-colors"
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>{t("backAdmin")}</span>
+          <Button type="button" variant="accent" size="sm" onClick={handleRetry} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+            {t("retry")}
+          </Button>
+          <Link href="/admin">
+            <Button type="button" variant="outline" size="sm" icon={<LayoutDashboard className="w-3.5 h-3.5" />}>
+              {t("backAdmin")}
+            </Button>
           </Link>
         </div>
       </div>

@@ -16,9 +16,6 @@ export interface HydratedPublicPost {
   title: string;
   slug: string;
   excerpt: string | null;
-  content: string | null;
-  contentHtml: string | null;
-  contentMd: string | null;
   coverImage: string | null;
   publishedAt: Date | null;
   views: number;
@@ -132,14 +129,13 @@ function hydratePostsWithTaxonomies<T extends { id: string }>(
   }));
 }
 
+// Listing views render excerpts and metadata only; full bodies are fetched by the
+// entry/page detail queries to keep public list payloads bounded.
 const PUBLIC_POST_LIST_COLUMNS = {
   id: posts.id,
   title: posts.title,
   slug: posts.slug,
   excerpt: posts.excerpt,
-  content: posts.content,
-  contentHtml: posts.contentHtml,
-  contentMd: posts.contentMd,
   coverImage: posts.coverImage,
   publishedAt: posts.publishedAt,
   views: posts.views,

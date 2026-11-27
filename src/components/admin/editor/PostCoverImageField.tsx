@@ -35,7 +35,7 @@ export function PostCoverImageField({
           <button
             type="button"
             onClick={() => onChangeCoverImage("")}
-            className="text-[11px] text-rose-500 hover:underline font-semibold flex items-center gap-1"
+            className="text-[11px] text-danger hover:underline font-semibold flex items-center gap-1"
           >
             <X className="w-3 h-3" /> {t("remove")}
           </button>

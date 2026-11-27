@@ -56,7 +56,7 @@ export default defineConfig({
       ENCRYPTION_KEY: "e2e-encryption-secret-key-minimum-32chars!!",
       BACKUP_ENCRYPTION_KEY: Buffer.alloc(32, 0x51).toString("base64"),
       CRON_SECRET: "e2e-cron-secret-key-123456",
-      CSP_MODE: "report-only",
+      CSP_MODE: process.env.CSP_MODE || "report-only",
       SINGLE_TENANT_FALLBACK: "false",
     },
   },
