@@ -94,7 +94,7 @@ export function extractMermaidDiagrams(...sources: Array<string | null | undefin
       pushDiagram(decodeHtmlEntities(codeMatch[1]));
     }
 
-    const htmlFenceRegex = /```mermaid(?:<br\s*\/?>|\r?\n|\s)+([\s\S]*?)```/gi;
+    const htmlFenceRegex = /```mermaid(?:<br\s*\/?>|[^\S\r\n]|\r?\n)+([\s\S]*?)```/gi;
     let fenceMatch: RegExpExecArray | null;
     while ((fenceMatch = htmlFenceRegex.exec(src)) !== null) {
       pushDiagram(decodeHtmlEntities(fenceMatch[1]));
