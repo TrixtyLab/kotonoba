@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { resolveAbsoluteUrl } from "@/lib/utils/media";
 import { decryptSecretOrLegacyPlaintext } from "@/lib/security/crypto";
-import { safeOutboundFetch, validateOutboundUrl } from "@/lib/security/ssrf";
+import { safeOutboundFetchValidated, validateOutboundUrl } from "@/lib/security/ssrf";
 import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 
 /**
@@ -239,8 +239,8 @@ export async function sendDiscordTestNotification(
       ],
     };
 
-    const res = await safeOutboundFetch(
-      webhookUrl,
+    const res = await safeOutboundFetchValidated(
+      check.url,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

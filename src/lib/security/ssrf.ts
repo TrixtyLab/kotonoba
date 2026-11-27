@@ -200,12 +200,12 @@ export function pinnedDnsLookup(address: string): LookupFunction {
  * @returns HTTP `Response` from `fetch`.
  * @throws {Error} When SSRF validation fails, no public IP was pinned, or a redirect occurs.
  */
-export async function safeOutboundFetch(
-  rawUrl: string,
+export async function safeOutboundFetchValidated(
+  url: URL,
   init: RequestInit = {},
   options: OutboundUrlOptions & { timeoutMs?: number } = {}
 ): Promise<Response> {
-  const check = await validateOutboundUrl(rawUrl, options);
+  const check = await validateOutboundUrl(url.toString(), options);
   if (!check.valid) {
     throw new Error(check.error);
   }
@@ -225,7 +225,7 @@ export async function safeOutboundFetch(
   });
 
   try {
-    const response = await fetch(check.url.toString(), {
+    const response = await fetch(url.toString(), {
       ...init,
       redirect: "manual",
       signal,
@@ -240,4 +240,17 @@ export async function safeOutboundFetch(
   } finally {
     await agent.close();
   }
+}
+
+export async function safeOutboundFetch(
+  rawUrl: string,
+  init: RequestInit = {},
+  options: OutboundUrlOptions & { timeoutMs?: number } = {}
+): Promise<Response> {
+  const check = await validateOutboundUrl(rawUrl, options);
+  if (!check.valid) {
+    throw new Error(check.error);
+  }
+
+  return safeOutboundFetchValidated(check.url, init, options);
 }
