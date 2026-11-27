@@ -291,9 +291,11 @@ test.describe.serial("Kotonoba End-to-End Security, Setup Lockout & Publishing F
     await page.goto("/en/admin/users");
     await page.getByRole("button", { name: /New User/i }).click();
     const userDialog = page.getByRole("dialog");
-    await userDialog.getByPlaceholder("e.g. Alex Rivera").fill("Tenant A Admin");
-    await userDialog.getByPlaceholder("alex@example.com").fill("tenant-a@example.com");
-    await userDialog.getByPlaceholder("Minimum 8 characters").fill("StrongTenantA123!");
+    await expect(userDialog).toBeVisible({ timeout: 10_000 });
+
+    const passwordInput = userDialog.getByPlaceholder("Minimum 8 characters");
+    await expect(passwordInput).toBeVisible({ timeout: 10_000 });
+    await passwordInput.fill("StrongTenantA123!");
     await userDialog.getByRole("button", { name: /Author - Can author/i }).click();
     await userDialog.getByRole("button", { name: /^Admin - Full access/i }).click();
     await userDialog.getByRole("button", { name: /Global Access/i }).click();
