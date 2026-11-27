@@ -2,6 +2,20 @@ import { sql } from "drizzle-orm";
 import * as schema from "../schema";
 import type { DatabaseInstance } from "../migrate";
 
+function isKnownObjectStorageUrl(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return (
+      host === "r2.cloudflarestorage.com" ||
+      host.endsWith(".r2.cloudflarestorage.com") ||
+      host === "amazonaws.com" ||
+      host.endsWith(".amazonaws.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function cleanPresignedMediaUrl(url?: string | null): string {
   if (!url || typeof url !== "string") return "";
   const trimmed = url.trim();
@@ -218,7 +232,7 @@ function cleanupUserAndSettingUrls(db: DatabaseInstance): void {
     if (newAvatar !== user.avatarUrl) db.update(schema.users).set({ avatarUrl: newAvatar || null }).where(sql`id = ${user.id}`).run();
   }
   for (const s of db.select({ id: schema.settings.id, value: schema.settings.value }).from(schema.settings).all()) {
-    if (s.value && (s.value.includes("r2.cloudflarestorage.com") || s.value.includes("amazonaws.com"))) {
+    if (s.value && isKnownObjectStorageUrl(s.value)) {
       const newVal = cleanPresignedMediaUrl(s.value);
       if (newVal !== s.value) db.update(schema.settings).set({ value: newVal }).where(sql`id = ${s.id}`).run();
     }
