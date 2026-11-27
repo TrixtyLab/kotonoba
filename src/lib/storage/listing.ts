@@ -53,10 +53,16 @@ async function listS3FolderPage(
       .filter((obj) => obj.Key && !obj.Key.endsWith("/") && !obj.Key.endsWith(".keep"))
       .map((obj) => {
         const physicalPath = obj.Key!;
-        const url =
-          publicUrlBase && !publicUrlBase.includes("r2.cloudflarestorage.com")
-            ? `${publicUrlBase}/${physicalPath}`
-            : `/api/uploads/${physicalPath}`;
+        let isR2PublicUrl = false;
+        if (publicUrlBase) {
+          try {
+            const hostname = new URL(publicUrlBase).hostname.toLowerCase();
+            isR2PublicUrl = hostname === "r2.cloudflarestorage.com" || hostname.endsWith(".r2.cloudflarestorage.com");
+          } catch {
+            isR2PublicUrl = false;
+          }
+        }
+        const url = publicUrlBase && !isR2PublicUrl ? `${publicUrlBase}/${physicalPath}` : `/api/uploads/${physicalPath}`;
         return {
           filename: path.basename(physicalPath),
           path: unscopeStoragePath(physicalPath, siteId),
