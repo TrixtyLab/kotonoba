@@ -67,6 +67,8 @@ export function useMediaLibrary({ siteDomain, storageInfo, fileInputRef }: UseMe
           setParentFolder(data.parentFolder);
           setNextCursor(data.nextCursor ?? null);
           setCurrentStorage(data.storage);
+        } else {
+          toast.error(data.error || t("loadingMedia"));
         }
       } catch {
         toast.error(t("loadingMedia"));
@@ -83,12 +85,15 @@ export function useMediaLibrary({ siteDomain, storageInfo, fileInputRef }: UseMe
     fetch(`/api/media?folder=${encodeURIComponent(currentFolder)}`, { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
-        if (!controller.signal.aborted && data.success) {
+        if (controller.signal.aborted) return;
+        if (data.success) {
           setFolders(data.folders || []);
           setFiles(data.files || []);
           setParentFolder(data.parentFolder);
           setNextCursor(data.nextCursor ?? null);
           setCurrentStorage(data.storage);
+        } else {
+          toast.error(data.error || t("loadingMedia"));
         }
       })
       .catch((err) => {

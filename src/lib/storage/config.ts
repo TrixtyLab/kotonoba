@@ -125,6 +125,7 @@ export function getS3Client(config: StorageConfig): S3Client {
   return new S3Client({
     region: config.region || "auto",
     endpoint: config.endpoint || undefined,
+    forcePathStyle: true,
     credentials: { accessKeyId: config.accessKeyId!, secretAccessKey: config.secretAccessKey! },
   });
 }

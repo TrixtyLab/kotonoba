@@ -75,8 +75,9 @@ async function listS3FolderPage(
       files,
       nextCursor: res.IsTruncated ? res.NextContinuationToken ?? null : null,
     };
-  } catch {
-    return { currentFolder: cleanLogicalFolder, parentFolder, folders: [], files: [], nextCursor: null };
+  } catch (err) {
+    console.error("[media] S3/R2 listObjects failed:", err instanceof Error ? err.message : err);
+    throw err;
   }
 }
 
