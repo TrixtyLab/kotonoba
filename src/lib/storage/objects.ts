@@ -26,6 +26,15 @@ async function toWebStreamOrBuffer(body: unknown): Promise<ReadableStream<Uint8A
   return null;
 }
 
+function isCloudflareR2PublicUrl(publicUrl: string): boolean {
+  try {
+    const host = new URL(publicUrl).hostname.toLowerCase();
+    return host === "r2.cloudflarestorage.com" || host.endsWith(".r2.cloudflarestorage.com");
+  } catch {
+    return false;
+  }
+}
+
 async function readRemoteMediaObject(
   config: StorageConfig,
   cleanRelative: string,
@@ -117,7 +126,7 @@ export async function uploadToStorage(
   if (isObjectStorageConfigured(config)) {
     await getS3Client(config).send(new PutObjectCommand({ Bucket: config.bucket, Key: physicalPath, Body: buffer, ContentType: contentType }));
     const fileUrl =
-      config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")
+      config.publicUrl && !isCloudflareR2PublicUrl(config.publicUrl)
         ? `${config.publicUrl}/${physicalPath}`
         : `/api/uploads/${physicalPath}`;
     return { url: fileUrl, filename: rawFilename, path: logicalPath, size: buffer.length, mimeType: contentType };
