@@ -124,16 +124,17 @@ test.describe.serial("Kotonoba End-to-End Security, Setup Lockout & Publishing F
     await page.goto("/en/setup", { waitUntil: "domcontentloaded" });
     const setupNameInput = page.getByPlaceholder("e.g. Alexander Vance");
     await expect(setupNameInput).toBeVisible({ timeout: 20_000 });
-    await setupNameInput.fill("E2E Admin");
-    await page.getByPlaceholder("admin@example.com").fill("e2e-admin@example.com");
-    await page.getByPlaceholder("••••••••••••").fill("StrongE2ePass123!");
-    await page.getByRole("button", { name: /Continue/i }).click();
+    await page.getByLabel("Full Name").fill("E2E Admin");
+    await page.getByLabel("Email Address").fill("e2e-admin@example.com");
+    await page.getByLabel("Master Password").fill("StrongE2ePass123!");
+    await page.getByRole("button", { name: /^Continue$/i }).click();
 
-    await page.getByPlaceholder("My Tech Blog").fill("E2E Hardened Blog");
+    const blogTitleInput = page.getByPlaceholder("My Tech Blog");
+    await expect(blogTitleInput).toBeVisible({ timeout: 15_000 });
+    await blogTitleInput.fill("E2E Hardened Blog");
+
     await page.getByPlaceholder("blog.mydomain.com or localhost:3000").fill(activeHost);
-    await page.getByRole("button", { name: /Continue/i }).click();
-
-    await page.getByRole("button", { name: /Continue/i }).click();
+    await page.getByRole("button", { name: /^Continue$/i }).click();
     await page.getByRole("button", { name: /Initialize & Publish/i }).click();
 
     await expect(page.getByText(/Your Blog is Ready & Live!/i)).toBeVisible({ timeout: 15_000 });
