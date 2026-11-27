@@ -80,10 +80,16 @@ export function extractReadablePostText(post: {
   }
 
   const sourceHtml = body;
+  let strippedHtml = sourceHtml;
+  let previous: string;
+  do {
+    previous = strippedHtml;
+    strippedHtml = strippedHtml
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "");
+  } while (strippedHtml !== previous);
 
-  return sourceHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
+  return strippedHtml
     .replace(/<\/(p|div|h[1-6]|li|blockquote|pre|tr)>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
