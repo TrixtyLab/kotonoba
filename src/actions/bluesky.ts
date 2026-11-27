@@ -1,17 +1,16 @@
 "use server";
 
-import { requireAuth } from "@/lib/auth/session";
-import { testBlueskyConnection, BlueskyCredentials } from "@/lib/bluesky";
+import { ROLE_PUBLISHERS } from "@/lib/auth/roles";
+import { requireSiteAccess } from "@/lib/auth/site-access";
+import { testBlueskyConnection, type BlueskyCredentials } from "@/lib/bluesky";
+import { getDecryptedSiteSecret } from "@/lib/services/settings";
+import { getAdminSite } from "@/lib/tenant";
 
 /**
- * Server action testing Bluesky AT Protocol authentication and profile retrieval from settings.
- *
- * @param creds - Bluesky identifier, App Password, and optional PDS service URL.
- * @returns Promise resolving to connection outcome with profile details or error message.
- * @throws {Error} When caller lacks administrative or editorial authorization.
+ * Tests Bluesky AT Protocol authentication and profile retrieval for the active tenant site.
  */
 export async function testBlueskyConnectionAction(
-  creds: BlueskyCredentials
+  creds: Omit<BlueskyCredentials, "appPassword"> & { appPassword?: string; siteId?: string }
 ): Promise<{
   success: boolean;
   profile?: {
@@ -21,6 +20,19 @@ export async function testBlueskyConnectionAction(
   };
   error?: string;
 }> {
-  await requireAuth(["super_admin", "admin", "editor"]);
-  return await testBlueskyConnection(creds);
+  const activeSite = creds.siteId ? { id: creds.siteId } : await getAdminSite();
+  if (!activeSite?.id) {
+    return { success: false, error: "Active site context is required." };
+  }
+
+  await requireSiteAccess(activeSite.id, ROLE_PUBLISHERS);
+
+  const effectivePassword =
+    creds.appPassword?.trim() || getDecryptedSiteSecret(activeSite.id, "bluesky_app_password");
+
+  return await testBlueskyConnection({
+    identifier: creds.identifier,
+    appPassword: effectivePassword,
+    serviceUrl: creds.serviceUrl,
+  });
 }

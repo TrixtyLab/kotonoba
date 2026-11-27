@@ -1,58 +1,35 @@
 "use server";
 
-import { isDubConfigured, createDubLink } from "@/lib/dub";
-import { getDb } from "@/lib/db";
-import { posts } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { getCurrentUser } from "@/lib/auth/session";
+import { ROLE_ALL } from "@/lib/auth/roles";
+import { ROLES } from "@/lib/config/constants";
+import { requireAuth } from "@/lib/auth/session";
+import { requireResourceAccess, requireSiteAccess } from "@/lib/auth/site-access";
+import { bindPostDubShortLink, createDubLink, isDubConfigured } from "@/lib/dub";
+import { sanitizeUrl } from "@/lib/security/sanitize";
+import { validateOutboundUrl } from "@/lib/security/ssrf";
+import { getSiteById } from "@/lib/services/sites";
 
-/**
- * Checks whether the Dub.co link shortening service is configured in the environment.
- *
- * @returns A Promise resolving to an object containing boolean configuration status.
- */
-export async function getDubStatusAction(): Promise<{ isConfigured: boolean }> {
-  return { isConfigured: isDubConfigured() };
-}
-
-/**
- * Input parameters for creating a short link via Dub.co.
- */
+/** Input parameters for creating a short link via Dub.co. */
 export interface GenerateDubLinkParams {
-  /** Optional post database ID to associate the generated link with. */
   postId?: string;
-  /** Destination long URL. */
+  siteId?: string;
   originalUrl: string;
-  /** Optional custom slug identifier for the shortened link. */
   customSlug?: string;
-  /** UTM Source parameter value. */
   utmSource?: string;
-  /** UTM Medium parameter value. */
   utmMedium?: string;
-  /** UTM Campaign parameter value. */
   utmCampaign?: string;
-  /** UTM Term keyword parameter value. */
   utmTerm?: string;
-  /** UTM Content creative parameter value. */
   utmContent?: string;
 }
 
-/**
- * Generates a campaign-tracked short link via Dub.co and optionally associates it with a blog post.
- *
- * @param params - Generation options including destination URL, custom slug, and UTM campaign parameters.
- * @returns A Promise resolving to an object containing the short URL, QR code asset URL, and success flag.
- */
+/** Generates a campaign-tracked short link via Dub.co and optionally binds it to a blog post. */
 export async function generateDubLinkAction(params: GenerateDubLinkParams): Promise<{
   success: boolean;
   shortUrl?: string;
   qrCodeUrl?: string;
   error?: string;
 }> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { success: false, error: "Unauthorized" };
-  }
+  const user = await requireAuth(ROLE_ALL);
 
   if (!isDubConfigured()) {
     return {
@@ -61,8 +38,39 @@ export async function generateDubLinkAction(params: GenerateDubLinkParams): Prom
     };
   }
 
+  const safeOriginalUrl = sanitizeUrl(params.originalUrl, { allowRelative: false });
+  if (!safeOriginalUrl) {
+    return { success: false, error: "Invalid destination URL" };
+  }
+
+  // Every destination is validated, including URLs supplied alongside a post or
+  // site id, so a shortener cannot be pointed at internal services.
+  const outboundCheck = await validateOutboundUrl(safeOriginalUrl);
+  if (!outboundCheck.valid) {
+    return { success: false, error: "Destination URL is not allowed." };
+  }
+
+  if (params.postId) {
+    await requireResourceAccess("post", params.postId, ROLE_ALL);
+  } else if (params.siteId) {
+    await requireSiteAccess(params.siteId, ROLE_ALL);
+  } else if (user.role !== ROLES.SUPER_ADMIN) {
+    if (!user.siteId) {
+      return { success: false, error: "Forbidden" };
+    }
+    const userSite = getSiteById(user.siteId);
+    if (!userSite) {
+      return { success: false, error: "Forbidden" };
+    }
+    const parsedHost = new URL(safeOriginalUrl).host.toLowerCase();
+    const siteHost = userSite.domain.toLowerCase();
+    if (parsedHost !== siteHost && parsedHost.split(":")[0] !== siteHost.split(":")[0]) {
+      return { success: false, error: "Destination URL host does not match your assigned site." };
+    }
+  }
+
   const result = await createDubLink({
-    url: params.originalUrl,
+    url: safeOriginalUrl,
     slug: params.customSlug,
     utmSource: params.utmSource,
     utmMedium: params.utmMedium,
@@ -77,14 +85,7 @@ export async function generateDubLinkAction(params: GenerateDubLinkParams): Prom
 
   if (params.postId) {
     try {
-      const db = getDb();
-      db.update(posts)
-        .set({
-          shortUrl: result.shortUrl,
-          dubLinkId: result.id,
-        })
-        .where(eq(posts.id, params.postId))
-        .run();
+      bindPostDubShortLink(params.postId, result.shortUrl, result.id);
     } catch {
       // Non-blocking database binding update
     }

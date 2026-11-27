@@ -1,8 +1,8 @@
 import { MetadataRoute } from "next";
-import { getDb } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
+import { getPublicSite, getCanonicalBaseUrl, getRequestNormalizedHost } from "@/lib/tenant";
+import { getCachedSiteSeoSettings } from "@/lib/queries/seo";
+
+export const dynamic = "force-dynamic";
 
 const AI_BOTS = [
   "GPTBot",
@@ -27,19 +27,11 @@ const AI_BOTS = [
  * @returns MetadataRoute Robots definition object.
  */
 export default async function robots(): Promise<MetadataRoute.Robots> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
   const baseUrl = await getCanonicalBaseUrl(site);
 
-  const db = getDb();
-  const antiAiSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
-        .get()
-    : null;
-
-  const isAiBlocked = antiAiSetting?.value === "true";
+  const seo = site ? await getCachedSiteSeoSettings(site.id, host) : null;
+  const isAiBlocked = Boolean(seo?.blockAiCrawlers);
 
   const standardRule = {
     userAgent: "*",

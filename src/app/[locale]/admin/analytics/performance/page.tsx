@@ -1,14 +1,9 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
-import { sql, desc } from "drizzle-orm";
 import { Zap, Gauge, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
-import {
-  getDateRangeBounds,
-  buildAnalyticsFilterConditions,
-} from "@/lib/analytics/query";
+import { getDateRangeBounds } from "@/lib/analytics/query";
+import { getAnalyticsPerformanceData } from "@/lib/queries/analytics-traffic";
 import { MetricCard } from "@/components/admin/analytics/MetricCard";
 import { BarChart, BarChartItem } from "@/components/admin/analytics/BarChart";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
@@ -43,49 +38,12 @@ export default async function AnalyticsPerformancePage({
   const { locale } = await params;
   const sp = searchParams ? await searchParams : {};
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const bounds = getDateRangeBounds(sp.range);
-  const filterCondition = buildAnalyticsFilterConditions(
-    site.id,
-    bounds.start,
-    bounds.end,
-    sp
-  );
-  const db = getDb();
-
-  // Load times sorted ascending for percentile computation
-  const loadTimes = db
-    .select({ loadTime: analytics.loadTime })
-    .from(analytics)
-    .where(sql`${filterCondition} AND load_time IS NOT NULL AND load_time > 0`)
-    .orderBy(analytics.loadTime)
-    .all()
-    .map((r) => r.loadTime as number);
-
-  const sampleCount = loadTimes.length;
-  let p50 = 0;
-  let p75 = 0;
-  let p95 = 0;
-  let avg = 0;
-  let fastCount = 0;
-  let moderateCount = 0;
-  let slowCount = 0;
-
-  if (sampleCount > 0) {
-    p50 = loadTimes[Math.floor(sampleCount * 0.5)];
-    p75 = loadTimes[Math.floor(sampleCount * 0.75)];
-    p95 = loadTimes[Math.floor(sampleCount * 0.95)];
-    const sum = loadTimes.reduce((acc, curr) => acc + curr, 0);
-    avg = Math.round(sum / sampleCount);
-
-    for (const val of loadTimes) {
-      if (val < 1000) fastCount++;
-      else if (val <= 3000) moderateCount++;
-      else slowCount++;
-    }
-  }
+  const { sampleCount, p50, p75, p95, avg, fastCount, moderateCount, slowCount, slowestHits } =
+    getAnalyticsPerformanceData(site.id, bounds, sp);
 
   const bucketItems: BarChartItem[] = [
     {
@@ -108,20 +66,6 @@ export default async function AnalyticsPerformancePage({
     },
   ];
 
-  // Slowest pages
-  const slowestHits = db
-    .select({
-      path: analytics.path,
-      avgLoadTime: sql<number>`round(avg(load_time))`,
-      samples: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(sql`${filterCondition} AND load_time IS NOT NULL AND load_time > 0`)
-    .groupBy(analytics.path)
-    .orderBy(desc(sql`avg(load_time)`))
-    .limit(10)
-    .all() as SlowPageRow[];
-
   const slowColumns: ColumnDef<SlowPageRow>[] = [
     {
       key: "path",
@@ -139,7 +83,7 @@ export default async function AnalyticsPerformancePage({
               ? "text-emerald-500"
               : row.avgLoadTime <= 3000
               ? "text-amber-500"
-              : "text-rose-500"
+              : "text-danger"
           }`}
         >
           {row.avgLoadTime}ms
@@ -199,7 +143,7 @@ export default async function AnalyticsPerformancePage({
         {/* Slowest Pages Table */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-500" />
+            <AlertTriangle className="w-4 h-4 text-danger" />
             <h3 className="text-xs font-bold text-text">{t("slowestPages")}</h3>
           </div>
           <DataTable

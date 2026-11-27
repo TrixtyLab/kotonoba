@@ -26,14 +26,14 @@ export function Badge({ children, variant = "primary", size = "sm", className = 
   const variants = {
     primary: "bg-primary/10 text-primary border border-primary/20",
     secondary: "bg-surface-hover text-text-muted border border-border",
-    success: "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20",
-    warning: "bg-amber-500/10 text-amber-500 border border-amber-500/20",
-    danger: "bg-rose-500/10 text-rose-500 border border-rose-500/20",
+    success: "bg-success/10 text-success border border-success/20",
+    warning: "bg-warning/15 text-warning border border-warning/20",
+    danger: "bg-danger/10 text-danger border border-danger/20",
     outline: "border border-border text-text-muted bg-surface",
   };
 
   const sizes = {
-    sm: "text-[10px] px-2 py-0.5",
+    sm: "text-[11px] px-2 py-0.5",
     md: "text-xs px-2.5 py-1",
   };
 

@@ -28,13 +28,14 @@ const RANGE_OPTIONS: RangeOption[] = [
 export function DateRangePicker(): React.JSX.Element {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const query = searchParams ?? new URLSearchParams();
   const router = useRouter();
   const t = useTranslations("analytics");
 
-  const currentRange = (searchParams.get("range") as DateRangePreset) || "30d";
+  const currentRange = (query.get("range") as DateRangePreset) || "30d";
 
   const handleSelect = (preset: DateRangePreset): void => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(query.toString());
     if (preset === "30d") {
       params.delete("range");
     } else {

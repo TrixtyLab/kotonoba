@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getSiteSettings } from "@/actions/settings";
 import { notFound } from "next/navigation";
 import { AiSettingsClient } from "@/components/admin/settings/AiSettingsClient";
@@ -9,7 +9,7 @@ import { AiSettingsClient } from "@/components/admin/settings/AiSettingsClient";
  * @returns React JSX AI settings view.
  */
 export default async function AiSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const settingsMap = await getSiteSettings(site.id);

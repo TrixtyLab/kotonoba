@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { SlidersHorizontal, Plus, Trash2, CheckCircle, ArrowRight } from "lucide-react";
+import { SlidersHorizontal, Plus, Trash2, ArrowRight } from "lucide-react";
 import { createSegmentAction, deleteSegmentAction } from "@/actions/analytics";
 
 export interface SegmentItem {
@@ -42,7 +42,7 @@ export function SegmentsManagerClient({
   // Extract current filters from searchParams
   const activeFilters: Record<string, string> = {};
   for (const key of ["country", "browser", "device", "os"]) {
-    const val = searchParams.get(key);
+    const val = (searchParams ?? new URLSearchParams()).get(key);
     if (val) activeFilters[key] = val;
   }
   const hasActiveFilters = Object.keys(activeFilters).length > 0;
@@ -158,7 +158,7 @@ export function SegmentsManagerClient({
         {feedback && (
           <p
             className={`text-xs font-medium ${
-              feedback.type === "success" ? "text-emerald-500" : "text-rose-500"
+              feedback.type === "success" ? "text-emerald-500" : "text-danger"
             }`}
           >
             {feedback.message}
@@ -204,7 +204,7 @@ export function SegmentsManagerClient({
                     <button
                       type="button"
                       onClick={() => handleDelete(seg.id)}
-                      className="p-1.5 rounded-lg text-text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
                       title={t("deleteSegment")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />

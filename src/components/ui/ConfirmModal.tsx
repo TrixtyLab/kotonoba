@@ -65,7 +65,7 @@ export function ConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-md transition-opacity animate-fade-in"
+        className="fixed inset-0 bg-black/70 transition-opacity"
         onClick={() => {
           if (!isLoading) onClose();
         }}
@@ -105,7 +105,7 @@ export function ConfirmModal({
             <h3 id="confirm-modal-title" className="text-base font-bold text-text tracking-tight">
               {title}
             </h3>
-            <p className="text-xs text-text-muted leading-relaxed">{message}</p>
+            <p className="text-sm text-text-muted leading-relaxed">{message}</p>
           </div>
         </div>
 

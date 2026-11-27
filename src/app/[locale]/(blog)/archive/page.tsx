@@ -1,18 +1,24 @@
-import { getActiveSite, getSiteForHost } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, categories, users } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
 import { formatDate } from "@/lib/utils/date";
 import { LineSidebar } from "@/components/blog/LineSidebar";
+import { LinePagination } from "@/components/blog/LinePagination";
 import { Link } from "@/i18n/routing";
 import { BookOpen } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/storage";
-import { getSidebarBanners } from "@/lib/banners";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { getCachedSidebarBanners } from "@/lib/banners";
+import { getDefaultSiteUrl } from "@/lib/config/env";
+import { ARCHIVE_PAGE_SIZE, DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
+import {
+  getCachedLatestPublicPostsSummary,
+  getCachedPaginatedArchivePosts,
+  parsePageNumber,
+  type ArchivePostItem,
+} from "@/lib/queries/public-posts";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
 
 /**
  * Generates SEO metadata for the chronological blog archive.
@@ -26,10 +32,10 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
-  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/archive`;
   const title = `${t("archive")} — ${siteName}`;
   const description = t("archive");
@@ -61,51 +67,56 @@ export async function generateMetadata({
 }
 
 /**
- * Public monthly archive page displaying grouped historical posts cataloged by year and month.
+ * Public monthly archive page displaying server-paginated chronological posts grouped by year.
  *
- * @param props - Object containing route params Promise.
- * @returns React JSX monthly archive view.
+ * @param props - Object containing route params Promise and `?page=` searchParams Promise.
+ * @returns React JSX paginated chronological archive view.
  */
 export default async function ArchivePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { locale } = await params;
-  const site = await getActiveSite();
-  const db = getDb();
+  const resolvedSearchParams = await searchParams;
+  const requestedPage = parsePageNumber(resolvedSearchParams.page);
+  const site = await getPublicSite();
   const t = await getTranslations({ locale, namespace: "blog" });
 
-  if (site) {
-    await publishScheduledPosts(site.id);
-  }
+  const host = await getRequestNormalizedHost();
+  const [paginated, allCategories, latestPosts, sidebarBanners] = site
+    ? await Promise.all([
+        getCachedPaginatedArchivePosts({
+          siteId: site.id,
+          locale,
+          host,
+          page: requestedPage,
+          pageSize: ARCHIVE_PAGE_SIZE,
+        }),
+        getCachedSiteCategories(site.id, locale, host),
+        getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+        getCachedSidebarBanners(site.id, host),
+      ])
+    : [
+        { items: [] as ArchivePostItem[], totalCount: 0, totalPages: 1, currentPage: 1 },
+        [],
+        [],
+        [],
+      ];
 
-  const allPosts = site
-    ? db
-        .select({
-          id: posts.id,
-          title: posts.title,
-          slug: posts.slug,
-          excerpt: posts.excerpt,
-          publishedAt: posts.publishedAt,
-          views: posts.views,
-        })
-        .from(posts)
-        .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-        .orderBy(desc(posts.publishedAt))
-        .all()
-    : [];
-
-  const allCategories = site ? db.select().from(categories).where(eq(categories.siteId, site.id)).all() : [];
-
-  const groupedByYear: Record<string, typeof allPosts> = {};
-  for (const post of allPosts) {
-    const year = post.publishedAt ? post.publishedAt.getFullYear().toString() : "Other";
+  const groupedByYear: Record<number, ArchivePostItem[]> = {};
+  for (const post of paginated.items) {
+    const year = post.publishedAt
+      ? new Date(post.publishedAt).getFullYear()
+      : new Date().getFullYear();
     if (!groupedByYear[year]) groupedByYear[year] = [];
     groupedByYear[year].push(post);
   }
-
-  const years = Object.keys(groupedByYear).sort((a, b) => Number(b) - Number(a));
+  const years = Object.keys(groupedByYear)
+    .map(Number)
+    .sort((a, b) => b - a);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
@@ -113,7 +124,7 @@ export default async function ArchivePage({
       <div className="lg:col-span-8 min-w-0 w-full space-y-10">
         <div className="pb-4 border-b border-border/40">
           <h1 className="text-2xl font-bold text-text">{t("archive")}</h1>
-          <p className="text-xs text-text-muted mt-1">{t("totalArticles", { count: allPosts.length })}</p>
+          <p className="text-xs text-text-muted mt-1">{t("totalArticles", { count: paginated.totalCount })}</p>
         </div>
 
         <div className="space-y-10">
@@ -150,15 +161,21 @@ export default async function ArchivePage({
             </div>
           )}
         </div>
+
+        <LinePagination
+          currentPage={paginated.currentPage}
+          totalPages={paginated.totalPages}
+          baseUrl="/archive"
+        />
       </div>
 
       {/* Right Column: Profile Sidebar */}
       <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site || { name: "Blog" }}
-          latestPosts={allPosts.slice(0, 5)}
+          latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={site ? await getSidebarBanners(site.id) : []}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>

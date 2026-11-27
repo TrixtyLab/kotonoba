@@ -12,9 +12,13 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
+/.tmp-playwright/
 
 # next.js
 /.next/
+/.next-e2e/
 /out/
 
 # production
@@ -23,6 +27,10 @@
 # misc
 .DS_Store
 *.pem
+
+# nginx TLS material
+/nginx/certs/*
+!/nginx/certs/.gitkeep
 
 # debug
 npm-debug.log*
@@ -41,3 +49,10 @@ yarn-error.log*
 next-env.d.ts
 data
 .agents
+*.logs
+audit.json
+
+# skills for debug and QA
+.opencode
+.agent
+.grok

@@ -1,10 +1,37 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useSyncExternalStore, useCallback, type ReactNode } from "react";
 import { Sun, Moon } from "lucide-react";
 
 /** Supported color theme schemes. */
 type Theme = "dark" | "light";
+
+const themeListeners = new Set<() => void>();
+
+function subscribeTheme(listener: () => void): () => void {
+  themeListeners.add(listener);
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", listener);
+  }
+  return () => {
+    themeListeners.delete(listener);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", listener);
+    }
+  };
+}
+
+function getThemeSnapshot(): Theme {
+  if (typeof window === "undefined") return "light";
+  const stored = window.localStorage.getItem("theme");
+  return stored === "dark" ? "dark" : "light";
+}
+
+function getThemeServerSnapshot(): Theme {
+  return "light";
+}
+
+const emptySubscribe = () => () => {};
 
 const ThemeContext = createContext<{
   theme: Theme;
@@ -27,24 +54,18 @@ export function useTheme() {
  * @returns React JSX provider element.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("theme") as Theme | null;
-    const initial = stored || "light";
-    setTheme(initial);
-    document.documentElement.setAttribute("data-theme", initial);
-    setMounted(true);
-  }, []);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const toggle = useCallback(() => {
-    setTheme((prev) => {
-      const next = prev === "dark" ? "light" : "dark";
-      localStorage.setItem("theme", next);
-      document.documentElement.setAttribute("data-theme", next);
-      return next;
-    });
+    const next: Theme = getThemeSnapshot() === "dark" ? "light" : "dark";
+    window.localStorage.setItem("theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+    themeListeners.forEach((listener) => listener());
   }, []);
 
   if (!mounted) return <>{children}</>;

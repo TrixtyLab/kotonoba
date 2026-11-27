@@ -1,30 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
-import { existsSync } from "fs";
-import { getStorageConfig, getS3Client } from "@/lib/storage";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { buildMediaAssetHeaders, readStoredMediaObject } from "@/lib/storage";
+import { getRequestNormalizedHost, getSiteForHost, normalizeDomain } from "@/lib/tenant";
+import { getDb } from "@/lib/db";
+import { sites } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
-const MIME_MAP: Record<string, string> = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-};
+const VALID_SEGMENT = /^[a-zA-Z0-9._-]+$/;
+
+function isLocalMediaHost(host: string): boolean {
+  const clean = normalizeDomain(host);
+  return clean === "localhost" || clean === "127.0.0.1" || clean === "::1" || clean.endsWith(".localhost");
+}
 
 /**
- * Public file server endpoint resolving media asset paths dynamically.
- * Generates fresh presigned URLs on demand for S3/R2 private buckets or streams local disk files.
+ * Public file server endpoint resolving media asset paths dynamically while preserving
+ * strict path traversal boundaries, tenant storage selection, and direct proxy streaming.
  *
- * @param _req - Incoming NextRequest object.
+ * @param req - Incoming NextRequest object.
  * @param context - Request context containing path segment parameters.
- * @returns Fresh presigned URL redirection or binary file response.
+ * @returns Binary/streamed file response without external bucket redirection.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   const { path: pathSegments } = await context.params;
@@ -32,58 +29,79 @@ export async function GET(
     return new NextResponse("File Not Found", { status: 404 });
   }
 
-  const sanitizedSegments = pathSegments.map((s) => path.basename(s));
-  const relativePath = sanitizedSegments.join("/");
-  const config = getStorageConfig();
-
-  // If Cloudflare R2 or AWS S3 is active
-  if ((config.provider === "r2" || config.provider === "s3") && config.bucket && config.accessKeyId) {
+  for (const rawSeg of pathSegments) {
+    let decoded: string;
     try {
-      // If custom public CDN domain is configured, redirect directly
-      if (config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")) {
-        return NextResponse.redirect(`${config.publicUrl}/${relativePath}`, {
-          status: 307,
-        });
-      }
-
-      // Generate a fresh presigned URL valid for 1 hour on each request
-      const s3 = getS3Client(config);
-      const command = new GetObjectCommand({
-        Bucket: config.bucket,
-        Key: relativePath,
-      });
-
-      const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
-      return NextResponse.redirect(signedUrl, {
-        status: 307,
-        headers: {
-          "Cache-Control": "private, no-cache, no-store, max-age=0, must-revalidate",
-        },
-      });
+      decoded = decodeURIComponent(rawSeg);
     } catch {
+      return new NextResponse("File Not Found", { status: 404 });
+    }
+
+    if (
+      !decoded ||
+      decoded === "." ||
+      decoded === ".." ||
+      decoded.startsWith(".") ||
+      decoded.includes("/") ||
+      decoded.includes("\\") ||
+      !VALID_SEGMENT.test(decoded)
+    ) {
       return new NextResponse("File Not Found", { status: 404 });
     }
   }
 
-  // Local filesystem fallback
-  const filePath = path.join(/*turbopackIgnore: true*/ config.uploadDir, relativePath);
+  const normalizedSegments = pathSegments.map((s) => decodeURIComponent(s));
+  const relativePath = normalizedSegments.join("/");
 
-  if (!existsSync(/*turbopackIgnore: true*/ filePath)) {
-    return new NextResponse("File Not Found", { status: 404 });
+  let siteIdForConfig: string | undefined;
+  if (normalizedSegments[0] === "sites") {
+    if (normalizedSegments.length < 3) {
+      return new NextResponse("File Not Found", { status: 404 });
+    }
+    const candidateSiteId = normalizedSegments[1];
+    const siteExists = getDb().select({ id: sites.id }).from(sites).where(eq(sites.id, candidateSiteId)).get();
+    if (!siteExists) {
+      return new NextResponse("File Not Found", { status: 404 });
+    }
+    const requestHost = await getRequestNormalizedHost();
+    if (!isLocalMediaHost(requestHost)) {
+      const hostSite = await getSiteForHost();
+      if (!hostSite || hostSite.id !== candidateSiteId) {
+        return new NextResponse("File Not Found", { status: 404 });
+      }
+    }
+    siteIdForConfig = candidateSiteId;
+  } else {
+    const hostSite = await getSiteForHost();
+    siteIdForConfig = hostSite?.id;
   }
 
   try {
-    const fileBuffer = await fs.readFile(/*turbopackIgnore: true*/ filePath);
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_MAP[ext] || "application/octet-stream";
-
-    return new NextResponse(fileBuffer, {
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
-      },
+    const mediaObject = await readStoredMediaObject(relativePath, {
+      siteId: siteIdForConfig,
+      ifNoneMatch: req.headers.get("if-none-match"),
     });
-  } catch {
+
+    if (mediaObject.status === "not-found") {
+      return new NextResponse("File Not Found", { status: 404 });
+    }
+
+    if (mediaObject.status === "not-modified") {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          "Cache-Control": "public, max-age=31536000, immutable",
+          ...(mediaObject.etag ? { ETag: mediaObject.etag } : {}),
+        },
+      });
+    }
+
+    return new NextResponse(mediaObject.body as BodyInit, {
+      status: 200,
+      headers: buildMediaAssetHeaders(mediaObject, "public, max-age=31536000, immutable"),
+    });
+  } catch (error) {
+    console.error("Failed to read stored media object:", error);
     return new NextResponse("Error reading file", { status: 500 });
   }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Search, X, FileText, ArrowRight, CornerDownLeft } from "lucide-react";
+import { Search, X, FileText, CornerDownLeft } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { useTranslations } from "next-intl";
 
@@ -17,10 +17,16 @@ export interface SearchPostItem {
   publishedAt?: string | null;
 }
 
+interface SearchApiResponse {
+  items?: SearchPostItem[];
+  page?: number;
+  hasMore?: boolean;
+}
+
 /**
- * Command palette search dialog with keyboard navigation (Up/Down/Enter/Escape) and fuzzy text filtering.
+ * Command palette search dialog with keyboard navigation (Up/Down/Enter/Escape) and paginated remote search.
  *
- * @param props - Object containing visibility toggle, close callback, and searchable posts list.
+ * @param props - Object containing visibility toggle, close callback, and initial recent posts list.
  * @returns React JSX search modal dialog or null when closed.
  */
 export function SearchModal({
@@ -33,21 +39,95 @@ export function SearchModal({
   posts: SearchPostItem[];
 }) {
   const t = useTranslations("blog");
+  const tc = useTranslations("common");
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [remoteResults, setRemoteResults] = useState<SearchPostItem[] | null>(null);
+  const [remotePage, setRemotePage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  useEffect(() => {
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
       setSelectedIndex(0);
     } else {
       setQuery("");
+      setRemoteResults(null);
+      setRemotePage(1);
+      setHasMore(false);
+      setIsLoadingMore(false);
     }
+  }
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, [isOpen]);
 
-  const filtered = posts.filter((p) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&page=1`, {
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = (await res.json()) as SearchApiResponse;
+          if (Array.isArray(data.items)) {
+            setRemoteResults(data.items);
+            setRemotePage(data.page || 1);
+            setHasMore(Boolean(data.hasMore));
+          }
+        }
+      } catch {
+        // Ignore aborts and transient network issues
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isOpen, query]);
+
+  async function handleLoadMore(): Promise<void> {
+    const trimmed = query.trim();
+    if (trimmed.length < 2 || !hasMore || isLoadingMore) return;
+
+    const nextPage = remotePage + 1;
+    setIsLoadingMore(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&page=${nextPage}`);
+      if (res.ok) {
+        const data = (await res.json()) as SearchApiResponse;
+        const incoming = Array.isArray(data.items) ? data.items : [];
+        setRemoteResults((prev) => {
+          const base = prev || [];
+          const seen = new Set(base.map((item) => item.id));
+          return [...base, ...incoming.filter((item) => !seen.has(item.id))];
+        });
+        setRemotePage(data.page || nextPage);
+        setHasMore(Boolean(data.hasMore));
+      }
+    } catch {
+      // Keep existing results on transient error
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  const localFiltered = posts.filter((p) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
     return (
@@ -56,6 +136,8 @@ export function SearchModal({
       (p.categoryName && p.categoryName.toLowerCase().includes(q))
     );
   });
+
+  const filtered = query.trim().length >= 2 && remoteResults !== null ? remoteResults : localFiltered;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
@@ -103,13 +185,20 @@ export function SearchModal({
             onChange={(e) => {
               setQuery(e.target.value);
               setSelectedIndex(0);
+              setRemotePage(1);
+              setHasMore(false);
             }}
             placeholder={t("searchPlaceholder")}
             className="w-full bg-transparent text-sm text-text placeholder-text-muted outline-none"
           />
           {query && (
             <button
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("");
+                setRemoteResults(null);
+                setRemotePage(1);
+                setHasMore(false);
+              }}
               className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
               aria-label={t("clearSearch")}
             >
@@ -177,6 +266,19 @@ export function SearchModal({
               </button>
             );
           })}
+
+          {query.trim().length >= 2 && hasMore && (
+            <div className="pt-2 pb-1 px-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void handleLoadMore()}
+                disabled={isLoadingMore}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold border border-border/60 bg-surface hover:bg-surface-hover text-text transition-colors disabled:opacity-50"
+              >
+                {isLoadingMore ? tc("loadingMore") : tc("loadMore")}
+              </button>
+            </div>
+          )}
 
           {filtered.length === 0 && (
             <div className="py-12 text-center text-text-muted text-xs">

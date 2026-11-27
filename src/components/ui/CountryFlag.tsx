@@ -38,25 +38,32 @@ export function getCountryName(countryCode?: string | null, locale = "en"): stri
   }
 }
 
-/**
- * Returns a Unicode regional indicator emoji flag representation for modern platforms.
- *
- * @param countryCode - 2-letter ISO country code.
- * @returns Emoji flag string.
- */
-export function getCountryEmoji(countryCode?: string | null): string {
-  if (!countryCode || countryCode.length !== 2) return "🌐";
-  const upper = countryCode.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(upper)) return "🌐";
-  const codePoints = upper.split("").map((c) => 127397 + c.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
-}
-
 const SIZE_STYLES = {
   xs: "w-3.5 h-2.5",
   sm: "w-4.5 h-3",
   md: "w-5.5 h-3.5",
 };
+
+function resolveCountryFlagView(
+  code: string | null | undefined,
+  locale: string,
+  size: "xs" | "sm" | "md",
+  title?: string
+) {
+  const cleanCode = code ? code.trim().toUpperCase() : "";
+  const isValidIso = /^[A-Z]{2}$/.test(cleanCode);
+  const englishName = isValidIso ? getCountryName(cleanCode, "en") : cleanCode;
+  const countryName = isValidIso ? getCountryName(cleanCode, locale) : cleanCode;
+  return {
+    cleanCode,
+    isValidIso,
+    isoLower: cleanCode.toLowerCase(),
+    displayLabel: countryName || cleanCode || "Global",
+    sizeClass: SIZE_STYLES[size] || SIZE_STYLES.sm,
+    globeSizeClass: size === "xs" ? "w-3 h-3" : "w-3.5 h-3.5",
+    tooltipText: title !== undefined ? title : englishName || cleanCode || "Global",
+  };
+}
 
 /**
  * High-performance, cross-platform country flag badge component.
@@ -74,46 +81,35 @@ export function CountryFlag({
   title,
   ...rest
 }: CountryFlagProps): React.JSX.Element {
-  const cleanCode = code ? code.trim().toUpperCase() : "";
-  const isValidIso = /^[A-Z]{2}$/.test(cleanCode);
-  const englishName = isValidIso ? getCountryName(cleanCode, "en") : cleanCode;
-  const countryName = isValidIso ? getCountryName(cleanCode, locale) : cleanCode;
-  const isoLower = cleanCode.toLowerCase();
-
-  const sizeClass = SIZE_STYLES[size] || SIZE_STYLES.sm;
-  const tooltipText = title !== undefined ? title : (englishName || cleanCode || "Global");
+  const view = resolveCountryFlagView(code, locale, size, title);
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 align-middle ${className}`}
-      title={tooltipText}
+      title={view.tooltipText}
       {...rest}
     >
-      {isValidIso ? (
+      {view.isValidIso ? (
         <span className="relative inline-flex items-center justify-center shrink-0">
           <img
-            src={`https://flagcdn.com/w40/${isoLower}.png`}
-            srcSet={`https://flagcdn.com/w80/${isoLower}.png 2x`}
+            src={`https://flagcdn.com/w40/${view.isoLower}.png`}
+            srcSet={`https://flagcdn.com/w80/${view.isoLower}.png 2x`}
             width={20}
             height={15}
-            alt={countryName || cleanCode}
+            alt={view.displayLabel}
             loading="lazy"
-            className={`${sizeClass} object-cover rounded-[2px] shadow-2xs border border-black/10 dark:border-white/15 shrink-0 ${flagClassName}`}
+            className={`${view.sizeClass} object-cover rounded-[2px] shadow-2xs border border-black/10 dark:border-white/15 shrink-0 ${flagClassName}`}
           />
         </span>
       ) : (
-        <Globe className={`${size === "xs" ? "w-3 h-3" : "w-3.5 h-3.5"} text-text-muted shrink-0`} />
+        <Globe className={`${view.globeSizeClass} text-text-muted shrink-0`} />
       )}
 
-      {showName && (
-        <span className="truncate">
-          {countryName || cleanCode || "Global"}
-        </span>
-      )}
+      {showName && <span className="truncate">{view.displayLabel}</span>}
 
-      {showCode && isValidIso && (
+      {showCode && view.isValidIso && (
         <span className="text-[11px] font-mono text-text-muted font-normal shrink-0">
-          ({cleanCode})
+          ({view.cleanCode})
         </span>
       )}
     </span>

@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { getCurrentVersion } from "@/actions/updates";
+import { logError } from "@/lib/observability/logger";
+
+export const dynamic = "force-dynamic";
 
 /**
- * Liveness and readiness health probe verifying database connectivity and reporting server uptime.
+ * Liveness and readiness health probe verifying database connectivity.
+ * Omits version metadata and internal stack messages to avoid passive fingerprinting.
  *
  * @returns JSON health report status.
  */
@@ -15,24 +18,20 @@ export async function GET(): Promise<NextResponse> {
 
     if (!result || result.ok !== 1) {
       return NextResponse.json(
-        { status: "unhealthy", reason: "Database ping failed" },
+        { status: "unhealthy", db: "disconnected" },
         { status: 503 }
       );
     }
 
-    const version = await getCurrentVersion();
-
     return NextResponse.json({
       status: "ok",
-      uptime: Math.floor(process.uptime()),
       db: "connected",
       timestamp: new Date().toISOString(),
-      version,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Health check failure";
+    logError("health.check.failed", err, { route: "/api/health" });
     return NextResponse.json(
-      { status: "unhealthy", error: message },
+      { status: "unhealthy", db: "error" },
       { status: 503 }
     );
   }

@@ -1,15 +1,9 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
-import { sql, desc } from "drizzle-orm";
 import { Compass, Share2, Tag, Layers } from "lucide-react";
-import {
-  getDateRangeBounds,
-  buildAnalyticsFilterConditions,
-  cleanReferrerDomain,
-} from "@/lib/analytics/query";
+import { getDateRangeBounds, cleanReferrerDomain } from "@/lib/analytics/query";
+import { getAnalyticsSourcesData } from "@/lib/queries/analytics-traffic";
 import { BarChart, BarChartItem } from "@/components/admin/analytics/BarChart";
 import { DataTable, ColumnDef } from "@/components/admin/analytics/DataTable";
 
@@ -75,29 +69,15 @@ export default async function AnalyticsSourcesPage({
   const { locale } = await params;
   const sp = searchParams ? await searchParams : {};
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const bounds = getDateRangeBounds(sp.range);
-  const filterCondition = buildAnalyticsFilterConditions(
+  const { rawReferrers, utmCampaigns: rawCampaigns, utmSources: rawSources } = getAnalyticsSourcesData(
     site.id,
-    bounds.start,
-    bounds.end,
+    bounds,
     sp
   );
-  const db = getDb();
-
-  // All hits for channel classification and referrer aggregation
-  const rawReferrers = db
-    .select({
-      referrer: analytics.referrer,
-      utmMedium: analytics.utmMedium,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.referrer, analytics.utmMedium)
-    .all();
 
   const channelCounts = { direct: 0, search: 0, social: 0, email: 0, referral: 0 };
   const referrerMap = new Map<string, number>();
@@ -150,33 +130,8 @@ export default async function AnalyticsSourcesPage({
     .sort((a, b) => b.views - a.views)
     .slice(0, 25);
 
-  // UTM Campaigns
-  const utmCampaigns = db
-    .select({
-      name: analytics.utmCampaign,
-      views: sql<number>`count(*)`,
-      visitors: sql<number>`count(distinct ip_hash)`,
-    })
-    .from(analytics)
-    .where(sql`${filterCondition} AND utm_campaign IS NOT NULL AND utm_campaign != ''`)
-    .groupBy(analytics.utmCampaign)
-    .orderBy(desc(sql`count(*)`))
-    .limit(15)
-    .all() as UtmRow[];
-
-  // UTM Sources
-  const utmSources = db
-    .select({
-      name: analytics.utmSource,
-      views: sql<number>`count(*)`,
-      visitors: sql<number>`count(distinct ip_hash)`,
-    })
-    .from(analytics)
-    .where(sql`${filterCondition} AND utm_source IS NOT NULL AND utm_source != ''`)
-    .groupBy(analytics.utmSource)
-    .orderBy(desc(sql`count(*)`))
-    .limit(15)
-    .all() as UtmRow[];
+  const utmCampaigns = rawCampaigns as UtmRow[];
+  const utmSources = rawSources as UtmRow[];
 
   const referrerColumns: ColumnDef<ReferrerRow>[] = [
     {

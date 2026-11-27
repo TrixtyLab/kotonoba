@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getPublishedPages } from "@/actions/pages";
 import { notFound } from "next/navigation";
 import { NavigationSettingsClient } from "@/components/admin/settings/NavigationSettingsClient";
@@ -9,7 +9,7 @@ import { NavigationSettingsClient } from "@/components/admin/settings/Navigation
  * @returns React JSX navigation settings view.
  */
 export default async function NavigationSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const pages = await getPublishedPages(site.id);

@@ -3,7 +3,7 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache libc6-compat python3 make g++
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@12.16.1 --activate
 
 FROM base AS deps
 WORKDIR /app
@@ -27,8 +27,9 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV DB_PATH=/app/data/kotonoba.db
 ENV UPLOAD_DIR=/app/data/uploads
+ENV CSP_MODE=report-only
 
-RUN apk add --no-cache curl wget
+RUN apk add --no-cache curl wget sqlite
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs

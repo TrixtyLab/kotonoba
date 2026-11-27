@@ -1,29 +1,100 @@
 import { parseEmbedUrl, parseEmbedDirective, type EmbedOptions } from "./embeds";
-import { normalizeHtmlMediaUrls } from "@/lib/storage";
+import { normalizeHtmlMediaUrls } from "@/lib/utils/media";
+import { sanitizeRichHtml, sanitizeUrl } from "@/lib/security/sanitize";
 
 /**
  * Configuration options for rendering content with custom tracking and UTM parameters.
  */
-export interface RenderContentOptions extends EmbedOptions {}
+export interface RenderContentOptions extends EmbedOptions {
+  /** Explicit stored format (`"html"` or `"markdown"`). Falls back to tag detection when omitted. */
+  format?: "html" | "markdown";
+}
+
+function renderSafeFallbackLink(rawUrl: string): string {
+  const safeHref = sanitizeUrl(rawUrl, { allowRelative: true });
+  const label = escapeHtml(rawUrl);
+  if (!safeHref) {
+    return label;
+  }
+  return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="text-accent underline">${label}</a>`;
+}
 
 /**
  * Universal content parser that converts raw markdown or rich-text HTML into sanitized, embed-resolved HTML for blog posts.
  * Automatically delegates to appropriate HTML embed or Markdown rendering pipelines.
  *
  * @param {string} rawContent - The post body content, either as HTML markup or raw Markdown.
- * @param {RenderContentOptions} [options] - Optional configuration including UTM parameters for embeds.
+ * @param {RenderContentOptions} [options] - Optional configuration including format and UTM parameters for embeds.
  * @returns {string} Fully rendered and sanitized HTML string with embedded media components.
  */
 export function renderPostContent(rawContent: string, options?: RenderContentOptions): string {
   if (!rawContent) return "";
 
   const normalized = normalizeHtmlMediaUrls(rawContent.trim());
+  const looksLikeHtml = options?.format === "html" || (options?.format !== "markdown" && /^<[a-z!/]/i.test(normalized));
 
-  if (normalized.startsWith("<") && (normalized.startsWith("<p>") || normalized.startsWith("<h") || normalized.startsWith("<div") || normalized.startsWith("<ul") || normalized.startsWith("<ol") || normalized.startsWith("<iframe"))) {
-    return processHtmlEmbeds(normalized, options);
+  if (looksLikeHtml) {
+    return sanitizeRichHtml(processHtmlEmbeds(normalized, options));
   }
 
   return renderMarkdownToHtml(normalized, options);
+}
+
+function decodeHtmlEntities(raw: string): string {
+  return raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Extracts Mermaid diagram definitions from raw Markdown fenced blocks,
+ * canonical unified `content`, or rich-text HTML (`<code class="language-mermaid">`).
+ *
+ * @param sources - One or more Markdown/HTML source strings to inspect.
+ * @returns Ordered deduplicated array of Mermaid diagram definitions.
+ */
+export function extractMermaidDiagrams(...sources: Array<string | null | undefined>): string[] {
+  const diagrams: string[] = [];
+  const seen = new Set<string>();
+
+  const pushDiagram = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      diagrams.push(trimmed);
+    }
+  };
+
+  for (const src of sources) {
+    if (!src) continue;
+    const mdRegex = /```mermaid[\r\n]+([\s\S]*?)```/gi;
+    let match: RegExpExecArray | null;
+    while ((match = mdRegex.exec(src)) !== null) {
+      pushDiagram(decodeHtmlEntities(match[1]));
+    }
+
+    const codeBlockRegex =
+      /<code[^>]*class=["'][^"']*\blanguage-mermaid\b[^"']*["'][^>]*>([\s\S]*?)<\/code>/gi;
+    let codeMatch: RegExpExecArray | null;
+    while ((codeMatch = codeBlockRegex.exec(src)) !== null) {
+      pushDiagram(decodeHtmlEntities(codeMatch[1]));
+    }
+
+    const htmlFenceRegex = /```mermaid(?:<br\s*\/?>|\r?\n|\s)+([\s\S]*?)```/gi;
+    let fenceMatch: RegExpExecArray | null;
+    while ((fenceMatch = htmlFenceRegex.exec(src)) !== null) {
+      pushDiagram(decodeHtmlEntities(fenceMatch[1]));
+    }
+  }
+
+  return diagrams;
 }
 
 /**
@@ -34,14 +105,18 @@ export function renderPostContent(rawContent: string, options?: RenderContentOpt
  * @returns {string} HTML string with embed directives replaced by responsive iframe/widget markup.
  */
 function processHtmlEmbeds(html: string, options?: RenderContentOptions): string {
-  let result = html.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, type, url) => {
+  let result = html
+    .replace(/<pre[^>]*>\s*<code[^>]*class=["'][^"']*\blanguage-mermaid\b[^"']*["'][^>]*>[\s\S]*?<\/code>\s*<\/pre>/gi, "")
+    .replace(/<p[^>]*>\s*```mermaid[\s\S]*?```\s*<\/p>/gi, "");
+
+  result = result.replace(/<p>\s*@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)\s*<\/p>/gi, (_m, type, url) => {
     const embed = parseEmbedDirective(type, url.trim(), options);
-    return embed ? embed.html : `<p><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a></p>`;
+    return embed ? embed.html : `<p>${renderSafeFallbackLink(url.trim())}</p>`;
   });
 
   result = result.replace(/@\[(youtube|vimeo|twitter|x|bluesky|steam|itch|itchio|video|embed)\]\(([^)]+)\)/gi, (_m, type, url) => {
     const embed = parseEmbedDirective(type, url.trim(), options);
-    return embed ? embed.html : `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a>`;
+    return embed ? embed.html : renderSafeFallbackLink(url.trim());
   });
 
   result = result.replace(/<p>\s*(<iframe[^>]*src=["']https?:\/\/(?:store\.steampowered\.com\/widget|itch\.io\/embed)[^"']*["'][^>]*>.*?<\/iframe>)\s*<\/p>/gi, (_m, rawIframe) => {
@@ -118,7 +193,7 @@ export function renderMarkdownToHtml(markdown: string, options?: RenderContentOp
       embedBlocks.push(embed.html);
       return placeholder;
     }
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent underline">${url}</a>`;
+    return renderSafeFallbackLink(url.trim());
   });
 
   const lines = src.split(/\r?\n/);
@@ -234,7 +309,7 @@ export function renderMarkdownToHtml(markdown: string, options?: RenderContentOp
     html = html.replace(`__INLINE_CODE_${idx}__`, code);
   });
 
-  return html;
+  return sanitizeRichHtml(html);
 }
 
 /**

@@ -1,8 +1,11 @@
-import { getActiveSite, getSiteForHost } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, tags, postTags, postCategories, categories, users } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
+import {
+  getCachedLatestPublicPostsSummary,
+  getCachedPaginatedPublicPosts,
+  parsePageNumber,
+} from "@/lib/queries/public-posts";
+import { getCachedSiteCategories, getCachedTagBySlug } from "@/lib/queries/taxonomy";
+import { DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
 import { notFound } from "next/navigation";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
@@ -12,8 +15,9 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/storage";
-import { getSidebarBanners } from "@/lib/banners";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { getCachedSidebarBanners } from "@/lib/banners";
+import { getDefaultSiteUrl } from "@/lib/config/env";
 
 /**
  * Generates SEO metadata for a tag archive page.
@@ -27,12 +31,11 @@ export async function generateMetadata({
   params: Promise<{ slug: string; locale: string }>;
 }): Promise<Metadata> {
   const { slug, locale } = await params;
-  const site = (await getSiteForHost()) || (await getActiveSite());
-  const db = getDb();
-  const tag = site ? db.select().from(tags).where(and(eq(tags.siteId, site.id), eq(tags.slug, slug))).get() : null;
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
+  const tag = site ? await getCachedTagBySlug(site.id, slug, locale, host) : null;
   const t = await getTranslations({ locale, namespace: "blog" });
   const siteName = site ? getLocalizedText(site.name, locale) : "Blog";
-  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}/tag/${slug}`;
   const title = tag ? `#${tag.name} — ${siteName}` : t("tag");
   const description = `${t("tag")}: #${tag?.name || slug}`;
@@ -71,64 +74,36 @@ export async function generateMetadata({
  */
 export default async function TagPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; locale: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { slug, locale } = await params;
-  const site = await getActiveSite();
+  const resolvedSearchParams = await searchParams;
+  const requestedPage = parsePageNumber(resolvedSearchParams.page);
+  const site = await getPublicSite();
   if (!site) notFound();
 
   const t = await getTranslations({ locale, namespace: "blog" });
+  const host = await getRequestNormalizedHost();
 
-  const db = getDb();
-  await publishScheduledPosts(site.id);
-
-  const tag = db.select().from(tags).where(and(eq(tags.siteId, site.id), eq(tags.slug, slug))).get();
+  const tag = await getCachedTagBySlug(site.id, slug, locale, host);
   if (!tag) notFound();
 
-  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
-
-  const rawPosts = db
-    .select({
-      id: posts.id,
-      title: posts.title,
-      slug: posts.slug,
-      excerpt: posts.excerpt,
-      contentHtml: posts.contentHtml,
-      contentMd: posts.contentMd,
-      coverImage: posts.coverImage,
-      publishedAt: posts.publishedAt,
-      views: posts.views,
-      pinned: posts.pinned,
-      authorName: users.displayName,
-      authorAvatar: users.avatarUrl,
-    })
-    .from(postTags)
-    .innerJoin(posts, eq(postTags.postId, posts.id))
-    .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(postTags.tagId, tag.id), getPublicPostCondition()))
-    .orderBy(desc(posts.publishedAt))
-    .all();
-
-  const matchingPosts = rawPosts.map((p) => {
-    const postCats = db
-      .select({ id: categories.id, name: categories.name, slug: categories.slug })
-      .from(postCategories)
-      .innerJoin(categories, eq(postCategories.categoryId, categories.id))
-      .where(eq(postCategories.postId, p.id))
-      .all();
-
-    const pTags = db
-      .select({ id: tags.id, name: tags.name, slug: tags.slug })
-      .from(postTags)
-      .innerJoin(tags, eq(postTags.tagId, tags.id))
-      .where(eq(postTags.postId, p.id))
-      .all();
-
-    return { ...p, categories: postCats, tags: pTags };
-  });
-
-  const totalPages = Math.max(1, Math.ceil(matchingPosts.length / 5));
+  const [allCategories, paginated, latestPosts, sidebarBanners] = await Promise.all([
+    getCachedSiteCategories(site.id, locale, host),
+    getCachedPaginatedPublicPosts({
+      siteId: site.id,
+      locale,
+      host,
+      tagId: tag.id,
+      page: requestedPage,
+      pageSize: DEFAULT_PUBLIC_PAGE_SIZE,
+    }),
+    getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+    getCachedSidebarBanners(site.id, host),
+  ]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
@@ -139,29 +114,29 @@ export default async function TagPage({
           <h1 className="text-2xl font-bold text-text mt-1">#{tag.name}</h1>
         </div>
 
-        {matchingPosts.length === 0 ? (
+        {paginated.items.length === 0 ? (
           <div className="py-20 text-center space-y-3">
             <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
             <p className="text-sm text-text-muted">{t("noPosts")}</p>
           </div>
         ) : (
           <div className="space-y-8">
-            {matchingPosts.map((post) => (
+            {paginated.items.map((post) => (
               <PostCard key={post.id} post={post} locale={locale} />
             ))}
           </div>
         )}
 
-        <LinePagination currentPage={1} totalPages={totalPages} baseUrl={`/tag/${tag.slug}`} />
+        <LinePagination currentPage={paginated.currentPage} totalPages={paginated.totalPages} baseUrl={`/tag/${tag.slug}`} />
       </div>
 
       {/* Right Column: Profile Sidebar */}
       <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site}
-          latestPosts={matchingPosts.slice(0, 5)}
+          latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={await getSidebarBanners(site.id)}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>

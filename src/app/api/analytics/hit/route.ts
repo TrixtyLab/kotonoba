@@ -1,13 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { analytics, posts, pages } from "@/lib/db/schema";
 import { eq, and, gt, sql } from "drizzle-orm";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limit";
+import { getClientIp } from "@/lib/http/request";
 import { parseDeviceAndBrowser } from "@/lib/utils/analytics";
 import { verifyToken } from "@/lib/auth/jwt";
-import crypto from "crypto";
+import {
+  checkAnalyticsIpRateLimit,
+  checkAnalyticsSiteRateLimit,
+  hashAnalyticsVisitor,
+  resolveAnalyticsCountry,
+  resolveAnalyticsSite,
+} from "@/lib/analytics/ingest";
 
 const BOT_USER_AGENTS = /bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegram|discordbot|headless|lighthouse|pingdom|uptimerobot|preview|google-read-aloud/i;
+
+const pathSchema = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((value) => value.startsWith("/") && !value.startsWith("//"), {
+    message: "Path must be an absolute same-origin path",
+  });
+
+const hitPayloadSchema = z.object({
+  siteId: z.string().min(1).max(128),
+  postId: z.string().min(1).max(128).optional().nullable(),
+  pageId: z.string().min(1).max(128).optional().nullable(),
+  path: pathSchema,
+  utm_source: z.string().max(100).optional().nullable(),
+  utm_medium: z.string().max(100).optional().nullable(),
+  utm_campaign: z.string().max(100).optional().nullable(),
+  utm_term: z.string().max(100).optional().nullable(),
+  utm_content: z.string().max(100).optional().nullable(),
+  language: z.string().max(20).optional().nullable(),
+  sessionId: z.string().max(64).optional().nullable(),
+  loadTime: z.number().finite().positive().max(120000).optional().nullable(),
+  screenWidth: z.number().int().positive().max(10000).optional().nullable(),
+  screenHeight: z.number().int().positive().max(10000).optional().nullable(),
+});
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -38,18 +70,17 @@ export async function OPTIONS(): Promise<NextResponse> {
 }
 
 /**
- * Analytics beacon endpoint ingesting genuine pageviews while filtering automated bots,
- * logged-in administrators/authors, and duplicate visits within a 15-minute deduplication window.
+ * Analytics beacon endpoint ingesting genuine pageviews while enforcing host/tenant
+ * ownership checks, bot filtering, authenticated-staff exclusion, and 15-minute IP deduplication.
  *
- * @param {NextRequest} req - Incoming beacon payload containing siteId, optional postId or pageId, path, and UTM campaign parameters.
- * @returns {Promise<NextResponse>} JSON response indicating whether the pageview was recorded, ignored, or rejected.
+ * @param {NextRequest} req - Incoming beacon payload.
+ * @returns {Promise<NextResponse>} JSON response indicating outcome.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (req.headers.get("x-purpose") === "preview" || req.headers.get("sec-purpose") === "prefetch") {
     return NextResponse.json({ success: true, ignored: "prefetch" });
   }
 
-  // Filter out authenticated dashboard users (super_admin, admin, author) from recording their own visits
   const accessToken = req.cookies.get("access_token")?.value;
   const refreshToken = req.cookies.get("refresh_token")?.value;
   if (accessToken) {
@@ -65,28 +96,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const rawIp =
-    req.headers.get("x-real-ip")?.trim() ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "";
-  const ip = rawIp.length > 0 ? rawIp : "0.0.0.0";
-  const rateLimitKey = `analytics:${ip}`;
-  const rate = checkRateLimit(rateLimitKey, RATE_LIMITS.analytics);
-
-  if (!rate.allowed) {
+  const ip = getClientIp(req.headers);
+  const ipRate = checkAnalyticsIpRateLimit("hit", ip);
+  if (!ipRate.allowed) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }
 
   try {
     const userAgent = req.headers.get("user-agent") || "";
-
     if (!userAgent || BOT_USER_AGENTS.test(userAgent)) {
       return NextResponse.json({ success: true, ignored: "bot" });
     }
 
-    const body = await req.json();
+    const rawBody = await req.json();
+    const parsed = hitPayloadSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid beacon payload" }, { status: 400 });
+    }
+
     const {
-      siteId,
+      siteId: requestedSiteId,
       postId,
       pageId,
       path,
@@ -100,45 +129,78 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       loadTime: rawLoadTime,
       screenWidth: rawScreenWidth,
       screenHeight: rawScreenHeight,
-    } = body;
+    } = parsed.data;
 
-    if (!siteId || !path) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    const resolution = await resolveAnalyticsSite(requestedSiteId);
+    if (!resolution.ok) {
+      return NextResponse.json({ error: resolution.error }, { status: resolution.status });
+    }
+
+    const siteId = resolution.siteId;
+    const siteRate = checkAnalyticsSiteRateLimit("hit", ip, siteId);
+    if (!siteRate.allowed) {
+      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
     }
 
     const db = getDb();
-    let resolvedPostId: string | null = postId || null;
-    let resolvedPageId: string | null = pageId || null;
+    let resolvedPostId: string | null = null;
+    let resolvedPageId: string | null = null;
+
+    if (postId) {
+      const ownedPost = db
+        .select({ id: posts.id })
+        .from(posts)
+        .where(and(eq(posts.id, postId), eq(posts.siteId, siteId)))
+        .get();
+      if (!ownedPost) {
+        return NextResponse.json({ error: "Post does not belong to site" }, { status: 400 });
+      }
+      resolvedPostId = ownedPost.id;
+    }
+
+    if (pageId) {
+      const ownedPage = db
+        .select({ id: pages.id })
+        .from(pages)
+        .where(and(eq(pages.id, pageId), eq(pages.siteId, siteId)))
+        .get();
+      if (!ownedPage) {
+        return NextResponse.json({ error: "Page does not belong to site" }, { status: 400 });
+      }
+      resolvedPageId = ownedPage.id;
+    }
 
     if (!resolvedPostId && !resolvedPageId) {
-      const entryMatch = String(path).match(/(?:^|\/)entry\/([^/?#]+)/);
+      const entryMatch = path.match(/(?:^|\/)entry\/([^/?#]+)/);
       if (entryMatch) {
-        const postSlug = decodeURIComponent(entryMatch[1]);
+        let postSlug = entryMatch[1];
+        try {
+          postSlug = decodeURIComponent(postSlug);
+        } catch {}
         const post = db
           .select({ id: posts.id })
           .from(posts)
           .where(and(eq(posts.siteId, siteId), eq(posts.slug, postSlug)))
           .get();
-        if (post) {
-          resolvedPostId = post.id;
-        }
+        if (post) resolvedPostId = post.id;
       }
 
-      const pageMatch = String(path).match(/(?:^|\/)p\/([^/?#]+)/);
+      const pageMatch = path.match(/(?:^|\/)p\/([^/?#]+)/);
       if (pageMatch) {
-        const pageSlug = decodeURIComponent(pageMatch[1]);
+        let pageSlug = pageMatch[1];
+        try {
+          pageSlug = decodeURIComponent(pageSlug);
+        } catch {}
         const page = db
           .select({ id: pages.id })
           .from(pages)
           .where(and(eq(pages.siteId, siteId), eq(pages.slug, pageSlug)))
           .get();
-        if (page) {
-          resolvedPageId = page.id;
-        }
+        if (page) resolvedPageId = page.id;
       }
     }
 
-    const ipHash = crypto.createHash("sha256").update(`${ip}-${userAgent}`).digest("hex").slice(0, 16);
+    const ipHash = hashAnalyticsVisitor(ip, userAgent);
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
     const recentVisit = db
@@ -159,14 +221,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const referrer = req.headers.get("referer") || undefined;
-    const country = req.headers.get("cf-ipcountry") || req.headers.get("x-vercel-ip-country") || undefined;
+    const country = resolveAnalyticsCountry(
+      req.headers.get("cf-ipcountry"),
+      req.headers.get("x-vercel-ip-country")
+    );
     const { device, browser, os } = parseDeviceAndBrowser(userAgent);
     const headerLang = req.headers.get("accept-language")?.split(",")[0]?.split(";")[0]?.trim();
-    const language = (typeof rawLanguage === "string" && rawLanguage.trim() ? rawLanguage.trim() : headerLang || "").slice(0, 20);
-    const sessionId = typeof rawSessionId === "string" ? rawSessionId.slice(0, 64) : "";
-    const loadTime = typeof rawLoadTime === "number" && !isNaN(rawLoadTime) && rawLoadTime > 0 ? Math.round(rawLoadTime) : undefined;
-    const screenWidth = typeof rawScreenWidth === "number" && !isNaN(rawScreenWidth) && rawScreenWidth > 0 ? Math.round(rawScreenWidth) : undefined;
-    const screenHeight = typeof rawScreenHeight === "number" && !isNaN(rawScreenHeight) && rawScreenHeight > 0 ? Math.round(rawScreenHeight) : undefined;
+    const language = (rawLanguage?.trim() || headerLang || "").slice(0, 20);
+    const sessionId = (rawSessionId || "").slice(0, 64);
+    const loadTime = typeof rawLoadTime === "number" ? Math.round(rawLoadTime) : undefined;
+    const screenWidth = typeof rawScreenWidth === "number" ? Math.round(rawScreenWidth) : undefined;
+    const screenHeight = typeof rawScreenHeight === "number" ? Math.round(rawScreenHeight) : undefined;
 
     db.insert(analytics)
       .values({
@@ -185,11 +250,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         loadTime,
         screenWidth,
         screenHeight,
-        utmSource: utm_source ? String(utm_source).slice(0, 100) : undefined,
-        utmMedium: utm_medium ? String(utm_medium).slice(0, 100) : undefined,
-        utmCampaign: utm_campaign ? String(utm_campaign).slice(0, 100) : undefined,
-        utmTerm: utm_term ? String(utm_term).slice(0, 100) : undefined,
-        utmContent: utm_content ? String(utm_content).slice(0, 100) : undefined,
+        utmSource: utm_source ? utm_source.slice(0, 100) : undefined,
+        utmMedium: utm_medium ? utm_medium.slice(0, 100) : undefined,
+        utmCampaign: utm_campaign ? utm_campaign.slice(0, 100) : undefined,
+        utmTerm: utm_term ? utm_term.slice(0, 100) : undefined,
+        utmContent: utm_content ? utm_content.slice(0, 100) : undefined,
         ipHash,
         createdAt: new Date(),
       })
@@ -198,14 +263,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (resolvedPostId) {
       db.update(posts)
         .set({ views: sql`${posts.views} + 1` })
-        .where(eq(posts.id, resolvedPostId))
+        .where(and(eq(posts.id, resolvedPostId), eq(posts.siteId, siteId)))
         .run();
     }
 
     if (resolvedPageId) {
       db.update(pages)
         .set({ views: sql`${pages.views} + 1` })
-        .where(eq(pages.id, resolvedPageId))
+        .where(and(eq(pages.id, resolvedPageId), eq(pages.siteId, siteId)))
         .run();
     }
 

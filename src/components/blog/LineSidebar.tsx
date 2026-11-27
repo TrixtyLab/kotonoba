@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/utils/date";
 import { useTranslations, useLocale } from "next-intl";
 import { getLocalizedText } from "@/lib/utils/localization";
 import { normalizeMediaUrl } from "@/lib/utils/media";
+import { sanitizeUrl, isExternalHttpUrl } from "@/lib/security/urls";
 import type { SidebarBannerItem } from "@/lib/banners";
 
 /**
@@ -55,7 +56,7 @@ export function LineSidebar({
   const t = useTranslations("blog");
   const currentLocale = useLocale() || propLocale || "en";
 
-  const avatar = site.logoUrl;
+  const avatar = sanitizeUrl(normalizeMediaUrl(site.logoUrl), { allowRelative: true });
   const name = getLocalizedText(site.name, currentLocale);
   const bio = getLocalizedText(site.description, currentLocale) || getLocalizedText(site.subtitle, currentLocale);
 
@@ -89,7 +90,7 @@ export function LineSidebar({
       {sidebarBanners.length > 0 && (
         <div className="space-y-3">
           {sidebarBanners.map((banner) => {
-            const resolvedImg = normalizeMediaUrl(banner.imageUrl);
+            const resolvedImg = sanitizeUrl(normalizeMediaUrl(banner.imageUrl), { allowRelative: true });
             if (!resolvedImg) return null;
 
             const bannerImg = (
@@ -100,18 +101,15 @@ export function LineSidebar({
               />
             );
 
-            if (banner.linkUrl && banner.linkUrl.trim()) {
-              const cleanLink = banner.linkUrl.trim();
-              const isExternal =
-                cleanLink.startsWith("http://") ||
-                cleanLink.startsWith("https://") ||
-                cleanLink.startsWith("//");
+            const safeLink = sanitizeUrl(banner.linkUrl, { allowRelative: true });
+            if (safeLink) {
+              const isExternal = isExternalHttpUrl(safeLink);
 
               if (isExternal) {
                 return (
                   <a
                     key={banner.id}
-                    href={cleanLink}
+                    href={safeLink}
                     target={banner.target || "_blank"}
                     rel={banner.target === "_blank" ? "noopener noreferrer" : undefined}
                     className="block overflow-hidden rounded-lg group"
@@ -124,7 +122,7 @@ export function LineSidebar({
               return (
                 <Link
                   key={banner.id}
-                  href={cleanLink}
+                  href={safeLink}
                   className="block overflow-hidden rounded-lg group"
                 >
                   {bannerImg}

@@ -1,8 +1,11 @@
 import { getDb } from "@/lib/db";
 import { sites, settings } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { normalizeMediaUrl, resolveAbsoluteUrl } from "@/lib/storage";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { decryptSecretOrLegacyPlaintext } from "@/lib/security/crypto";
+import { safeOutboundFetch, validateOutboundUrl } from "@/lib/security/ssrf";
+import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 
 /**
  * Payload structure for a Discord webhook message containing rich embeds.
@@ -57,7 +60,7 @@ export interface DiscordEmbed {
  * @param hex - Hexadecimal color code (e.g. '#3b82f6' or 'ff4081').
  * @returns Integer decimal color value.
  */
-export function hexToDecimalColor(hex?: string): number {
+function hexToDecimalColor(hex?: string): number {
   if (!hex) return 3900150;
   const clean = hex.replace("#", "").trim();
   const parsed = parseInt(clean, 16);
@@ -80,6 +83,74 @@ export function hexToDecimalColor(hex?: string): number {
  * @param {string | null} [post.shortUrl] - Optional shortened redirect link.
  * @returns {Promise<boolean>} Promise resolving to true if sent successfully, false otherwise.
  */
+function loadDiscordSiteConfig(siteId: string) {
+  const db = getDb();
+  const rows = db.select().from(settings).where(eq(settings.siteId, siteId)).all();
+  const configMap: Record<string, string> = {};
+  for (const s of rows) configMap[s.key] = s.value;
+
+  const enabled = configMap.discord_notifications_enabled === "true";
+  const webhookUrl = decryptSecretOrLegacyPlaintext(configMap.discord_webhook_url).trim();
+  if (!enabled || !webhookUrl) return null;
+
+  return {
+    webhookUrl,
+    botUsername: configMap.discord_bot_username,
+    botAvatar: configMap.discord_bot_avatar,
+  };
+}
+
+function resolveDiscordSiteBranding(siteId: string, requestedLocale?: string) {
+  const site = getDb().select().from(sites).where(eq(sites.id, siteId)).get();
+  const postLocale = requestedLocale || site?.locale || "en";
+  const siteName = getLocalizedText(site?.name, postLocale) || "Kotonoba Blog";
+  const baseUrl = buildSiteBaseUrl(site?.domain || "localhost:3000");
+  const logoUrl = resolveAbsoluteUrl(site?.logoUrl || site?.faviconUrl, baseUrl);
+  return {
+    postLocale,
+    siteName,
+    baseUrl,
+    logoUrl,
+    colorInt: hexToDecimalColor(site?.primaryColor || "#3b82f6"),
+  };
+}
+
+function buildDiscordPostPayload(
+  siteId: string,
+  config: { botUsername?: string; botAvatar?: string },
+  post: {
+    title: string;
+    slug: string;
+    excerpt?: string | null;
+    coverImage?: string | null;
+    publishedAt?: Date | null;
+    locale?: string;
+    shortUrl?: string | null;
+  }
+): DiscordWebhookPayload {
+  const branding = resolveDiscordSiteBranding(siteId, post.locale);
+  const postUrl = post.shortUrl || `${branding.baseUrl}/${branding.postLocale}/entry/${post.slug}`;
+  const coverImageUrl = resolveAbsoluteUrl(post.coverImage, branding.baseUrl);
+  const description = post.excerpt?.trim() || "";
+
+  return {
+    username: config.botUsername || branding.siteName,
+    avatar_url: resolveAbsoluteUrl(config.botAvatar, branding.baseUrl) || branding.logoUrl,
+    embeds: [
+      {
+        author: { name: branding.siteName, url: branding.baseUrl, icon_url: branding.logoUrl },
+        title: post.title,
+        url: postUrl,
+        description: description || undefined,
+        color: branding.colorInt,
+        image: coverImageUrl ? { url: coverImageUrl } : undefined,
+        footer: { text: branding.siteName, icon_url: branding.logoUrl },
+        timestamp: (post.publishedAt || new Date()).toISOString(),
+      },
+    ],
+  };
+}
+
 export async function sendDiscordPostNotification(
   siteId: string,
   post: {
@@ -94,70 +165,26 @@ export async function sendDiscordPostNotification(
   }
 ): Promise<boolean> {
   try {
-    const db = getDb();
-    const siteSettings = db
-      .select()
-      .from(settings)
-      .where(eq(settings.siteId, siteId))
-      .all();
+    const config = loadDiscordSiteConfig(siteId);
+    if (!config) return false;
 
-    const configMap: Record<string, string> = {};
-    for (const s of siteSettings) {
-      configMap[s.key] = s.value;
-    }
-
-    const enabled = configMap.discord_notifications_enabled === "true";
-    const webhookUrl = configMap.discord_webhook_url;
-
-    if (!enabled || !webhookUrl) {
+    const webhookCheck = await validateOutboundUrl(config.webhookUrl, {
+      allowedDomains: ["discord.com", "discordapp.com"],
+    });
+    if (!webhookCheck.valid || !webhookCheck.url.pathname.startsWith("/api/webhooks/")) {
       return false;
     }
 
-    const site = db.select().from(sites).where(eq(sites.id, siteId)).get();
-    const postLocale = post.locale || site?.locale || "en";
-    const siteName = getLocalizedText(site?.name, postLocale) || "Kotonoba Blog";
-    const siteDomain = site?.domain || "localhost:3000";
-    const baseUrl = siteDomain.includes("localhost")
-      ? `http://${siteDomain}`
-      : `https://${siteDomain}`;
-
-    const canonicalPostUrl = `${baseUrl}/${postLocale}/entry/${post.slug}`;
-    const postUrl = post.shortUrl || canonicalPostUrl;
-    const logoUrl = resolveAbsoluteUrl(site?.logoUrl || site?.faviconUrl, baseUrl);
-    const coverImageUrl = resolveAbsoluteUrl(post.coverImage, baseUrl);
-    const colorInt = hexToDecimalColor(site?.primaryColor || "#3b82f6");
-
-    const description = post.excerpt?.trim() || "";
-
-    const payload: DiscordWebhookPayload = {
-      username: configMap.discord_bot_username || siteName,
-      avatar_url: resolveAbsoluteUrl(configMap.discord_bot_avatar, baseUrl) || logoUrl,
-      embeds: [
-        {
-          author: {
-            name: siteName,
-            url: baseUrl,
-            icon_url: logoUrl,
-          },
-          title: post.title,
-          url: postUrl,
-          description: description ? description : undefined,
-          color: colorInt,
-          image: coverImageUrl ? { url: coverImageUrl } : undefined,
-          footer: {
-            text: siteName,
-            icon_url: logoUrl,
-          },
-          timestamp: (post.publishedAt || new Date()).toISOString(),
-        },
-      ],
-    };
-
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const payload = buildDiscordPostPayload(siteId, config, post);
+    const res = await safeOutboundFetch(
+      config.webhookUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { allowedDomains: ["discord.com", "discordapp.com"], timeoutMs: 10_000 }
+    );
 
     return res.ok;
   } catch {
@@ -181,7 +208,10 @@ export async function sendDiscordTestNotification(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!webhookUrl || !webhookUrl.startsWith("https://discord.com/api/webhooks/")) {
+    const check = await validateOutboundUrl(webhookUrl, {
+      allowedDomains: ["discord.com", "discordapp.com"],
+    });
+    if (!check.valid || !check.url.pathname.startsWith("/api/webhooks/")) {
       return { success: false, error: "Invalid Discord Webhook URL format." };
     }
 
@@ -209,11 +239,15 @@ export async function sendDiscordTestNotification(
       ],
     };
 
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const res = await safeOutboundFetch(
+      webhookUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { allowedDomains: ["discord.com", "discordapp.com"], timeoutMs: 10_000 }
+    );
 
     if (res.ok) {
       return { success: true };

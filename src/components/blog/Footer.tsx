@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { Link } from "@/i18n/routing";
 import { useTranslations, useLocale } from "next-intl";
 import { NavIcon } from "@/components/blog/NavIcon";
+import { sanitizeUrl, isExternalHttpUrl } from "@/lib/security/urls";
 
 /**
  * Custom navigation menu item structure supporting bilingual labels and icons.
@@ -52,7 +53,13 @@ export function Footer({ siteName, enableLlmsTxt = true, navLinks }: FooterProps
     try {
       const parsed = JSON.parse(navLinks);
       if (Array.isArray(parsed)) {
-        return parsed.filter((item) => Boolean(item.isSocial));
+        return parsed
+          .filter((item): item is FooterNavItem => Boolean(item && item.isSocial && typeof item.url === "string"))
+          .map((item) => ({
+            ...item,
+            url: sanitizeUrl(item.url, { allowRelative: true, allowMailtoTel: true }) || "",
+          }))
+          .filter((item) => item.url.length > 0);
       }
     } catch {}
     return [];
@@ -69,7 +76,7 @@ export function Footer({ siteName, enableLlmsTxt = true, navLinks }: FooterProps
                 item.labels?.[locale] ||
                 (locale === "es" ? item.label_es : item.label_en) ||
                 item.label;
-              const isExternal = item.url.startsWith("http://") || item.url.startsWith("https://");
+              const isExternal = isExternalHttpUrl(item.url);
 
               if (isExternal) {
                 return (

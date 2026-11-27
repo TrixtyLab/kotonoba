@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
+import { SafeSvg } from "./SafeSvg";
 import { generateId } from "@/lib/utils/slug";
 
 /**
@@ -30,7 +31,8 @@ export function MermaidRenderer({ chart }: { chart: string }) {
         mermaid.initialize({
           startOnLoad: false,
           theme: theme === "dark" ? "dark" : "default",
-          securityLevel: "loose",
+          securityLevel: "strict",
+          htmlLabels: false,
           fontFamily: "Inter, sans-serif",
         });
 
@@ -74,10 +76,10 @@ export function MermaidRenderer({ chart }: { chart: string }) {
   }
 
   return (
-    <div
+    <SafeSvg
       ref={containerRef}
+      svg={svgHtml}
       className="my-4 flex justify-center overflow-x-auto p-4 bg-surface rounded-xl border border-border"
-      dangerouslySetInnerHTML={{ __html: svgHtml }}
     />
   );
 }

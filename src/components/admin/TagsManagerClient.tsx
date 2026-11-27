@@ -6,7 +6,10 @@ import { createTag, deleteTag } from "@/actions/tags";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useToast } from "@/components/ui/Toast";
+import { generateSlug } from "@/lib/utils/slug";
 import { Tag as TagIcon, Plus, Search } from "lucide-react";
 
 /**
@@ -50,7 +53,7 @@ export function TagsManagerClient({
     startTransition(async () => {
       const res = await createTag(siteId, { name });
       if (res.success && res.id) {
-        setTags((prev) => [...prev, { id: res.id as string, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") }]);
+        setTags((prev) => [...prev, { id: res.id as string, name, slug: generateSlug(name) }]);
         setName("");
         toast.success(t("tagCreated"));
       } else {
@@ -80,13 +83,11 @@ export function TagsManagerClient({
 
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-text tracking-tight">{tc("tags")}</h1>
-        <p className="text-xs text-text-muted mt-0.5">
-          {t("tagsSubtitle")}
-        </p>
-      </div>
+      <AdminPageHeader
+        title={tc("tags")}
+        subtitle={t("tagsSubtitle")}
+        icon={<TagIcon className="w-5 h-5" />}
+      />
 
       {/* Create form */}
       <form onSubmit={handleCreate} className="p-4 rounded-xl bg-surface border border-border shadow-xs flex flex-col sm:flex-row gap-3 items-end">
@@ -133,7 +134,7 @@ export function TagsManagerClient({
               <button
                 type="button"
                 onClick={() => setTagToDelete(tItem.id)}
-                className="text-text-muted hover:text-rose-500 ml-1 p-1 -mr-1 rounded min-w-[28px] min-h-[28px] flex items-center justify-center transition-colors"
+                className="text-text-muted hover:text-danger ml-1 p-1 -mr-1 rounded min-w-[28px] min-h-[28px] flex items-center justify-center transition-colors"
                 title={tc("delete")}
               >
                 ✕
@@ -142,9 +143,7 @@ export function TagsManagerClient({
           ))}
 
           {filteredTags.length === 0 && (
-            <p className="text-xs text-text-muted py-6 text-center w-full">
-              {t("noTags")}
-            </p>
+            <EmptyState title={t("noTags")} className="w-full p-6 border-0 bg-transparent" />
           )}
         </div>
       </div>

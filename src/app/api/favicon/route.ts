@@ -3,18 +3,12 @@ import type { NextRequest } from "next/server";
 import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
-import { getSiteForHost, getActiveSite } from "@/lib/tenant";
-import { getStorageConfig, normalizeMediaUrl } from "@/lib/storage";
+import { getPublicSite } from "@/lib/tenant";
+import { buildMediaAssetHeaders, readStoredMediaObject, sanitizePath } from "@/lib/storage";
+import { normalizeMediaUrl } from "@/lib/utils/media";
+import { sanitizeUrl } from "@/lib/security/sanitize";
 
-const MIME_MAP: Record<string, string> = {
-  ".ico": "image/x-icon",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-};
+export const dynamic = "force-dynamic";
 
 const DEFAULT_SVG_FALLBACK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="100%" height="100%">
   <defs>
@@ -79,7 +73,8 @@ async function serveDefaultIcon(): Promise<NextResponse> {
  * @returns {Promise<NextResponse>} Promise resolving to a binary image response or external redirect.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  void request;
+  const site = await getPublicSite();
 
   if (site?.faviconUrl) {
     const rawFaviconUrl = site.faviconUrl.trim();
@@ -90,46 +85,41 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     if (faviconUrl.startsWith("/api/uploads/") || faviconUrl.startsWith("/uploads/")) {
-      const relativePath = faviconUrl
-        .replace(/^\/api\/uploads\//, "")
-        .replace(/^\/uploads\//, "");
+      const relativePath = sanitizePath(
+        faviconUrl
+          .replace(/^\/api\/uploads\//, "")
+          .replace(/^\/uploads\//, "")
+      );
 
-      const config = getStorageConfig(site.id);
+      if (!relativePath) {
+        return serveDefaultIcon();
+      }
 
-      if (config.provider === "local") {
-        const filePath = path.join(/*turbopackIgnore: true*/ config.uploadDir, relativePath);
-        if (existsSync(/*turbopackIgnore: true*/ filePath)) {
-          try {
-            const fileBuffer = await fs.readFile(/*turbopackIgnore: true*/ filePath);
-            const ext = path.extname(filePath).toLowerCase();
-            const contentType = MIME_MAP[ext] || "application/octet-stream";
-            return new NextResponse(fileBuffer, {
-              status: 200,
-              headers: {
-                "Content-Type": contentType,
-                "Cache-Control": "public, max-age=86400, s-maxage=86400",
-              },
-            });
-          } catch {
-            // Read failure falls through to default icon
-          }
-        }
-      } else if (config.publicUrl && !config.publicUrl.includes("r2.cloudflarestorage.com")) {
-        return NextResponse.redirect(`${config.publicUrl}/${relativePath}`, {
-          status: 307,
-          headers: {
-            "Cache-Control": "public, max-age=3600, s-maxage=3600",
-          },
+      try {
+        const storedFavicon = await readStoredMediaObject(relativePath, {
+          siteId: site.id,
         });
+        if (storedFavicon.status === "ok") {
+          return new NextResponse(storedFavicon.body as BodyInit, {
+            status: 200,
+            headers: buildMediaAssetHeaders(
+              storedFavicon,
+              "public, max-age=86400, s-maxage=86400"
+            ),
+          });
+        }
+      } catch {
+        // Storage read failure falls through to default icon
       }
     }
 
+    const safeExternalFavicon = sanitizeUrl(faviconUrl, { allowRelative: false });
     if (
-      (faviconUrl.startsWith("http://") || faviconUrl.startsWith("https://")) &&
+      safeExternalFavicon &&
       !faviconUrl.includes("localhost") &&
       !faviconUrl.includes("127.0.0.1")
     ) {
-      return NextResponse.redirect(faviconUrl, {
+      return NextResponse.redirect(safeExternalFavicon, {
         status: 307,
         headers: {
           "Cache-Control": "public, max-age=3600, s-maxage=3600",

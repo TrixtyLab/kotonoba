@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/session";
+import { requireSiteAccess } from "@/lib/auth/site-access";
+import { ROLE_ALL } from "@/lib/auth/roles";
 import { getRealtimeFeedData } from "@/lib/analytics/realtime";
 
 /**
  * HTTP GET endpoint returning live telemetry metrics (active concurrent users, recent hits, active pages).
- * Designed for low-latency client-side polling with no reliance on ephemeral Server Action IDs.
+ * Enforces site-level authorization before returning live tenant analytics.
  *
  * @param {NextRequest} request - Incoming request object containing siteId query parameter.
  * @returns {Promise<NextResponse>} JSON response containing RealtimeDataResponse.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    await requireAuth(["super_admin", "admin", "editor", "author"]);
-
     const { searchParams } = new URL(request.url);
     const siteId = searchParams.get("siteId");
 
@@ -22,6 +21,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         { status: 400 }
       );
     }
+
+    await requireSiteAccess(siteId, ROLE_ALL);
 
     const data = await getRealtimeFeedData(siteId);
 

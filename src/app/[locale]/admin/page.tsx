@@ -1,18 +1,16 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, pages, categories, tags, analytics, users } from "@/lib/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { getAdminSite } from "@/lib/tenant";
+import { getAdminDashboardOverview } from "@/lib/queries/admin-dashboard";
 import { Link } from "@/i18n/routing";
 import { formatDate } from "@/lib/utils/date";
-import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { getStorageStatus } from "@/lib/storage";
 import { getLocalizedText } from "@/lib/utils/localization";
 import {
   FileText, CheckCircle2, Clock, Eye, Plus,
-  FolderTree, Settings, Sparkles, TrendingUp, ArrowRight,
-  Image as ImageIcon, HardDrive, Cloud, Compass, Globe, Files
+  FolderTree, TrendingUp, ArrowRight,
+  Image as ImageIcon, HardDrive, Cloud, Compass
 } from "lucide-react";
 
 /**
@@ -30,64 +28,10 @@ export default async function AdminDashboardPage({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "admin" });
   const tc = await getTranslations({ locale, namespace: "common" });
-  const site = await getActiveSite();
-  const db = getDb();
-
+  const site = await getAdminSite();
   const siteId = site?.id || "default";
   const storageStatus = getStorageStatus();
-
-  const postStats = db
-    .select({
-      total: sql<number>`count(*)`,
-      published: sql<number>`sum(case when status = 'published' then 1 else 0 end)`,
-      drafts: sql<number>`sum(case when status = 'draft' then 1 else 0 end)`,
-      totalViews: sql<number>`sum(views)`,
-    })
-    .from(posts)
-    .where(eq(posts.siteId, siteId))
-    .get();
-
-  const pageStats = db
-    .select({
-      total: sql<number>`count(*)`,
-      published: sql<number>`sum(case when status = 'published' then 1 else 0 end)`,
-      drafts: sql<number>`sum(case when status = 'draft' then 1 else 0 end)`,
-      totalViews: sql<number>`sum(views)`,
-    })
-    .from(pages)
-    .where(eq(pages.siteId, siteId))
-    .get();
-
-  const categoryCount = db
-    .select({ count: sql<number>`count(*)` })
-    .from(categories)
-    .where(eq(categories.siteId, siteId))
-    .get();
-
-  const recentPosts = db
-    .select({
-      id: posts.id,
-      title: posts.title,
-      slug: posts.slug,
-      status: posts.status,
-      views: posts.views,
-      publishedAt: posts.publishedAt,
-      createdAt: posts.createdAt,
-      coverImage: posts.coverImage,
-      authorName: users.displayName,
-    })
-    .from(posts)
-    .leftJoin(users, eq(posts.authorId, users.id))
-    .where(eq(posts.siteId, siteId))
-    .orderBy(desc(posts.createdAt))
-    .limit(5)
-    .all();
-
-  const totalHits = db
-    .select({ count: sql<number>`count(*)` })
-    .from(analytics)
-    .where(eq(analytics.siteId, siteId))
-    .get();
+  const { postStats, pageStats, categoryCount, recentPosts, totalHits } = getAdminDashboardOverview(siteId);
 
   const metrics = [
     {
@@ -126,7 +70,7 @@ export default async function AdminDashboardPage({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:p-6 bg-surface border border-border rounded-xl shadow-xs">
         <div>
           <h1 className="text-xl font-bold text-text tracking-tight">{t("dashboardTitle")}</h1>
-          <p className="text-xs text-text-muted mt-0.5">
+          <p className="text-sm text-text-muted mt-1">
             {t("managing")} <span className="font-semibold text-text">{getLocalizedText(site?.name, locale)}</span> ({site?.domain})
           </p>
         </div>
@@ -158,7 +102,7 @@ export default async function AdminDashboardPage({
                 <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] sm:text-[11px] font-medium text-text-muted truncate">{m.label}</p>
+                <p className="text-xs font-medium text-text-muted truncate">{m.label}</p>
                 <p className="text-lg sm:text-xl font-bold text-text tabular-nums mt-0.5">{m.value}</p>
               </div>
             </div>
@@ -172,12 +116,12 @@ export default async function AdminDashboardPage({
         <div className="lg:col-span-8 bg-surface border border-border rounded-xl p-4 sm:p-6 space-y-4 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-border">
             <div>
-              <h2 className="text-sm font-bold text-text">{t("recentPosts")}</h2>
-              <p className="text-xs text-text-muted mt-0.5">{t("recentPostsDesc")}</p>
+              <h2 className="text-base font-bold text-text">{t("recentPosts")}</h2>
+              <p className="text-sm text-text-muted mt-0.5">{t("recentPostsDesc")}</p>
             </div>
             <Link
               href="/admin/posts"
-              className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
+              className="text-sm font-semibold text-accent hover:underline flex items-center gap-1"
             >
               {t("viewAll")} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
@@ -200,11 +144,11 @@ export default async function AdminDashboardPage({
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <Link
                       href={`/admin/posts/${post.id}`}
-                      className="text-xs font-semibold text-text group-hover:text-accent transition-colors block truncate"
+                      className="text-sm font-semibold text-text group-hover:text-accent transition-colors block truncate"
                     >
                       {post.title}
                     </Link>
-                    <p className="text-[10px] sm:text-[11px] text-text-muted flex items-center gap-1.5 sm:gap-2">
+                    <p className="text-xs text-text-muted flex items-center gap-1.5 sm:gap-2">
                       <span>{post.publishedAt ? formatDate(post.publishedAt, locale) : t("statusDraft")}</span>
                       <span>•</span>
                       <span>{t("viewsCount", { count: post.views })}</span>
@@ -213,26 +157,7 @@ export default async function AdminDashboardPage({
                 </div>
 
                 <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                  <Badge
-                    variant={
-                      post.status === "published"
-                        ? "success"
-                        : post.status === "scheduled"
-                        ? "primary"
-                        : post.status === "archived"
-                        ? "secondary"
-                        : "warning"
-                    }
-                    className="text-[9px] sm:text-xs"
-                  >
-                    {post.status === "published"
-                      ? t("statusPublished")
-                      : post.status === "scheduled"
-                      ? t("statusScheduled")
-                      : post.status === "archived"
-                      ? t("statusArchived")
-                      : t("statusDraft")}
-                  </Badge>
+                  <StatusBadge status={post.status} />
                   <Link href={`/admin/posts/${post.id}`} className="hidden sm:inline-flex">
                     <Button variant="ghost" size="sm" className="text-xs">
                       {tc("edit")}
@@ -243,7 +168,7 @@ export default async function AdminDashboardPage({
             ))}
 
             {recentPosts.length === 0 && (
-              <div className="py-10 text-center text-xs text-text-muted space-y-1">
+              <div className="py-10 text-center text-sm text-text-muted space-y-1">
                 <FileText className="w-6 h-6 opacity-30 mx-auto" />
                 <p>{t("noPostsYet")}</p>
               </div>
@@ -255,7 +180,7 @@ export default async function AdminDashboardPage({
         <div className="lg:col-span-4 space-y-5">
           {/* Storage Status */}
           <div className="bg-surface border border-border rounded-xl p-5 space-y-3 shadow-xs">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-text flex items-center gap-2">
               {storageStatus.provider === "r2" ? (
                 <Cloud className="w-4 h-4 text-accent" />
               ) : (
@@ -264,7 +189,7 @@ export default async function AdminDashboardPage({
               <span>{t("storageEngine")}</span>
             </h3>
 
-            <div className="p-3 rounded-lg bg-surface-hover/40 border border-border text-xs space-y-1">
+            <div className="p-3 rounded-lg bg-surface-hover/40 border border-border text-sm space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-text-muted">{t("engine")}:</span>
                 <span className="font-semibold text-text">
@@ -273,7 +198,10 @@ export default async function AdminDashboardPage({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-text-muted">{t("status")}:</span>
-                <span className="font-semibold text-emerald-500">{t("operational")}</span>
+                <span className="font-semibold text-text inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
+                  {t("operational")}
+                </span>
               </div>
             </div>
 
@@ -287,36 +215,36 @@ export default async function AdminDashboardPage({
 
           {/* Quick Actions */}
           <div className="bg-surface border border-border rounded-xl p-5 space-y-2.5 shadow-xs">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text pb-2 border-b border-border">
+            <h3 className="text-sm font-semibold text-text pb-2 border-b border-border">
               {t("quickActions")}
             </h3>
-            <div className="space-y-1.5 text-xs">
+            <div className="space-y-1.5 text-sm">
               <Link
                 href="/admin/posts/new"
-                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
+                className="p-2.5 min-h-[40px] rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
                 <Plus className="w-4 h-4 text-accent shrink-0" />
                 <span>{t("writeArticle")}</span>
               </Link>
               <Link
                 href="/admin/settings"
-                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
+                className="p-2.5 min-h-[40px] rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
                 <Compass className="w-4 h-4 text-accent shrink-0" />
                 <span>{t("configureNavbar")}</span>
               </Link>
               <Link
                 href="/admin/categories"
-                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
+                className="p-2.5 min-h-[40px] rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
                 <FolderTree className="w-4 h-4 text-accent shrink-0" />
                 <span>{t("categoriesCount", { count: categoryCount?.count || 0 })}</span>
               </Link>
               <Link
                 href="/admin/analytics"
-                className="p-2.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
+                className="p-2.5 min-h-[40px] rounded-lg bg-surface-hover/50 hover:bg-surface-hover flex items-center gap-2.5 font-medium text-text transition-colors"
               >
-                <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
+                <TrendingUp className="w-4 h-4 text-accent shrink-0" />
                 <span>{t("statsAndTraffic")}</span>
               </Link>
             </div>

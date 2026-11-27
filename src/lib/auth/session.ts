@@ -1,8 +1,51 @@
 import { cookies } from "next/headers";
 import { verifyToken, signAccessToken, getSessionDuration, type TokenPayload } from "./jwt";
 import { getDb } from "@/lib/db";
+import { isProductionEnv } from "@/lib/config/env";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+
+async function renewUserFromRefreshToken(
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+  refreshToken: string
+): Promise<(TokenPayload & { exists: boolean }) | null> {
+  const refreshPayload = await verifyToken(refreshToken);
+  if (!refreshPayload?.userId) return null;
+
+  try {
+    const db = getDb();
+    const user = db.select().from(users).where(eq(users.id, refreshPayload.userId)).get();
+    if (!user || (refreshPayload.tokenVersion ?? 1) !== user.tokenVersion) return null;
+
+    const { maxAgeSeconds } = getSessionDuration();
+    const newAccessToken = await signAccessToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      siteId: user.siteId,
+      tokenVersion: user.tokenVersion,
+    });
+
+    cookieStore.set("access_token", newAccessToken, {
+      httpOnly: true,
+      secure: isProductionEnv(),
+      sameSite: "lax",
+      path: "/",
+      maxAge: maxAgeSeconds,
+    });
+
+    return {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      siteId: user.siteId,
+      tokenVersion: user.tokenVersion,
+      exists: true,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Retrieves the currently authenticated user from incoming request cookies.
@@ -15,58 +58,25 @@ export async function getCurrentUser(): Promise<(TokenPayload & { exists: boolea
   const accessToken = cookieStore.get("access_token")?.value;
   const refreshToken = cookieStore.get("refresh_token")?.value;
 
-  let payload: TokenPayload | null = null;
-  if (accessToken) {
-    payload = await verifyToken(accessToken);
-  }
-
+  const payload = accessToken ? await verifyToken(accessToken) : null;
   if (!payload && refreshToken) {
-    const refreshPayload = await verifyToken(refreshToken);
-    if (refreshPayload?.userId) {
-      try {
-        const db = getDb();
-        const user = db.select().from(users).where(eq(users.id, refreshPayload.userId)).get();
-        if (user) {
-          const { maxAgeSeconds } = getSessionDuration();
-          const newAccessToken = await signAccessToken({
-            userId: user.id,
-            email: user.email,
-            role: user.role,
-            siteId: user.siteId,
-          });
-
-          cookieStore.set("access_token", newAccessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/",
-            maxAge: maxAgeSeconds,
-          });
-
-          return {
-            userId: user.id,
-            email: user.email,
-            role: user.role,
-            siteId: user.siteId,
-            exists: true,
-          };
-        }
-      } catch {
-        // Fall through on database retrieval failure
-      }
-    }
+    const renewed = await renewUserFromRefreshToken(cookieStore, refreshToken);
+    if (renewed) return renewed;
   }
 
   if (!payload?.userId) return null;
 
   const db = getDb();
   const user = db.select().from(users).where(eq(users.id, payload.userId)).get();
-
-  if (!user) return { ...payload, exists: false };
+  if (!user || (payload.tokenVersion ?? 1) !== user.tokenVersion) {
+    return { ...payload, exists: false };
+  }
 
   return {
     ...payload,
     role: user.role,
+    siteId: user.siteId,
+    tokenVersion: user.tokenVersion,
     exists: true,
   };
 }

@@ -3,7 +3,7 @@
 import React from "react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { Menu } from "lucide-react";
+import { Menu, Download } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 /**
@@ -33,7 +33,7 @@ export function TopBar({ user, onOpenMobileSidebar }: TopBarProps): React.JSX.El
   const t = useTranslations("common");
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-3 sm:px-6 bg-surface/90 backdrop-blur-md border-b border-border">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-3 sm:px-6 bg-surface border-b border-border">
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -56,13 +56,22 @@ export function TopBar({ user, onOpenMobileSidebar }: TopBarProps): React.JSX.El
             {user.displayName.slice(0, 2).toUpperCase()}
           </div>
           <div className="hidden sm:block text-left leading-none">
-            <p className="text-xs font-bold text-text truncate max-w-[120px]">
+            <p className="text-sm font-semibold text-text truncate max-w-[140px]">
               {user.displayName}
             </p>
-            <p className="text-[10px] text-text-muted capitalize font-medium mt-0.5">
+            <p className="text-xs text-text-muted capitalize font-medium mt-0.5">
               {user.role.replace("_", " ")}
             </p>
           </div>
+          <a
+            href="/api/users/me/export"
+            download
+            title={t("downloadMyData")}
+            aria-label={t("downloadMyData")}
+            className="min-w-[40px] min-h-[40px] rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors flex items-center justify-center"
+          >
+            <Download className="w-4 h-4" />
+          </a>
         </div>
       </div>
     </header>

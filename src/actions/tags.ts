@@ -1,91 +1,47 @@
 "use server";
 
-import { getDb } from "@/lib/db";
-import { tags } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth/session";
-import { generateId, generateSlug } from "@/lib/utils/slug";
-import { tagSchema, validate, type TagInput } from "@/lib/security/validate";
-import { revalidatePath } from "next/cache";
+import { ROLE_ALL, ROLE_PUBLISHERS } from "@/lib/auth/roles";
+import { requireSiteAccess } from "@/lib/auth/site-access";
+import { revalidateSiteShell } from "@/lib/cache/revalidate";
+import { validate } from "@/lib/security/validate";
+import { tagSchema, type TagInput } from "@/lib/contracts";
+import {
+  createTagService,
+  deleteTagService,
+  getTagSiteId,
+  listTagsForSite,
+  type TagMutationResponse,
+  type TagRecord,
+} from "@/lib/services/taxonomy";
 
-/**
- * Result payload returned from tag creation operations.
- */
-export type TagMutationResponse =
-  | { success: true; id: string }
-  | { success: false; error?: string; errors?: Record<string, string[]> };
+export type { TagMutationResponse, TagRecord };
 
-/**
- * Plain object representation of a persisted taxonomy tag record.
- */
-export interface TagRecord {
-  id: string;
-  siteId: string;
-  name: string;
-  slug: string;
-}
-
-/**
- * Creates a new taxonomy tag under the specified tenant site.
- *
- * @param siteId - Unique database identifier of the target site.
- * @param inputData - Tag creation attributes containing tag name and optional custom slug.
- * @returns A Promise resolving to a TagMutationResponse with the created tag ID or validation errors.
- * @throws {Error} When the caller lacks an authorized author, editor, or administrator role.
- */
+/** Creates a taxonomy tag within an authorized tenant site. */
 export async function createTag(siteId: string, inputData: Partial<TagInput>): Promise<TagMutationResponse> {
-  await requireAuth(["super_admin", "admin", "editor", "author"]);
+  await requireSiteAccess(siteId, ROLE_ALL);
   const validation = validate(tagSchema, inputData);
-
   if (!validation.success) {
     return { success: false, errors: validation.errors };
   }
 
-  const { name, slug } = validation.data;
-  const db = getDb();
-  const id = generateId();
-  const tagSlug = slug ? generateSlug(slug) : generateSlug(name);
-
-  db.insert(tags)
-    .values({
-      id,
-      siteId,
-      name,
-      slug: tagSlug,
-    })
-    .run();
-
-  revalidatePath("/", "layout");
-  return { success: true, id };
+  const res = createTagService(siteId, validation.data);
+  if (res.success) revalidateSiteShell(siteId);
+  return res;
 }
 
-/**
- * Deletes a taxonomy tag by ID and removes all associated post-tag relationships.
- *
- * @param tagId - Unique database identifier of the tag to remove.
- * @returns A Promise resolving to an object indicating success.
- * @throws {Error} When the caller lacks an authorized editorial or administrative role.
- */
-export async function deleteTag(tagId: string): Promise<{ success: true }> {
-  await requireAuth(["super_admin", "admin", "editor"]);
-  const db = getDb();
-  db.delete(tags).where(eq(tags.id, tagId)).run();
-  revalidatePath("/", "layout");
+/** Deletes a taxonomy tag by ID. */
+export async function deleteTag(tagId: string): Promise<{ success: boolean; error?: string }> {
+  const siteId = getTagSiteId(tagId);
+  if (!siteId) return { success: false, error: "Tag not found" };
+
+  await requireSiteAccess(siteId, ROLE_PUBLISHERS);
+  deleteTagService(tagId);
+  revalidateSiteShell(siteId);
   return { success: true };
 }
 
-/**
- * Retrieves all taxonomy tags registered under a given tenant site.
- *
- * @param siteId - Unique database identifier of the target site.
- * @returns A Promise resolving to an array of TagRecord objects.
- */
+/** Retrieves all taxonomy tags belonging to a tenant site. */
 export async function getTags(siteId: string): Promise<TagRecord[]> {
-  const db = getDb();
-  return db
-    .select()
-    .from(tags)
-    .where(eq(tags.siteId, siteId))
-    .orderBy(tags.name)
-    .all();
+  await requireSiteAccess(siteId, ROLE_ALL);
+  return listTagsForSite(siteId);
 }

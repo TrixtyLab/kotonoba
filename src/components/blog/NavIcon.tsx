@@ -43,6 +43,41 @@ export const AVAILABLE_NAV_ICONS = [
   { id: "link", label: "Enlace Externo", category: "General" },
 ];
 
+const NAV_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  twitter: FaXTwitter,
+  x: FaXTwitter,
+  bluesky: FaBluesky,
+  bsky: FaBluesky,
+  github: FaGithub,
+  discord: FaDiscord,
+  youtube: FaYoutube,
+  twitch: FaTwitch,
+  steam: FaSteam,
+  instagram: FaInstagram,
+  threads: FaThreads,
+  tiktok: FaTiktok,
+  telegram: FaTelegram,
+  reddit: FaReddit,
+  mastodon: FaMastodon,
+  patreon: FaPatreon,
+  linkedin: FaLinkedin,
+  spotify: FaSpotify,
+  facebook: FaFacebook,
+  rss: Rss,
+  feed: Rss,
+  globe: Globe,
+  web: Globe,
+  "shopping-bag": ShoppingBag,
+  store: ShoppingBag,
+  shop: ShoppingBag,
+  disc: Disc,
+  music: Disc,
+  mail: Mail,
+  email: Mail,
+  contact: Mail,
+  link: LinkIcon,
+};
+
 /**
  * Dynamic polymorphic icon renderer resolving social and generic navigation icons by string identifier.
  *
@@ -51,64 +86,7 @@ export const AVAILABLE_NAV_ICONS = [
  */
 export function NavIcon({ name, className = "w-3.5 h-3.5" }: NavIconProps) {
   if (!name || name === "none") return null;
-
-  switch (name.toLowerCase()) {
-    case "twitter":
-    case "x":
-      return <FaXTwitter className={className} />;
-    case "bluesky":
-    case "bsky":
-      return <FaBluesky className={className} />;
-    case "github":
-      return <FaGithub className={className} />;
-    case "discord":
-      return <FaDiscord className={className} />;
-    case "youtube":
-      return <FaYoutube className={className} />;
-    case "twitch":
-      return <FaTwitch className={className} />;
-    case "steam":
-      return <FaSteam className={className} />;
-    case "instagram":
-      return <FaInstagram className={className} />;
-    case "threads":
-      return <FaThreads className={className} />;
-    case "tiktok":
-      return <FaTiktok className={className} />;
-    case "telegram":
-      return <FaTelegram className={className} />;
-    case "reddit":
-      return <FaReddit className={className} />;
-    case "mastodon":
-      return <FaMastodon className={className} />;
-    case "patreon":
-      return <FaPatreon className={className} />;
-    case "linkedin":
-      return <FaLinkedin className={className} />;
-    case "spotify":
-      return <FaSpotify className={className} />;
-    case "facebook":
-      return <FaFacebook className={className} />;
-    case "rss":
-    case "feed":
-      return <Rss className={className} />;
-    case "globe":
-    case "web":
-      return <Globe className={className} />;
-    case "shopping-bag":
-    case "store":
-    case "shop":
-      return <ShoppingBag className={className} />;
-    case "disc":
-    case "music":
-      return <Disc className={className} />;
-    case "mail":
-    case "email":
-    case "contact":
-      return <Mail className={className} />;
-    case "link":
-    default:
-      return <LinkIcon className={className} />;
-  }
+  const Icon = NAV_ICON_MAP[name.toLowerCase()] || LinkIcon;
+  return <Icon className={className} />;
 }
 

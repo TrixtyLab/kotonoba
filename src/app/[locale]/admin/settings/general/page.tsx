@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { GeneralSettingsClient } from "@/components/admin/settings/GeneralSettingsClient";
 
@@ -8,7 +8,7 @@ import { GeneralSettingsClient } from "@/components/admin/settings/GeneralSettin
  * @returns React JSX general settings view.
  */
 export default async function GeneralSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   return <GeneralSettingsClient site={site} />;

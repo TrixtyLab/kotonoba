@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { getActiveSite, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
-import { getCategories } from "@/actions/categories";
-import { getDb } from "@/lib/db";
-import { posts, settings } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost, getSiteForHost, hasAdminUser, normalizeDomain } from "@/lib/tenant";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { getCachedLatestPublicPostsSummary } from "@/lib/queries/public-posts";
+import { getCachedSiteSeoSettings } from "@/lib/queries/seo";
 import { Header } from "@/components/blog/Header";
 import { HeaderBanner } from "@/components/blog/HeaderBanner";
 import { Footer } from "@/components/blog/Footer";
@@ -13,9 +11,14 @@ import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { redirect } from "@/i18n/routing";
 import { headers } from "next/headers";
 import { getLocalizedText } from "@/lib/utils/localization";
-import { getSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
+import { getCachedSiteBanners, getResolvedHeaderBanner } from "@/lib/banners";
+import { getAdminDomainEnv, getDefaultSiteUrl } from "@/lib/config/env";
+import { getRequestHost } from "@/lib/http/request";
+import { normalizeMediaUrl } from "@/lib/utils/media";
+import { resolveBrandFont } from "@/lib/config/brand";
+import { SafeCustomCss } from "@/components/SafeCustomCss";
 
-import { normalizeMediaUrl } from "@/lib/storage";
+export const dynamic = "force-dynamic";
 
 /**
  * Dynamically computes metadata, robots directives, and favicon links for the public blog.
@@ -23,24 +26,16 @@ import { normalizeMediaUrl } from "@/lib/storage";
  * @returns {Promise<Metadata>} Metadata configuration object with resolved assets and social tags.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const site = (await getSiteForHost()) || (await getActiveSite());
-  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const [site, host] = await Promise.all([getPublicSite(), getRequestNormalizedHost()]);
+  const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const defaultFavicon = "/icon.svg";
   const rawFavicon = site?.faviconUrl || defaultFavicon;
   const favicon = normalizeMediaUrl(rawFavicon) || defaultFavicon;
   const rawAppleIcon = site?.faviconUrl || site?.logoUrl || defaultFavicon;
   const appleIcon = normalizeMediaUrl(rawAppleIcon) || defaultFavicon;
 
-  const db = getDb();
-  const antiAiSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
-        .get()
-    : null;
-
-  const isAiBlocked = antiAiSetting?.value === "true";
+  const seo = site ? await getCachedSiteSeoSettings(site.id, host) : null;
+  const isAiBlocked = Boolean(seo?.blockAiCrawlers);
 
   return {
     metadataBase: new URL(baseUrl),
@@ -93,10 +88,7 @@ export default async function BlogLayout({
 
   // Verify incoming host domain matching
   const headersList = await headers();
-  const rawHost =
-    headersList.get("x-forwarded-host")?.split(",")[0].trim() ||
-    headersList.get("host")?.split(",")[0].trim() ||
-    "localhost:3000";
+  const rawHost = getRequestHost(headersList);
   const cleanHost = normalizeDomain(rawHost);
   const isLocal =
     cleanHost === "localhost" ||
@@ -105,9 +97,8 @@ export default async function BlogLayout({
     cleanHost.endsWith(".localhost");
 
   const siteForHost = await getSiteForHost();
-  const adminDomain = process.env.ADMIN_DOMAIN
-    ? normalizeDomain(process.env.ADMIN_DOMAIN)
-    : null;
+  const rawAdminDomain = getAdminDomainEnv();
+  const adminDomain = rawAdminDomain ? normalizeDomain(rawAdminDomain) : null;
 
   // If visiting the designated dashboard domain or a non-blog host in production, redirect to /admin
   const isExplicitAdminDomain = Boolean(adminDomain && cleanHost === adminDomain);
@@ -117,7 +108,8 @@ export default async function BlogLayout({
     redirect({ href: "/admin", locale });
   }
 
-  const site = siteForHost || (isLocal ? await getActiveSite() : null);
+  const site = siteForHost || (isLocal ? await getPublicSite() : null);
+  const host = cleanHost || (await getRequestNormalizedHost());
   const siteData = site || {
     id: "default",
     name: "Kotonoba",
@@ -128,54 +120,33 @@ export default async function BlogLayout({
     supportedLocales: '["en"]',
   };
 
-  const categories = site ? await getCategories(site.id) : [];
+  const [categories, rawSearchPosts, bannersConfig, seoSettings] = site
+    ? await Promise.all([
+        getCachedSiteCategories(site.id, locale, host),
+        getCachedLatestPublicPostsSummary(site.id, 20, locale, host),
+        getCachedSiteBanners(site.id, host),
+        getCachedSiteSeoSettings(site.id, host),
+      ])
+    : [[], [], { headerBanner: null, sidebarBanners: [] }, { blockAiCrawlers: false, llmsTxtEnabled: false, llmsTxtCustom: "" }];
 
-  const db = getDb();
-  if (site) {
-    await publishScheduledPosts(site.id);
-  }
+  const searchPosts = rawSearchPosts.map((p) => ({
+    id: p.id,
+    title: p.title,
+    slug: p.slug,
+    publishedAt: p.publishedAt ? p.publishedAt.toISOString() : null,
+  }));
 
-  const searchPosts = site
-    ? db
-        .select({
-          id: posts.id,
-          title: posts.title,
-          slug: posts.slug,
-          excerpt: posts.excerpt,
-        })
-        .from(posts)
-        .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-        .all()
-    : [];
-
-  const antiAiSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
-        .get()
-    : null;
-
-  const isAiBlocked = antiAiSetting?.value === "true";
-
-  const llmsSetting = site
-    ? db
-        .select()
-        .from(settings)
-        .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_enabled")))
-        .get()
-    : null;
-
-  const enableLlmsTxt = !isAiBlocked && llmsSetting?.value === "true";
-
-  const bannersConfig = site ? await getSiteBanners(site.id) : { headerBanner: null, sidebarBanners: [] };
+  const isAiBlocked = seoSettings.blockAiCrawlers;
+  const enableLlmsTxt = !isAiBlocked && seoSettings.llmsTxtEnabled;
 
   const primaryColor = site?.primaryColor || "#3b82f6";
+  const brandFont = resolveBrandFont(site?.fontFamily);
   const themeStyles = {
     "--color-primary": primaryColor,
     "--color-accent": primaryColor,
     "--color-primary-hover": `color-mix(in srgb, ${primaryColor} 85%, black)`,
     "--color-accent-hover": `color-mix(in srgb, ${primaryColor} 85%, black)`,
+    fontFamily: brandFont.stack,
   } as React.CSSProperties;
 
   const activeHeaderBanner = bannersConfig.headerBanner
@@ -187,6 +158,7 @@ export default async function BlogLayout({
       className="min-h-screen flex flex-col justify-between bg-bg text-text"
       style={themeStyles}
     >
+      <SafeCustomCss css={site?.customCss} />
       {site && <AnalyticsTracker siteId={site.id} />}
       {activeHeaderBanner && (
         <HeaderBanner

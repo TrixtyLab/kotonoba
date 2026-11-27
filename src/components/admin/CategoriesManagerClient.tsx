@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useToast } from "@/components/ui/Toast";
+import { generateSlug } from "@/lib/utils/slug";
 import { Plus, Edit3, Trash2, Folder, Search } from "lucide-react";
 
 /**
@@ -78,8 +81,9 @@ export function CategoriesManagerClient({
       if (editingId) {
         const res = await updateCategory(editingId, { name, slug, description });
         if (res.success) {
+          const nextSlug = generateSlug(slug || name);
           setCategories((prev) =>
-            prev.map((c) => (c.id === editingId ? { ...c, name, slug: slug || name.toLowerCase(), description } : c))
+            prev.map((c) => (c.id === editingId ? { ...c, name, slug: nextSlug, description } : c))
           );
           setModalOpen(false);
           toast.success(t("categoryUpdated"));
@@ -89,9 +93,10 @@ export function CategoriesManagerClient({
       } else {
         const res = await createCategory(siteId, { name, slug, description });
         if (res.success && res.id) {
+          const nextSlug = generateSlug(slug || name);
           setCategories((prev) => [
             ...prev,
-            { id: res.id as string, name, slug: slug || name.toLowerCase(), description, sortOrder: 0 },
+            { id: res.id as string, name, slug: nextSlug, description, sortOrder: 0 },
           ]);
           setModalOpen(false);
           toast.success(t("categoryCreated"));
@@ -123,18 +128,16 @@ export function CategoriesManagerClient({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-text tracking-tight">{tc("categories")}</h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            {t("categoriesSubtitle")}
-          </p>
-        </div>
-        <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-3.5 h-3.5" />}>
-          {t("newCategory")}
-        </Button>
-      </div>
+      <AdminPageHeader
+        title={tc("categories")}
+        subtitle={t("categoriesSubtitle")}
+        icon={<Folder className="w-5 h-5" />}
+        actions={
+          <Button variant="primary" size="sm" onClick={openCreateModal} icon={<Plus className="w-3.5 h-3.5" />}>
+            {t("newCategory")}
+          </Button>
+        }
+      />
 
       {/* Search Bar */}
       <div className="bg-surface border border-border rounded-xl p-3 shadow-xs">
@@ -145,7 +148,7 @@ export function CategoriesManagerClient({
             placeholder={tc("search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-surface-hover/50 border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text placeholder-text-muted/50 focus:outline-hidden focus:border-accent"
+            className="w-full bg-input border border-border rounded-lg pl-9 pr-3 py-2 min-h-[40px] text-sm text-text placeholder:text-text-muted placeholder:italic focus:outline-hidden focus:border-accent"
           />
         </div>
       </div>
@@ -178,7 +181,7 @@ export function CategoriesManagerClient({
               <button
                 type="button"
                 onClick={() => setCategoryToDelete(cat.id)}
-                className="p-2 sm:p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                className="p-2 sm:p-1.5 rounded-lg hover:bg-danger/10 text-danger transition-colors min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                 title={tc("delete")}
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -189,10 +192,7 @@ export function CategoriesManagerClient({
       </div>
 
       {filtered.length === 0 && (
-        <div className="p-10 text-center rounded-xl bg-surface border border-border text-xs text-text-muted space-y-1">
-          <Folder className="w-6 h-6 opacity-30 mx-auto" />
-          <p>{t("noCategories")}</p>
-        </div>
+        <EmptyState icon={<Folder className="w-6 h-6" />} title={t("noCategories")} />
       )}
 
       {/* Create/Edit Modal */}

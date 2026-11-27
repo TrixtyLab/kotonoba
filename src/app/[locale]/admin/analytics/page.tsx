@@ -1,9 +1,6 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { analytics } from "@/lib/db/schema";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
-import { sql, desc } from "drizzle-orm";
 import {
   Eye,
   Users,
@@ -16,11 +13,8 @@ import {
   Globe,
 } from "lucide-react";
 import { Link } from "@/i18n/routing";
-import {
-  getAnalyticsOverviewMetrics,
-  cleanReferrerDomain,
-  buildAnalyticsFilterConditions,
-} from "@/lib/analytics/query";
+import { getAnalyticsOverviewMetrics } from "@/lib/analytics/query";
+import { getAnalyticsOverviewBreakdowns } from "@/lib/queries/analytics-overview";
 import { MetricCard } from "@/components/admin/analytics/MetricCard";
 import { BarChart } from "@/components/admin/analytics/BarChart";
 import { CountryFlag, getCountryName } from "@/components/ui/CountryFlag";
@@ -49,85 +43,18 @@ export default async function AdminAnalyticsOverviewPage({
   const { locale } = await params;
   const sp = searchParams ? await searchParams : {};
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const metrics = await getAnalyticsOverviewMetrics(site.id, sp.range, sp);
-  const db = getDb();
-  const filterCondition = buildAnalyticsFilterConditions(
+  const { topPaths, topReferrers, topCountries, dailyCountMap } = getAnalyticsOverviewBreakdowns(
     site.id,
-    metrics.bounds.start,
-    metrics.bounds.end,
+    metrics.bounds,
     sp
   );
 
-  // Top 5 paths
-  const topPaths = db
-    .select({
-      path: analytics.path,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.path)
-    .orderBy(desc(sql`count(*)`))
-    .limit(5)
-    .all();
-
-  // Top 5 referrers
-  const rawReferrers = db
-    .select({
-      referrer: analytics.referrer,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.referrer)
-    .orderBy(desc(sql`count(*)`))
-    .limit(10)
-    .all();
-
-  const referrerMap = new Map<string, number>();
-  for (const r of rawReferrers) {
-    const domain = cleanReferrerDomain(r.referrer);
-    referrerMap.set(domain, (referrerMap.get(domain) || 0) + r.count);
-  }
-  const topReferrers = Array.from(referrerMap.entries())
-    .map(([domain, count]) => ({ domain, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  // Top 5 countries
-  const topCountries = db
-    .select({
-      country: analytics.country,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(analytics.country)
-    .orderBy(desc(sql`count(*)`))
-    .limit(5)
-    .all();
-
   // Daily timeline (last 14 or 30 days based on range)
   const timelineDays = Math.min(Math.max(metrics.bounds.days, 7), 30);
-  const dailyHits = db
-    .select({
-      dayString: sql<string>`strftime('%Y-%m-%d', datetime(created_at, 'unixepoch'))`,
-      count: sql<number>`count(*)`,
-    })
-    .from(analytics)
-    .where(filterCondition)
-    .groupBy(sql`strftime('%Y-%m-%d', datetime(created_at, 'unixepoch'))`)
-    .all();
-
-  const dailyCountMap = new Map<string, number>();
-  for (const row of dailyHits) {
-    if (row.dayString) {
-      dailyCountMap.set(row.dayString, row.count);
-    }
-  }
 
   const timelineItems = [];
   const now = new Date();

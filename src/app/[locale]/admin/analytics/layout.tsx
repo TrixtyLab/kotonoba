@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { BarChart3 } from "lucide-react";
 import { AnalyticsNav } from "@/components/admin/analytics/AnalyticsNav";
@@ -25,7 +25,7 @@ export default async function AnalyticsLayout({
 }): Promise<React.JSX.Element> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "analytics" });
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   return (

@@ -1,8 +1,10 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
+import { getCurrentUser } from "@/lib/auth/session";
 import { getCategories } from "@/actions/categories";
 import { getTags } from "@/actions/tags";
 import { PostEditor } from "@/components/admin/PostEditor";
 import { isDubConfigured } from "@/lib/dub";
+import { ROLES } from "@/lib/config/constants";
 import { notFound } from "next/navigation";
 
 /**
@@ -11,8 +13,10 @@ import { notFound } from "next/navigation";
  * @returns React JSX new post editor workspace.
  */
 export default async function NewPostPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
+
+  const user = await getCurrentUser();
 
   const categories = await getCategories(site.id);
   const tags = await getTags(site.id);
@@ -30,6 +34,7 @@ export default async function NewPostPage() {
       siteId={site.id}
       supportedLocales={supportedLocales}
       isDubEnabled={isDubConfigured()}
+      canPin={user?.role !== ROLES.AUTHOR}
       availableCategories={categories}
       availableTags={tags}
     />

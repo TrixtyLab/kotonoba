@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { posts, categories, settings } from "@/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
-import { getLocalizedText } from "@/lib/utils/localization";
-import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant";
+import { formatPostUrlForLocale, resolveLlmsContext } from "@/lib/feeds/llms";
+import { getCachedLlmsSummaryData } from "@/lib/queries/seo";
+
+export const dynamic = "force-dynamic";
 
 /**
  * Route handler generating standard `llms.txt` document for AI web crawlers and LLM search systems.
@@ -13,70 +11,24 @@ import { getSiteForHost, getActiveSite, getCanonicalBaseUrl } from "@/lib/tenant
  * @returns Plaintext llms.txt markdown response or 404 if disabled.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const db = getDb();
-  const site = (await getSiteForHost()) || (await getActiveSite());
-
-  if (!site) {
+  const ctx = await resolveLlmsContext(req.headers);
+  if (!ctx.allowed) {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  await publishScheduledPosts(site.id);
-
-  const antiAiSetting = db
-    .select()
-    .from(settings)
-    .where(and(eq(settings.siteId, site.id), eq(settings.key, "block_ai_crawlers")))
-    .get();
-
-  if (antiAiSetting?.value === "true") {
-    return new NextResponse("Not Found", { status: 404 });
-  }
-
-  const llmsSetting = db
-    .select()
-    .from(settings)
-    .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_enabled")))
-    .get();
-
-  if (!llmsSetting || llmsSetting.value !== "true") {
-    return new NextResponse("Not Found", { status: 404 });
-  }
-
-  const customInstructions = db
-    .select()
-    .from(settings)
-    .where(and(eq(settings.siteId, site.id), eq(settings.key, "llms_txt_custom")))
-    .get()?.value;
-
-  const siteLocale = site.locale || "en";
-  const siteName = getLocalizedText(site.name, siteLocale) || "Kotonoba";
-  const siteDesc = getLocalizedText(site.description, siteLocale) || "High-performance multi-tenant blog CMS";
-  const baseUrl = await getCanonicalBaseUrl(site, req.headers);
-
-  const topPosts = db
-    .select()
-    .from(posts)
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.views), desc(posts.publishedAt))
-    .limit(30)
-    .all();
-
-  const allCategories = db
-    .select()
-    .from(categories)
-    .where(eq(categories.siteId, site.id))
-    .all();
+  const { site, siteName, siteDesc, baseUrl, host, customInstructions } = ctx;
+  const { topPosts, allCategories } = await getCachedLlmsSummaryData(site.id, host);
 
   let text = `# ${siteName}\n\n`;
   text += `> ${siteDesc}\n\n`;
 
-  if (customInstructions && customInstructions.trim()) {
-    text += `## System & AI Guidance\n\n${customInstructions.trim()}\n\n`;
+  if (customInstructions) {
+    text += `## System & AI Guidance\n\n${customInstructions}\n\n`;
   }
 
   text += `## Core Content & Articles\n\n`;
   for (const post of topPosts) {
-    const postUrl = `${baseUrl}/entry/${post.slug}`;
+    const postUrl = formatPostUrlForLocale(baseUrl, post.slug, post.locale);
     text += `- [${post.title}](${postUrl})`;
     if (post.excerpt) {
       text += `: ${post.excerpt.replace(/\n+/g, " ").trim()}`;

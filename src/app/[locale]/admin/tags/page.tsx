@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getTags } from "@/actions/tags";
 import { TagsManagerClient } from "@/components/admin/TagsManagerClient";
 import { notFound } from "next/navigation";
@@ -9,7 +9,7 @@ import { notFound } from "next/navigation";
  * @returns React JSX tags manager view.
  */
 export default async function AdminTagsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const tags = await getTags(site.id);

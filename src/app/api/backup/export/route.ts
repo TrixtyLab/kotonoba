@@ -1,17 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { canAccessSite } from "@/lib/auth/site-access";
+import { canManageBackups } from "@/lib/auth/roles";
 import { createSiteBackupZip } from "@/lib/backup/export";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { getClientIp, getRequestId } from "@/lib/http/request";
+import { recordAuditEvent } from "@/lib/security/audit";
+import { logError, logEvent } from "@/lib/observability/logger";
 
 /**
- * HTTP GET endpoint streaming a compressed ZIP archive containing all site database entities, media assets, and manifest metadata.
+ * HTTP GET endpoint streaming an encrypted backup archive containing the tenant site's
+ * database entities, media assets, and integrity manifest metadata.
  *
- * @param {NextRequest} req - The incoming NextRequest containing the target siteId query parameter.
- * @returns {Promise<NextResponse>} Binary ZIP stream response or 401/400 error status.
+ * @param {NextRequest} req - The incoming NextRequest containing the target `siteId` query parameter.
+ * @returns {Promise<NextResponse>} Binary stream response or 401/403/400/429 error status.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
-  if (!user || !user.exists || !["super_admin", "admin"].includes(user.role)) {
+  if (!user || !user.exists || !canManageBackups(user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const clientIp = getClientIp(req.headers);
+  const rl = checkRateLimit(`backup-export:${user.userId}:${clientIp}`, {
+    maxRequests: 10,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Too many backup export requests. Try again shortly." }, { status: 429 });
   }
 
   const siteId = req.nextUrl.searchParams.get("siteId");
@@ -19,13 +35,52 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Query parameter 'siteId' is required." }, { status: 400 });
   }
 
+  if (!canAccessSite(user, siteId)) {
+    recordAuditEvent({
+      actorId: user.userId,
+      actorEmail: user.email,
+      actorRole: user.role,
+      siteId,
+      action: "backup.export",
+      targetType: "site",
+      targetId: siteId,
+      status: "denied",
+      ipAddress: clientIp,
+    });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const startedAt = Date.now();
+  const requestId = getRequestId(req.headers);
+
   try {
-    const { buffer, filename } = await createSiteBackupZip(siteId);
+    const { buffer, filename, manifest } = await createSiteBackupZip(siteId);
+
+    recordAuditEvent({
+      actorId: user.userId,
+      actorEmail: user.email,
+      actorRole: user.role,
+      siteId,
+      action: "backup.export",
+      targetType: "site",
+      targetId: siteId,
+      status: "success",
+      ipAddress: clientIp,
+      metadata: { filename, counts: manifest.counts },
+    });
+
+    logEvent("info", "backup.export.completed", {
+      route: "/api/backup/export",
+      requestId,
+      siteId,
+      durationMs: Date.now() - startedAt,
+      sizeBytes: buffer.length,
+    });
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        "Content-Type": "application/zip",
+        "Content-Type": "application/octet-stream",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Length": String(buffer.length),
         "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -33,6 +88,24 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to export backup";
+    recordAuditEvent({
+      actorId: user.userId,
+      actorEmail: user.email,
+      actorRole: user.role,
+      siteId,
+      action: "backup.export",
+      targetType: "site",
+      targetId: siteId,
+      status: "failure",
+      ipAddress: clientIp,
+      metadata: { error: message },
+    });
+    logError("backup.export.failed", err, {
+      route: "/api/backup/export",
+      requestId,
+      siteId,
+      durationMs: Date.now() - startedAt,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

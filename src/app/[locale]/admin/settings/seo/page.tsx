@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { getSiteSettings } from "@/actions/settings";
 import { isDubConfigured } from "@/lib/dub";
 import { notFound } from "next/navigation";
@@ -10,7 +10,7 @@ import { SeoSettingsClient } from "@/components/admin/settings/SeoSettingsClient
  * @returns React JSX SEO settings view.
  */
 export default async function SeoSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   const settingsMap = await getSiteSettings(site.id);

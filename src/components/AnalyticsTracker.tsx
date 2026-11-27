@@ -93,7 +93,7 @@ function sendHeartbeat(siteId: string, sessionId: string, path: string, seconds:
  */
 export function AnalyticsTracker({ siteId, postId }: { siteId: string; postId?: string }) {
   const pathname = usePathname();
-  const startTimeRef = useRef<number>(Date.now());
+  const startTimeRef = useRef<number>(0);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {

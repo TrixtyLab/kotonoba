@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { getRealtimeFeedData, type RealtimeDataResponse } from "@/lib/analytics/realtime";
 import { RealtimeFeedClient } from "@/components/admin/analytics/RealtimeFeedClient";
@@ -9,7 +9,7 @@ import { RealtimeFeedClient } from "@/components/admin/analytics/RealtimeFeedCli
  * @returns {Promise<React.JSX.Element>} Realtime monitoring view.
  */
 export default async function AnalyticsRealtimePage(): Promise<React.JSX.Element> {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   let initialData: RealtimeDataResponse = { activeVisitorsNow: 0, recentHits: [], activePages: [] };

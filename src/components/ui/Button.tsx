@@ -15,6 +15,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   /** Leading or trailing icon node. */
   icon?: React.ReactNode;
+  /** Which side of the label the icon sits on. */
+  iconPosition?: "start" | "end";
 }
 
 /**
@@ -25,9 +27,9 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  * @returns React JSX button element.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = "", variant = "primary", size = "md", loading = false, disabled, children, icon, ...props }, ref) => {
+  ({ className = "", variant = "primary", size = "md", loading = false, disabled, children, icon, iconPosition = "start", ...props }, ref) => {
     const base =
-      "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent select-none";
+      "inline-flex items-center justify-center font-medium rounded-lg transition-colors duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent select-none";
 
     const variants = {
       primary: "bg-primary text-bg hover:opacity-90 font-semibold shadow-xs",
@@ -35,15 +37,21 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       accent: "bg-accent text-white hover:bg-accent-hover font-semibold shadow-xs",
       danger: "bg-danger text-white hover:bg-danger-hover font-semibold shadow-xs",
       ghost: "text-text-muted hover:text-text hover:bg-surface-hover",
-      glass: "bg-surface/80 backdrop-blur-md text-text hover:bg-surface border border-border shadow-xs",
+      glass: "bg-surface text-text hover:bg-surface-hover border border-border shadow-xs",
       outline: "border border-border bg-surface text-text hover:bg-surface-hover font-medium",
     };
 
     const sizes = {
-      sm: "text-xs px-3 py-1.5 gap-1.5 min-h-[32px]",
-      md: "text-xs px-3.5 py-2 gap-2 min-h-[36px]",
-      lg: "text-sm px-4 py-2.5 gap-2.5 min-h-[42px]",
+      sm: "text-xs px-3 py-1.5 gap-1.5 min-h-[36px]",
+      md: "text-sm px-3.5 py-2 gap-2 min-h-[40px]",
+      lg: "text-sm px-4 py-2.5 gap-2.5 min-h-[44px]",
     };
+
+    const glyph = loading ? (
+      <Loader2 className="w-4 h-4 animate-spin text-current shrink-0" />
+    ) : (
+      icon
+    );
 
     return (
       <button
@@ -52,8 +60,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
         {...props}
       >
-        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-current shrink-0" /> : icon}
+        {iconPosition === "start" && glyph}
         {children}
+        {iconPosition === "end" && glyph}
       </button>
     );
   }

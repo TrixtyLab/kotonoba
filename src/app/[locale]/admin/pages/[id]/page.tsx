@@ -1,7 +1,5 @@
-import { getActiveSite } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { pages } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { getAdminSite } from "@/lib/tenant";
+import { getAdminEditablePage } from "@/lib/queries/admin-dashboard";
 import { PostEditor } from "@/components/admin/PostEditor";
 import { notFound } from "next/navigation";
 
@@ -18,11 +16,10 @@ export default async function EditPagePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
-  const db = getDb();
-  const page = db.select().from(pages).where(and(eq(pages.id, id), eq(pages.siteId, site.id))).get();
+  const page = getAdminEditablePage(site.id, id);
   if (!page) notFound();
 
   let supportedLocales = ["es", "en"];
@@ -43,7 +40,10 @@ export default async function EditPagePage({
         id: page.id,
         title: page.title,
         slug: page.slug,
+        content: page.content || "",
         contentMd: page.contentMd || "",
+        contentHtml: page.contentHtml || "",
+        contentFormat: page.contentFormat,
         excerpt: page.excerpt || "",
         coverImage: page.coverImage,
         status: page.status,

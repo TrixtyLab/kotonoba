@@ -1,102 +1,33 @@
 "use server";
 
-import { getDb } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth/session";
-import { encryptSecret, decryptSecret } from "@/lib/security/crypto";
-import { extractAiResponseText } from "@/lib/ai/client";
-import { revalidatePath } from "next/cache";
+import { ROLE_ADMINS } from "@/lib/auth/roles";
+import { requireSiteAccess } from "@/lib/auth/site-access";
+import { revalidateSiteShell } from "@/lib/cache/revalidate";
+import {
+  getRedactedSiteSettings,
+  saveSiteSettingsService,
+  testAiConnectionService,
+  type AiSettingsInput,
+  type AiTestConnectionResponse,
+  type SettingsMutationResponse,
+} from "@/lib/services/settings";
 
-/**
- * Parameter payload for saving AI assistant integration settings.
- */
-export interface AiSettingsInput {
-  /** Target API endpoint URL. */
-  apiUrl?: string;
-  /** Plaintext API secret key to encrypt before storage. */
-  apiKey?: string;
-  /** Language model identifier. */
-  model?: string;
-  /** Sampling temperature. */
-  temperature?: number;
-  /** Active status toggle. */
-  enabled?: boolean;
-}
+export type { AiSettingsInput, AiTestConnectionResponse, SettingsMutationResponse };
 
-/**
- * Result payload returned from settings mutation operations.
- */
-export type SettingsMutationResponse =
-  | { success: true }
-  | { success: false; error?: string };
-
-/**
- * Result payload returned from an AI endpoint connectivity probe.
- */
-export type AiTestConnectionResponse =
-  | { success: true; reply?: string }
-  | { success: false; error: string };
-
-/**
- * Upserts key-value configuration pairs associated with a specific tenant site.
- * Automatically triggers cache revalidation for the site's layout tree.
- *
- * @param siteId - Unique database identifier of the target site.
- * @param keyValuePairs - Dictionary of configuration keys and string values.
- * @returns A Promise resolving to a SettingsMutationResponse.
- * @throws {Error} When the caller lacks an authorized administrative role.
- */
+/** Saves allowlisted key-value settings, encrypting secrets and validating outbound URLs. */
 export async function saveSiteSettings(
   siteId: string,
   keyValuePairs: Record<string, string>
 ): Promise<SettingsMutationResponse> {
-  await requireAuth(["super_admin", "admin"]);
-  const db = getDb();
-
-  for (const [key, value] of Object.entries(keyValuePairs)) {
-    const existing = db
-      .select()
-      .from(settings)
-      .where(and(eq(settings.siteId, siteId), eq(settings.key, key)))
-      .get();
-
-    if (existing) {
-      db.update(settings)
-        .set({ value })
-        .where(eq(settings.id, existing.id))
-        .run();
-    } else {
-      db.insert(settings)
-        .values({
-          siteId,
-          key,
-          value,
-        })
-        .run();
-    }
-  }
-
-  revalidatePath("/", "layout");
-  revalidatePath("/[locale]", "layout");
-  return { success: true };
+  const actor = await requireSiteAccess(siteId, ROLE_ADMINS);
+  const res = await saveSiteSettingsService(actor, siteId, keyValuePairs);
+  if (res.success) revalidateSiteShell(siteId);
+  return res;
 }
 
-/**
- * Encrypts sensitive API keys using AES-256-GCM and persists AI assistant parameters to SQLite.
- *
- * @param siteId - Unique database identifier of the target site.
- * @param input - AI configuration parameters.
- * @returns A Promise resolving to a SettingsMutationResponse.
- * @throws {Error} When the caller lacks an authorized administrative role.
- */
-export async function saveAiSettings(
-  siteId: string,
-  input: AiSettingsInput
-): Promise<SettingsMutationResponse> {
-  await requireAuth(["super_admin", "admin"]);
-
-  const encryptedKey = input.apiKey ? encryptSecret(input.apiKey) : "";
+/** Saves AI assistant settings including optional encrypted API key update. */
+export async function saveAiSettings(siteId: string, input: AiSettingsInput): Promise<SettingsMutationResponse> {
+  await requireSiteAccess(siteId, ROLE_ADMINS);
 
   const payload: Record<string, string> = {
     ai_api_url: input.apiUrl || "https://api.openai.com/v1",
@@ -104,135 +35,24 @@ export async function saveAiSettings(
     ai_temperature: String(input.temperature ?? 0.7),
     ai_enabled: String(input.enabled ?? false),
   };
-
-  if (input.apiKey) {
-    payload.ai_api_key = encryptedKey;
+  if (input.apiKey && input.apiKey.trim()) {
+    payload.ai_api_key = input.apiKey.trim();
   }
 
   return saveSiteSettings(siteId, payload);
 }
 
-/**
- * Performs a test ping to an OpenAI-compatible endpoint to verify connectivity and API key validity.
- * Supports testing either candidate form input or the currently saved encrypted key in SQLite.
- *
- * @param siteId - Unique database identifier of the active site.
- * @param input - Object containing candidate API URL, optional candidate API key, and model name.
- * @returns A Promise resolving to an AiTestConnectionResponse with response reply or error message.
- * @throws {Error} When the caller lacks an authorized administrative role.
- */
+/** Executes a live test request against the configured AI endpoint cleanly. */
 export async function testAiConnection(
   siteId: string,
-  input: {
-    apiUrl?: string;
-    apiKey?: string;
-    model?: string;
-  }
+  input: { apiUrl?: string; apiKey?: string; model?: string }
 ): Promise<AiTestConnectionResponse> {
-  await requireAuth(["super_admin", "admin"]);
-
-  const db = getDb();
-  let effectiveKey = input.apiKey?.trim();
-
-  // If no new key was provided in the input, fall back to the existing saved secret in SQLite
-  if (!effectiveKey && siteId) {
-    const row = db
-      .select()
-      .from(settings)
-      .where(and(eq(settings.siteId, siteId), eq(settings.key, "ai_api_key")))
-      .get();
-    if (row?.value) {
-      effectiveKey = decryptSecret(row.value);
-    }
-  }
-
-  if (!effectiveKey) {
-    return { success: false, error: "API Key is required to test the connection." };
-  }
-
-  let rawUrl = (input.apiUrl || "https://api.openai.com/v1").trim();
-  if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
-    rawUrl = `https://${rawUrl}`;
-  }
-
-  let endpoint = rawUrl.replace(/\/+$/, "");
-  if (!endpoint.endsWith("/chat/completions")) {
-    if (endpoint === "https://api.openai.com" || endpoint === "http://api.openai.com") {
-      endpoint = `${endpoint}/v1/chat/completions`;
-    } else {
-      endpoint = `${endpoint}/chat/completions`;
-    }
-  }
-
-  const model = input.model?.trim() || "gpt-4o";
-
-  try {
-    const payload: Record<string, any> = {
-      model,
-      messages: [{ role: "user", content: "Ping. Reply with 'pong'." }],
-      stream: false,
-    };
-
-    if (!model.toLowerCase().startsWith("o1") && !model.toLowerCase().startsWith("o3")) {
-      payload.max_tokens = 10;
-    }
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${effectiveKey}`,
-        "HTTP-Referer": "https://kotonoba.cms",
-        "X-Title": "Kotonoba CMS",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const responseText = await res.text();
-
-    if (!res.ok) {
-      let errorMsg = `HTTP ${res.status}: ${responseText}`;
-      try {
-        const errorJson = JSON.parse(responseText);
-        if (errorJson.error?.message) {
-          errorMsg = `HTTP ${res.status}: ${errorJson.error.message}`;
-        }
-      } catch {
-        if (responseText.includes("<html") || responseText.includes("<!DOCTYPE")) {
-          errorMsg = `HTTP ${res.status}: Endpoint returned HTML instead of JSON. Check the URL (${endpoint}).`;
-        }
-      }
-      return { success: false, error: errorMsg };
-    }
-
-    const reply = extractAiResponseText(responseText);
-    return { success: true, reply };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to reach AI endpoint.";
-    return { success: false, error: message };
-  }
+  const actor = await requireSiteAccess(siteId, ROLE_ADMINS);
+  return testAiConnectionService(actor, siteId, input);
 }
 
-/**
- * Retrieves all stored key-value settings for a site with AI secret keys securely masked.
- *
- * @param siteId - Unique database identifier of the target site.
- * @returns A Promise resolving to a key-value dictionary with sensitive keys redacted.
- * @throws {Error} When the caller lacks an authorized administrative role.
- */
+/** Retrieves site settings with all integration/storage secrets redacted (`has_*` & masked hints). */
 export async function getSiteSettings(siteId: string): Promise<Record<string, string>> {
-  await requireAuth(["super_admin", "admin"]);
-  const db = getDb();
-  const rows = db.select().from(settings).where(eq(settings.siteId, siteId)).all();
-  const map: Record<string, string> = {};
-  for (const r of rows) {
-    map[r.key] = r.value;
-  }
-  if (map.ai_api_key) {
-    const decrypted = decryptSecret(map.ai_api_key);
-    map.ai_api_key_masked = decrypted ? `${decrypted.slice(0, 4)}...${decrypted.slice(-4)}` : "";
-    map.has_ai_api_key = decrypted ? "true" : "false";
-    delete map.ai_api_key;
-  }
-  return map;
+  await requireSiteAccess(siteId, ROLE_ADMINS);
+  return getRedactedSiteSettings(siteId);
 }

@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { PostEditor } from "@/components/admin/PostEditor";
 import { notFound } from "next/navigation";
 
@@ -8,7 +8,7 @@ import { notFound } from "next/navigation";
  * @returns {Promise<React.JSX.Element>} React JSX new custom page editor workspace.
  */
 export default async function NewPagePage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   let supportedLocales = ["es", "en"];

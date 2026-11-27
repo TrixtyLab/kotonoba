@@ -1,4 +1,4 @@
-import { getActiveSite } from "@/lib/tenant";
+import { getAdminSite } from "@/lib/tenant";
 import { notFound } from "next/navigation";
 import { BackupSettingsClient } from "@/components/admin/settings/BackupSettingsClient";
 
@@ -8,7 +8,7 @@ import { BackupSettingsClient } from "@/components/admin/settings/BackupSettings
  * @returns React JSX backup settings view.
  */
 export default async function BackupSettingsPage() {
-  const site = await getActiveSite();
+  const site = await getAdminSite();
   if (!site) notFound();
 
   return <BackupSettingsClient siteId={site.id} />;

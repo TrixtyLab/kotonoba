@@ -1,6 +1,6 @@
 # Docker Deployment & Operations Guide
 
-Complete reference for deploying and scaling **Kotonoba** in single-instance and high-availability zero-downtime blue-green production setups.
+Complete reference for deploying **Kotonoba** as a single container, with an optional reverse proxy in front.
 
 ---
 
@@ -17,11 +17,9 @@ Access the site at `http://localhost:3000`. On first visit, the initial setup wi
 ### `docker-compose.yml`
 
 ```yaml
-version: "3.8"
-
 services:
   kotonoba:
-    image: ghcr.io/your-username/kotonoba:latest
+    image: ghcr.io/trixtylab/kotonoba:latest
     container_name: kotonoba
     restart: unless-stopped
     ports:
@@ -30,7 +28,10 @@ services:
       - NODE_ENV=production
       - DB_PATH=/app/data/kotonoba.db
       - UPLOAD_DIR=/app/data/uploads
-      - JWT_SECRET=change-this-to-a-secure-random-32-char-key
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET (32+ chars)}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (32+ chars)}
+      - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY:-}
+      - CSP_MODE=${CSP_MODE:-report-only}
       - SITE_URL=https://yourdomain.com
       - ADMIN_DOMAIN=blog-dashboard.yourdomain.com # Optional: redirects non-blog requests to /admin
     volumes:
@@ -49,51 +50,19 @@ volumes:
 
 ---
 
-## 2. Zero-Downtime Blue-Green Deployment (< 2s Downtime)
+## 2. Optional Reverse Proxy
 
-For zero-downtime updates with automated health validation and instant rollback:
+`docker compose up -d` publishes the app on port `3000`. TLS, HTTP redirects, and extra hostnames belong to a proxy you run yourself. The files under [`nginx/`](../nginx) are snippets for that proxy. Compose does not start nginx.
 
-```
-                  ┌──────────────────────┐
-                  │ Nginx Proxy (:80/443) │
-                  └──────────┬───────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              ▼                             ▼
-      ┌──────────────┐              ┌──────────────┐
-      │  app-blue    │              │  app-green   │
-      │ (Port: 3000) │              │ (Port: 3000) │
-      │   ACTIVE     │              │   STANDBY    │
-      └───────┬──────┘              └───────┬──────┘
-              │                             │
-              └──────────────┬──────────────┘
-                             ▼
-                 ┌───────────────────────┐
-                 │  /app/data (SQLite)   │
-                 └───────────────────────┘
+Point the proxy at the single upstream in [`nginx/conf.d/upstream.conf`](../nginx/conf.d/upstream.conf):
+
+```nginx
+upstream blog_backend {
+    server kotonoba:3000;
+}
 ```
 
-### Initial Production Boot
-
-```bash
-docker compose -f docker-compose.prod.yml up -d nginx app-blue
-```
-
-### Deploying Updates
-
-Execute the automated deployment script:
-
-```bash
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh v1.1.0
-```
-
-### How the Blue-Green Script Works:
-1. Identifies the currently active slot (`app-blue` or `app-green`).
-2. Starts the idle container with the updated Docker image.
-3. Polls `/api/health` for up to 45 seconds.
-4. **On Success**: Updates `nginx/conf.d/upstream.conf`, executes `nginx -s reload` (hot reload in < 100ms), and gracefully shuts down the old container.
-5. **On Failure**: Aborts deployment, terminates the target container, and leaves the active container serving traffic uninterrupted.
+Copy the snippets you need (`proxy-headers.conf`, `security-headers.conf`, `cloudflare-real-ip.conf`) into the proxy `http` or `server` block. Certificate files, if you use the sample server block, are `fullchain.pem` and `privkey.pem`. Scheduled publishing is an external call to `POST /api/cron/publish` with `CRON_SECRET`. Roll back a bad release by restoring the database with [`scripts/restore.sh`](../scripts/restore.sh) and starting the previous image with `docker compose up -d`.
 
 ---
 
@@ -103,7 +72,15 @@ chmod +x scripts/deploy.sh
 | :--- | :--- | :--- |
 | `DB_PATH` | `/app/data/kotonoba.db` | Absolute path to SQLite database file |
 | `UPLOAD_DIR` | `/app/data/uploads` | Directory for image and media uploads |
-| `JWT_SECRET` | *(Required)* | 32+ character secret for signing auth tokens & encryption |
+| `JWT_SECRET` | *(Required)* | 32+ character secret strictly for signing session JWTs |
+| `ENCRYPTION_KEY` | *(Required)* | Dedicated 32+ character key for encrypting stored third-party secrets |
+| `ENCRYPTION_KEY_ID` | `k1` | Key identifier stamped onto encrypted payloads (`v2:<keyId>:...`) |
+| `BACKUP_ENCRYPTION_KEY` | *(Required)* | 32-byte key (64 hex chars or base64) encrypting backups and host snapshots |
+| `CRON_SECRET` | `""` | Bearer token required by `POST /api/cron/publish` |
+| `CSP_MODE` | `report-only` | Content Security Policy mode (`report-only` or `enforce`) |
+| `TRUSTED_PROXY_IPS` | `""` | Comma-separated reverse-proxy IPs/CIDRs trusted for forwarded headers |
+| `MAX_SITE_STORAGE_BYTES` | `524288000` | Per-tenant upload quota in bytes (default 500 MB; `0` disables) |
+| `ANALYTICS_RETENTION_DAYS` | `365` | Raw hit retention window before daily rollup pruning (`0` disables) |
 | `SITE_URL` | `http://localhost:3000` | Canonical URL for sitemaps and OpenGraph |
 | `ADMIN_DOMAIN` | `""` | Optional dashboard domain (e.g. `blog-dashboard.example.com`) |
 | `NODE_ENV` | `production` | Node execution environment |
@@ -117,6 +94,7 @@ chmod +x scripts/deploy.sh
 
 > [!NOTE]
 > Storage and AI configurations can also be configured directly via the **Admin Settings UI** (`/admin/settings/*`) and are stored securely in SQLite with AES-256 encryption.
+> TLS is terminated by your reverse proxy when you put one in front of the container. The Compose file publishes port `3000` only. Nginx snippets under [`nginx/`](../nginx) are optional and are not started by Compose.
 
 ---
 
@@ -127,16 +105,19 @@ All database records, site configurations, and uploaded media reside in the shar
 - `/app/data/kotonoba.db`: SQLite database in WAL (Write-Ahead Logging) mode.
 - `/app/data/uploads/`: Uploaded images and media.
 
-### Online Atomic Backup
+### Online Atomic Encrypted Backup & Restore
 
-Execute an online snapshot without locking readers:
+Execute an online snapshot verified via `PRAGMA integrity_check` without locking readers:
 
 ```bash
-chmod +x scripts/backup.sh
-./scripts/backup.sh
+chmod +x scripts/backup.sh scripts/restore.sh
+BACKUP_ENCRYPTION_KEY=your-backup-key ./scripts/backup.sh
 ```
 
-Backups are saved to `./backups/blog_backup_YYYYMMDD_HHMMSS.db.gz` and automatically rotated with a 30-day retention window.
+Backups are encrypted as `./backups/blog_backup_YYYYMMDD_HHMMSS.db.gz.enc` alongside a `.sha256` checksum and rotated with a 30-day retention window (`RETENTION_DAYS`). See [`docs/operations.md`](./operations.md) for restoration via `scripts/restore.sh` and legacy media tenant migration (`scripts/migrate-media-tenants.mjs`).
+
+> [!IMPORTANT]
+> `scripts/backup.sh` produces an AES-256-CBC `.db.gz.enc` snapshot for CLI disaster recovery. It is **not** the same format as the AES-256-GCM `.kotonoba-backup` archives exported from the admin UI, and it cannot be imported through `/api/backup/import`.
 
 ---
 

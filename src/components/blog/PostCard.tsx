@@ -15,6 +15,7 @@ export interface PostCardProps {
     title: string;
     slug: string;
     excerpt?: string | null;
+    content?: string | null;
     contentHtml?: string | null;
     contentMd?: string | null;
     coverImage?: string | null;

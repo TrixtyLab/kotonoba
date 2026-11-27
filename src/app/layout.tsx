@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { getDefaultSiteUrl } from "@/lib/config/env";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.SITE_URL || "http://localhost:3000"),
+  metadataBase: new URL(getDefaultSiteUrl()),
   title: "Kotonoba",
   description: "Self-hosted multi-tenant blog CMS",
   icons: {

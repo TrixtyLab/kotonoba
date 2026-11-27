@@ -11,28 +11,9 @@ import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { Plus, Edit3, Trash2, Globe, ExternalLink, Check } from "lucide-react";
-import { useRouter } from "@/i18n/routing";
+import { useRouter, normalizeLocale, type Locale } from "@/i18n/routing";
 import { getLocalizedText } from "@/lib/utils/localization";
-
-function getSitePublicUrl(domain?: string | null): string {
-  if (!domain) return "/";
-  const clean = domain
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")
-    .trim();
-  if (!clean) return "/";
-
-  const isLocal =
-    clean === "localhost" ||
-    clean === "127.0.0.1" ||
-    clean === "::1" ||
-    clean.endsWith(".localhost") ||
-    clean.startsWith("localhost:");
-
-  const protocol = isLocal ? "http" : "https";
-  return `${protocol}://${clean}`;
-}
+import { buildSiteBaseUrl } from "@/lib/utils/site-url";
 
 /**
  * Complete database entity model representation of a website instance.
@@ -88,7 +69,7 @@ export function SitesManagerClient({
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [locale, setLocale] = useState("es");
+  const [locale, setLocale] = useState<Locale>("es");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [primaryColor, setPrimaryColor] = useState("#3b82f6");
   const [isPending, startTransition] = useTransition();
@@ -109,7 +90,7 @@ export function SitesManagerClient({
     setName(site.name);
     setDomain(site.domain);
     setSubtitle(site.subtitle || "");
-    setLocale(site.locale || "es");
+    setLocale(normalizeLocale(site.locale));
     setTheme(site.theme || "dark");
     setPrimaryColor(site.primaryColor || "#3b82f6");
     setModalOpen(true);
@@ -273,7 +254,7 @@ export function SitesManagerClient({
                     <span className="text-xs text-accent font-semibold">{tSites("activeSite")}</span>
                   )}
                   <a
-                    href={getSitePublicUrl(s.domain)}
+                    href={buildSiteBaseUrl(s.domain)}
                     target="_blank"
                     rel="noreferrer"
                     className="p-1.5 rounded-md hover:bg-surface-hover text-text-muted hover:text-text transition-colors"
@@ -296,7 +277,7 @@ export function SitesManagerClient({
                     <button
                       type="button"
                       onClick={() => handleDeleteClick(s.id)}
-                      className="p-1.5 rounded-md hover:bg-rose-500/10 text-rose-500 transition-colors"
+                      className="p-1.5 rounded-md hover:bg-danger/10 text-danger transition-colors"
                       title={tc("delete")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -338,7 +319,7 @@ export function SitesManagerClient({
             <Select
               label={ts("defaultLocale")}
               value={locale}
-              onChange={(val) => setLocale(val)}
+              onChange={(val) => setLocale(normalizeLocale(val))}
               options={[
                 { value: "es", label: "Español (es)" },
                 { value: "en", label: "English (en)" },

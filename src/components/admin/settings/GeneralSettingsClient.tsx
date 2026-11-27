@@ -3,38 +3,32 @@
 import React, { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { updateSite } from "@/actions/sites";
-import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
-import { Save, Settings, Plus, Trash2, Globe, CheckCircle2 } from "lucide-react";
-import { useRouter, LOCALES, LOCALE_NAMES, type Locale } from "@/i18n/routing";
+import {
+  SiteTranslationsSection,
+  type AdditionalTranslation,
+  type SiteLanguageOption,
+} from "@/components/admin/settings/SiteTranslationsSection";
+import { SupportedLocalesSection } from "@/components/admin/settings/SupportedLocalesSection";
+import { SettingsForm } from "@/components/admin/settings/SettingsForm";
+import { Settings } from "lucide-react";
+import { useRouter, LOCALES, LOCALE_NAMES, normalizeLocale, type Locale } from "@/i18n/routing";
 import { getLocalizedText, getLocalizedMap, packLocalizedMap } from "@/lib/utils/localization";
 
 const LOCALE_FLAGS: Record<string, string> = {
   en: "🇬🇧",
   es: "🇪🇸",
-  ja: "🇯🇵",
-  fr: "🇫🇷",
-  de: "🇩🇪",
-  pt: "🇵🇹",
-  it: "🇮🇹",
-  zh: "🇨🇳",
-  ko: "🇰🇷",
 };
 
-/**
- * List of site-supported languages dynamically derived from application routing.
- */
-export const AVAILABLE_LANGUAGES = LOCALES.map((code) => ({
+const AVAILABLE_LANGUAGES: SiteLanguageOption[] = LOCALES.map((code) => ({
   code,
   label: `${LOCALE_NAMES[code as Locale] || code} (${code.toUpperCase()})`,
   flag: LOCALE_FLAGS[code] || "🌐",
 }));
 
-/**
- * Configuration properties for the GeneralSettingsClient component.
- */
+/** Configuration properties for the GeneralSettingsClient component. */
 export interface GeneralSettingsClientProps {
   /** Target site entity. */
   site: {
@@ -51,19 +45,41 @@ export interface GeneralSettingsClientProps {
   };
 }
 
-interface AdditionalTranslation {
-  code: string;
-  name: string;
-  subtitle: string;
-  description: string;
+function buildInitialTranslations(
+  site: GeneralSettingsClientProps["site"],
+  initialDefaultLocale: string
+): AdditionalTranslation[] {
+  const rawNames = getLocalizedMap(site.name, []);
+  const rawSubtitles = getLocalizedMap(site.subtitle, []);
+  const rawDescriptions = getLocalizedMap(site.description, []);
+
+  const keys = Array.from(
+    new Set([
+      ...Object.keys(rawNames),
+      ...Object.keys(rawSubtitles),
+      ...Object.keys(rawDescriptions),
+    ])
+  );
+
+  const list: AdditionalTranslation[] = [];
+  for (const key of keys) {
+    if (
+      key !== initialDefaultLocale &&
+      (rawNames[key] || rawSubtitles[key] || rawDescriptions[key])
+    ) {
+      list.push({
+        code: key,
+        name: rawNames[key] || "",
+        subtitle: rawSubtitles[key] || "",
+        description: rawDescriptions[key] || "",
+      });
+    }
+  }
+  return list;
 }
 
 /**
- * Administrative panel view for managing general site attributes with a default details section,
- * optional multilingual translation cards, and checkboxes for selecting enabled blog languages.
- *
- * @param props - GeneralSettingsClientProps configuring site metadata.
- * @returns React JSX general settings configuration view.
+ * Administrative panel view for managing general site attributes, localized metadata, and domain parameters.
  */
 export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   const t = useTranslations("settings");
@@ -72,9 +88,8 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const initialDefaultLocale = site.locale || "en";
-  const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
-
+  const initialDefaultLocale = normalizeLocale(site.locale);
+  const [defaultLocale, setDefaultLocale] = useState<Locale>(initialDefaultLocale);
   const [defaultName, setDefaultName] = useState(() =>
     getLocalizedText(site.name, initialDefaultLocale)
   );
@@ -84,41 +99,17 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   const [defaultDescription, setDefaultDescription] = useState(() =>
     getLocalizedText(site.description, initialDefaultLocale)
   );
-
-  const [translations, setTranslations] = useState<AdditionalTranslation[]>(() => {
-    const rawNames = getLocalizedMap(site.name, []);
-    const rawSubtitles = getLocalizedMap(site.subtitle, []);
-    const rawDescriptions = getLocalizedMap(site.description, []);
-
-    const list: AdditionalTranslation[] = [];
-    const keys = Array.from(new Set([
-      ...Object.keys(rawNames),
-      ...Object.keys(rawSubtitles),
-      ...Object.keys(rawDescriptions),
-    ]));
-
-    for (const key of keys) {
-      if (key !== initialDefaultLocale && (rawNames[key] || rawSubtitles[key] || rawDescriptions[key])) {
-        list.push({
-          code: key,
-          name: rawNames[key] || "",
-          subtitle: rawSubtitles[key] || "",
-          description: rawDescriptions[key] || "",
-        });
-      }
-    }
-    return list;
-  });
+  const [translations, setTranslations] = useState<AdditionalTranslation[]>(() =>
+    buildInitialTranslations(site, initialDefaultLocale)
+  );
 
   const [selectedLocales, setSelectedLocales] = useState<string[]>(() => {
     if (site.supportedLocales) {
       try {
         const parsed = JSON.parse(site.supportedLocales);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {
-        // Continue on invalid json
+        // Fallback to English
       }
     }
     return ["en"];
@@ -132,18 +123,10 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   );
 
   function handleAddTranslation() {
-    if (!addLangCode) return;
-    const existing = translations.find((tr) => tr.code === addLangCode);
-    if (existing) return;
-
+    if (!addLangCode || translations.some((tr) => tr.code === addLangCode)) return;
     setTranslations((prev) => [
       ...prev,
-      {
-        code: addLangCode,
-        name: "",
-        subtitle: "",
-        description: "",
-      },
+      { code: addLangCode, name: "", subtitle: "", description: "" },
     ]);
     setAddLangCode("");
   }
@@ -152,7 +135,11 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
     setTranslations((prev) => prev.filter((tr) => tr.code !== code));
   }
 
-  function handleUpdateTranslation(code: string, field: keyof AdditionalTranslation, value: string) {
+  function handleUpdateTranslation(
+    code: string,
+    field: keyof AdditionalTranslation,
+    value: string
+  ) {
     setTranslations((prev) =>
       prev.map((tr) => (tr.code === code ? { ...tr, [field]: value } : tr))
     );
@@ -165,9 +152,9 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
         return;
       }
       setSelectedLocales((prev) => prev.filter((c) => c !== code));
-    } else {
-      setSelectedLocales((prev) => [...prev, code]);
+      return;
     }
+    setSelectedLocales((prev) => [...prev, code]);
   }
 
   async function handleSave() {
@@ -223,15 +210,15 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div className="pb-4 border-b border-border">
-        <h2 className="text-lg font-bold text-text flex items-center gap-2">
-          <Settings className="w-5 h-5 text-accent" />
-          <span>{t("general")}</span>
-        </h2>
-        <p className="text-xs text-text-muted mt-0.5">{t("generalDesc")}</p>
-      </div>
-
+    <SettingsForm
+      title={t("general")}
+      description={t("generalDesc")}
+      icon={<Settings className="w-5 h-5 text-accent" />}
+      onSave={handleSave}
+      saveLabel={tc("save")}
+      isPending={isPending}
+      maxWidthClass="max-w-3xl"
+    >
       <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div>
@@ -269,148 +256,25 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
         </div>
       </div>
 
-      <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
-          <div>
-            <h3 className="text-sm font-bold text-text">{t("additionalTranslations")}</h3>
-            <p className="text-xs text-text-muted">{t("additionalTranslationsDesc")}</p>
-          </div>
+      <SiteTranslationsSection
+        availableLanguages={AVAILABLE_LANGUAGES}
+        unusedLanguages={unusedLanguages}
+        translations={translations}
+        addLangCode={addLangCode}
+        defaultName={defaultName}
+        defaultSubtitle={defaultSubtitle}
+        defaultDescription={defaultDescription}
+        onChangeAddLangCode={setAddLangCode}
+        onAddTranslation={handleAddTranslation}
+        onRemoveTranslation={handleRemoveTranslation}
+        onUpdateTranslation={handleUpdateTranslation}
+      />
 
-          {unusedLanguages.length > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="w-56">
-                <Select
-                  value={addLangCode}
-                  onChange={(val) => setAddLangCode(val)}
-                  options={unusedLanguages.map((lang) => ({
-                    value: lang.code,
-                    label: `${lang.flag} ${lang.label}`,
-                  }))}
-                  placeholder={t("selectLanguagePlaceholder")}
-                />
-              </div>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleAddTranslation}
-                disabled={!addLangCode}
-                icon={<Plus className="w-3.5 h-3.5" />}
-                className="text-xs shrink-0"
-              >
-                {tc("add")}
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {translations.length === 0 ? (
-          <div className="py-4 text-center text-xs text-text-muted border border-dashed border-border rounded-lg bg-surface-hover/20">
-            {t("noAdditionalTranslations")}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {translations.map((tr) => {
-              const langInfo = AVAILABLE_LANGUAGES.find((l) => l.code === tr.code);
-              return (
-                <div
-                  key={tr.code}
-                  className="p-4 bg-surface-hover/40 border border-border rounded-xl space-y-3 relative group animate-fade-in"
-                >
-                  <div className="flex items-center justify-between border-b border-border/60 pb-2">
-                    <span className="font-semibold text-xs text-text flex items-center gap-1.5">
-                      <span className="text-base">{langInfo?.flag}</span>
-                      {langInfo?.label || tr.code.toUpperCase()}
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTranslation(tr.code)}
-                      className="p-1 rounded text-text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                      title={t("deleteTranslation")}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Input
-                      label={`${t("siteName")} (${tr.code.toUpperCase()})`}
-                      value={tr.name}
-                      onChange={(e) => handleUpdateTranslation(tr.code, "name", e.target.value)}
-                      placeholder={defaultName || t("translatedNamePlaceholder")}
-                    />
-
-                    <Input
-                      label={`${t("siteSubtitle")} (${tr.code.toUpperCase()})`}
-                      value={tr.subtitle}
-                      onChange={(e) => handleUpdateTranslation(tr.code, "subtitle", e.target.value)}
-                      placeholder={defaultSubtitle || t("translatedSubtitlePlaceholder")}
-                    />
-
-                    <Textarea
-                      label={`${t("siteDescription")} (${tr.code.toUpperCase()})`}
-                      value={tr.description}
-                      onChange={(e) => handleUpdateTranslation(tr.code, "description", e.target.value)}
-                      placeholder={defaultDescription || t("translatedDescPlaceholder")}
-                      className="min-h-[70px] text-xs"
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
-        <div className="border-b border-border pb-3">
-          <h3 className="text-sm font-bold text-text flex items-center gap-2">
-            <Globe className="w-4 h-4 text-accent" />
-            <span>{t("visibleLanguages")}</span>
-          </h3>
-          <p className="text-xs text-text-muted mt-0.5">
-            {t("visibleLanguagesDesc")}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-          {AVAILABLE_LANGUAGES.map((lang) => {
-            const isChecked = selectedLocales.includes(lang.code);
-            return (
-              <label
-                key={lang.code}
-                className={`flex items-center gap-2.5 p-3 rounded-lg border cursor-pointer transition-all ${
-                  isChecked
-                    ? "border-accent bg-accent/5 text-text shadow-2xs"
-                    : "border-border bg-surface-hover/20 text-text-muted hover:border-border-hover hover:text-text"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => handleToggleLocale(lang.code)}
-                  className="rounded border-border text-accent focus:ring-accent w-4 h-4"
-                />
-                <span className="text-base leading-none">{lang.flag}</span>
-                <span className="text-xs font-medium flex-1">{lang.label}</span>
-                {lang.code === "en" && (
-                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface border border-border text-text-muted">
-                    {tc("default")}
-                  </span>
-                )}
-              </label>
-            );
-          })}
-        </div>
-
-        {selectedLocales.length === 1 && (
-          <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg flex items-center gap-2 text-xs text-accent">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{t("onlyOneLanguageActive", { lang: AVAILABLE_LANGUAGES.find((l) => l.code === selectedLocales[0])?.label || "English" })}</span>
-          </div>
-        )}
-      </div>
+      <SupportedLocalesSection
+        availableLanguages={AVAILABLE_LANGUAGES}
+        selectedLocales={selectedLocales}
+        onToggleLocale={handleToggleLocale}
+      />
 
       <div className="p-5 bg-surface border border-border rounded-xl space-y-4 shadow-xs">
         <div className="border-b border-border pb-3">
@@ -431,9 +295,10 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
             label={t("defaultLocale")}
             value={defaultLocale}
             onChange={(val) => {
-              setDefaultLocale(val);
-              if (!selectedLocales.includes(val)) {
-                setSelectedLocales((prev) => [...prev, val]);
+              const normalized = normalizeLocale(val);
+              setDefaultLocale(normalized);
+              if (!selectedLocales.includes(normalized)) {
+                setSelectedLocales((prev) => [...prev, normalized]);
               }
             }}
             options={AVAILABLE_LANGUAGES.map((lang) => ({
@@ -443,19 +308,6 @@ export function GeneralSettingsClient({ site }: GeneralSettingsClientProps) {
           />
         </div>
       </div>
-
-      {/* Save Button */}
-      <div className="pt-2 flex justify-end">
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          loading={isPending}
-          icon={<Save className="w-4 h-4" />}
-          className="text-xs px-6 py-2"
-        >
-          {tc("save")}
-        </Button>
-      </div>
-    </div>
+    </SettingsForm>
   );
 }

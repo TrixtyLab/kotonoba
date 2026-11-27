@@ -3,11 +3,11 @@
 import React, { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { saveSiteSettings } from "@/actions/settings";
-import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { Switch } from "@/components/ui/Switch";
+import { SettingsForm } from "@/components/admin/settings/SettingsForm";
 import { useToast } from "@/components/ui/Toast";
-import { Search, Save, Sparkles, ExternalLink, CheckCircle2, AlertCircle, ShieldAlert } from "lucide-react";
+import { Search, Sparkles, ExternalLink, CheckCircle2, AlertCircle, ShieldAlert } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 
 /**
@@ -57,117 +57,102 @@ export function SeoSettingsClient({ siteId, initialSettings, isDubConfigured }: 
   }
 
   return (
-    <div className="space-y-6">
-      <div className="pb-4 border-b border-border">
-        <h2 className="text-lg font-bold text-text flex items-center gap-2">
-          <Search className="w-5 h-5 text-accent" />
-          <span>{t("seo")}</span>
-        </h2>
-        <p className="text-xs text-text-muted mt-0.5">{t("seoDesc")}</p>
-      </div>
-
-      <div className="space-y-6 max-w-2xl">
-        {/* Anti-AI Crawler & Scraper Policy */}
-        <div className="p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-500" />
-              <span>{t("antiAiPolicy")}</span>
-            </h3>
-            <p className="text-xs text-text-muted leading-relaxed">
-              {t("antiAiPolicyDesc")}
-            </p>
-          </div>
-
-          <Checkbox
-            checked={blockAiCrawlers}
-            onChange={(val) => {
-              setBlockAiCrawlers(val);
-              if (val) {
-                setLlmsTxtEnabled(false);
-              }
-            }}
-            label={t("blockAiCrawlers")}
-          />
-        </div>
-
-        {/* LLMs.txt Configuration (Disabled by default) */}
-        <div className={`p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4 ${blockAiCrawlers ? "opacity-60 pointer-events-none" : ""}`}>
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-accent" />
-              <span>{t("enableLlmsTxt")}</span>
-            </h3>
-            <p className="text-xs text-text-muted">
-              {t("llmsTxtInfo")}
-            </p>
-          </div>
-
-          <Checkbox
-            checked={llmsTxtEnabled}
-            onChange={(val) => setLlmsTxtEnabled(val)}
-            label={t("enableLlmsTxt")}
-            disabled={blockAiCrawlers}
-          />
-
-          {llmsTxtEnabled && !blockAiCrawlers && (
-            <div className="space-y-2 pt-2 border-t border-border">
-              <Textarea
-                label={t("llmsTxtDescription")}
-                value={llmsTxtCustom}
-                onChange={(e) => setLlmsTxtCustom(e.target.value)}
-                placeholder={t("llmsTxtCustomPlaceholder")}
-                className="min-h-[100px] text-xs font-mono"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Dub.co Status Card */}
-        <div className="p-5 bg-surface-hover/30 border border-border rounded-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-              <span>{t("dubIntegration")}</span>
-            </h3>
-            <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                isDubConfigured
-                  ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                  : "bg-amber-500/10 text-amber-500 border border-amber-500/20"
-              }`}
-            >
-              {isDubConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-              {isDubConfigured ? t("active") : t("notConfigured")}
-            </span>
-          </div>
-
+    <SettingsForm
+      title={t("seo")}
+      description={t("seoDesc")}
+      icon={<Search className="w-5 h-5 text-accent" />}
+      onSave={handleSave}
+      saveLabel={tc("save")}
+      isPending={isPending}
+    >
+      {/* Anti-AI Crawler & Scraper Policy */}
+      <div className="p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-text flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-500" />
+            <span>{t("antiAiPolicy")}</span>
+          </h3>
           <p className="text-xs text-text-muted leading-relaxed">
-            {isDubConfigured ? t("dubConfigured") : t("dubNotConfigured")}
+            {t("antiAiPolicyDesc")}
           </p>
-
-          <a
-            href="https://dub.co"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline font-semibold"
-          >
-            <span>{t("learnMoreDub")}</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
         </div>
+
+        <Switch
+          checked={blockAiCrawlers}
+          onChange={(val) => {
+            setBlockAiCrawlers(val);
+            if (val) {
+              setLlmsTxtEnabled(false);
+            }
+          }}
+          label={t("blockAiCrawlers")}
+        />
       </div>
 
-      <div className="pt-4 border-t border-border flex justify-end">
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          loading={isPending}
-          icon={<Save className="w-4 h-4" />}
-          className="text-xs"
-        >
-          {tc("save")}
-        </Button>
+      {/* LLMs.txt Configuration (Disabled by default) */}
+      <div className={`p-5 bg-surface-hover/30 border border-border rounded-xl space-y-4 ${blockAiCrawlers ? "opacity-60 pointer-events-none" : ""}`}>
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-text flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-accent" />
+            <span>{t("enableLlmsTxt")}</span>
+          </h3>
+          <p className="text-xs text-text-muted">
+            {t("llmsTxtInfo")}
+          </p>
+        </div>
+
+        <Switch
+          checked={llmsTxtEnabled}
+          onChange={(val) => setLlmsTxtEnabled(val)}
+          label={t("enableLlmsTxt")}
+          disabled={blockAiCrawlers}
+        />
+
+        {llmsTxtEnabled && !blockAiCrawlers && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <Textarea
+              label={t("llmsTxtDescription")}
+              value={llmsTxtCustom}
+              onChange={(e) => setLlmsTxtCustom(e.target.value)}
+              placeholder={t("llmsTxtCustomPlaceholder")}
+              className="min-h-[100px] text-xs font-mono"
+            />
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Dub.co Status Card */}
+      <div className="p-5 bg-surface-hover/30 border border-border rounded-xl space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text flex items-center gap-2">
+            <span>{t("dubIntegration")}</span>
+          </h3>
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+              isDubConfigured
+                ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                : "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+            }`}
+          >
+            {isDubConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+            {isDubConfigured ? t("active") : t("notConfigured")}
+          </span>
+        </div>
+
+        <p className="text-xs text-text-muted leading-relaxed">
+          {isDubConfigured ? t("dubConfigured") : t("dubNotConfigured")}
+        </p>
+
+        <a
+          href="https://dub.co"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline font-semibold"
+        >
+          <span>{t("learnMoreDub")}</span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
+    </SettingsForm>
   );
 }

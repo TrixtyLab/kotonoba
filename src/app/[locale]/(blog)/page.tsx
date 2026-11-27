@@ -1,8 +1,11 @@
-import { getActiveSite, getSiteForHost } from "@/lib/tenant";
-import { getDb } from "@/lib/db";
-import { posts, categories, tags, users, postCategories, postTags } from "@/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
-import { publishScheduledPosts, getPublicPostCondition } from "@/lib/db/scheduled";
+import { getPublicSite, getRequestNormalizedHost } from "@/lib/tenant";
+import {
+  getCachedLatestPublicPostsSummary,
+  getCachedPaginatedPublicPosts,
+  parsePageNumber,
+} from "@/lib/queries/public-posts";
+import { getCachedSiteCategories } from "@/lib/queries/taxonomy";
+import { DEFAULT_PUBLIC_PAGE_SIZE } from "@/lib/config/constants";
 import { PostCard } from "@/components/blog/PostCard";
 import { LineSidebar } from "@/components/blog/LineSidebar";
 import { LinePagination } from "@/components/blog/LinePagination";
@@ -11,8 +14,9 @@ import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { getLocalizedText } from "@/lib/utils/localization";
-import { resolveAbsoluteUrl } from "@/lib/storage";
-import { getSidebarBanners } from "@/lib/banners";
+import { resolveAbsoluteUrl } from "@/lib/utils/media";
+import { getCachedSidebarBanners } from "@/lib/banners";
+import { getDefaultSiteUrl } from "@/lib/config/env";
 
 /**
  * Generates SEO metadata tags for the blog homepage.
@@ -26,10 +30,10 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const site = (await getSiteForHost()) || (await getActiveSite());
+  const site = await getPublicSite();
   const siteName = site ? getLocalizedText(site.name, locale) : "Kotonoba";
   const siteDesc = site ? getLocalizedText(site.description, locale) || getLocalizedText(site.subtitle, locale) : "Kotonoba CMS";
-  const baseUrl = site?.domain ? `https://${site.domain}` : (process.env.SITE_URL || "http://localhost:3000");
+  const baseUrl = site?.domain ? `https://${site.domain}` : getDefaultSiteUrl();
   const canonicalUrl = `${baseUrl}${locale === "en" ? "" : `/${locale}`}`;
   const socialImageUrl = site ? resolveAbsoluteUrl(site.logoUrl || site.faviconUrl, baseUrl) : undefined;
 
@@ -66,13 +70,16 @@ export async function generateMetadata({
  */
 export default async function BlogHomePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { locale } = await params;
-  const site = await getActiveSite();
+  const resolvedSearchParams = await searchParams;
+  const requestedPage = parsePageNumber(resolvedSearchParams.page);
+  const site = await getPublicSite();
   const t = await getTranslations({ locale, namespace: "blog" });
-  const tCommon = await getTranslations({ locale, namespace: "common" });
 
   if (!site) {
     return (
@@ -83,78 +90,46 @@ export default async function BlogHomePage({
     );
   }
 
-  const db = getDb();
-  await publishScheduledPosts(site.id);
-
-  const rawPosts = db
-    .select({
-      id: posts.id,
-      title: posts.title,
-      slug: posts.slug,
-      excerpt: posts.excerpt,
-      contentHtml: posts.contentHtml,
-      contentMd: posts.contentMd,
-      coverImage: posts.coverImage,
-      publishedAt: posts.publishedAt,
-      views: posts.views,
-      pinned: posts.pinned,
-      authorName: users.displayName,
-      authorAvatar: users.avatarUrl,
-    })
-    .from(posts)
-    .leftJoin(users, eq(posts.authorId, users.id))
-    .where(and(eq(posts.siteId, site.id), getPublicPostCondition()))
-    .orderBy(desc(posts.pinned), desc(posts.publishedAt))
-    .all();
-
-  const allCategories = db.select().from(categories).where(eq(categories.siteId, site.id)).all();
-
-  const allPosts = rawPosts.map((p) => {
-    const postCats = db
-      .select({ id: categories.id, name: categories.name, slug: categories.slug })
-      .from(postCategories)
-      .innerJoin(categories, eq(postCategories.categoryId, categories.id))
-      .where(eq(postCategories.postId, p.id))
-      .all();
-
-    const pTags = db
-      .select({ id: tags.id, name: tags.name, slug: tags.slug })
-      .from(postTags)
-      .innerJoin(tags, eq(postTags.tagId, tags.id))
-      .where(eq(postTags.postId, p.id))
-      .all();
-
-    return { ...p, categories: postCats, tags: pTags };
-  });
-
-  const totalPages = Math.max(1, Math.ceil(allPosts.length / 5));
+  const host = await getRequestNormalizedHost();
+  const [allCategories, paginated, latestPosts, sidebarBanners] = await Promise.all([
+    getCachedSiteCategories(site.id, locale, host),
+    getCachedPaginatedPublicPosts({
+      siteId: site.id,
+      locale,
+      host,
+      page: requestedPage,
+      pageSize: DEFAULT_PUBLIC_PAGE_SIZE,
+    }),
+    getCachedLatestPublicPostsSummary(site.id, DEFAULT_PUBLIC_PAGE_SIZE, locale, host),
+    getCachedSidebarBanners(site.id, host),
+  ]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start w-full">
       {/* Left Column: Post Timeline Stream */}
       <div className="lg:col-span-8 min-w-0 w-full space-y-10">
-        {allPosts.length === 0 ? (
+        {paginated.items.length === 0 ? (
           <div className="py-20 text-center space-y-3">
             <BookOpen className="w-10 h-10 text-text-muted/30 mx-auto" />
             <p className="text-sm text-text-muted">{t("noPosts")}</p>
           </div>
         ) : (
           <div className="space-y-8">
-            {allPosts.map((post) => (
+            {paginated.items.map((post) => (
               <PostCard key={post.id} post={post} locale={locale} />
             ))}
           </div>
         )}
 
-        <LinePagination currentPage={1} totalPages={totalPages} baseUrl="/" />
+        <LinePagination currentPage={paginated.currentPage} totalPages={paginated.totalPages} baseUrl="/" />
       </div>
 
       <div className="lg:col-span-4 min-w-0 w-full lg:sticky lg:top-20 self-start">
         <LineSidebar
           site={site}
-          latestPosts={allPosts.slice(0, 5)}
+          latestPosts={latestPosts}
           categories={allCategories}
-          sidebarBanners={await getSidebarBanners(site.id)}
+          sidebarBanners={sidebarBanners}
           locale={locale}
         />
       </div>
