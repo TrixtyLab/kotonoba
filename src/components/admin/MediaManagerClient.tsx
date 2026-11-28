@@ -32,7 +32,7 @@ export interface MediaFolderItem {
 
 /** Configuration properties for the MediaManagerClient interface. */
 export interface MediaManagerClientProps {
-  siteDomain?: string;
+  siteDomain?: string | undefined;
   initialFiles?: MediaFileItem[];
   storageInfo?: MediaStorageSummary;
 }
@@ -49,8 +49,6 @@ export function MediaManagerClient({
   const tc = useTranslations("common");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const media = useMediaLibrary({ siteDomain, storageInfo, fileInputRef });
-
-  console.log(siteDomain);
 
   return (
     <div className="space-y-6">

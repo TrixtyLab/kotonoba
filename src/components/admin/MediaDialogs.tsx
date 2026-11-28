@@ -11,7 +11,7 @@ import type { MediaFileItem } from "@/components/admin/MediaManagerClient";
 
 /** Props for {@link MediaDialogs}. */
 export interface MediaDialogsProps {
-  siteDomain: string;
+  siteDomain: string | undefined;
   currentFolder: string;
   newFolderModalOpen: boolean;
   onCloseNewFolderModal: () => void;
