@@ -2,12 +2,24 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Copy, Eye, Folder, FolderInput, Image as ImageIcon, Search, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Eye,
+  Folder,
+  FolderInput,
+  Image as ImageIcon,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import type { MediaFileItem, MediaFolderItem } from "@/components/admin/MediaManagerClient";
+import type {
+  MediaFileItem,
+  MediaFolderItem,
+} from "@/components/admin/MediaManagerClient";
 
 /** Props for {@link MediaLibraryGrid}. */
 export interface MediaLibraryGridProps {
+  siteDomain: string;
   currentFolder: string;
   filteredFolders: MediaFolderItem[];
   filteredFiles: MediaFileItem[];
@@ -19,7 +31,11 @@ export interface MediaLibraryGridProps {
   onPreviewFile: (file: MediaFileItem) => void;
   onStartMoveFile: (file: MediaFileItem) => void;
   onCopyUrl: (url: string) => void;
-  onRequestDelete: (target: { path: string; name: string; isFolder: boolean }) => void;
+  onRequestDelete: (target: {
+    path: string;
+    name: string;
+    isFolder: boolean;
+  }) => void;
   formatBytes: (bytes: number) => string;
 }
 
@@ -27,6 +43,7 @@ export interface MediaLibraryGridProps {
  * Renders the tenant media subfolder cards, filterable asset grid, and empty state placeholder.
  */
 export function MediaLibraryGrid({
+  siteDomain,
   filteredFolders,
   filteredFiles,
   isLoading,
@@ -62,12 +79,20 @@ export function MediaLibraryGrid({
                   className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
                 >
                   <Folder className="w-5 h-5 text-accent shrink-0 group-hover:scale-105 transition-transform" />
-                  <span className="text-xs font-semibold text-text truncate">{f.name}</span>
+                  <span className="text-xs font-semibold text-text truncate">
+                    {f.name}
+                  </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => onRequestDelete({ path: f.path, name: f.name, isFolder: true })}
+                  onClick={() =>
+                    onRequestDelete({
+                      path: f.path,
+                      name: f.name,
+                      isFolder: true,
+                    })
+                  }
                   className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded hover:bg-danger/10 text-danger transition-opacity ml-1 shrink-0"
                   title={t("deleteFolder")}
                 >
@@ -97,7 +122,9 @@ export function MediaLibraryGrid({
         </div>
 
         {isLoading && totalFilesCount === 0 ? (
-          <div className="p-12 text-center text-xs text-text-muted">{t("loadingMedia")}</div>
+          <div className="p-12 text-center text-xs text-text-muted">
+            {t("loadingMedia")}
+          </div>
         ) : filteredFiles.length === 0 && filteredFolders.length === 0 ? (
           <EmptyState
             icon={<ImageIcon className="w-8 h-8 opacity-40" />}
@@ -113,7 +140,7 @@ export function MediaLibraryGrid({
               >
                 <div className="relative aspect-square bg-surface-hover/40 overflow-hidden flex items-center justify-center">
                   <img
-                    src={file.url}
+                    src={`//${siteDomain}${file.url}`}
                     alt={file.filename}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                     loading="lazy"
@@ -146,7 +173,13 @@ export function MediaLibraryGrid({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onRequestDelete({ path: file.path, name: file.filename, isFolder: false })}
+                      onClick={() =>
+                        onRequestDelete({
+                          path: file.path,
+                          name: file.filename,
+                          isFolder: false,
+                        })
+                      }
                       className="p-2 sm:p-1.5 rounded-lg bg-danger/80 hover:bg-danger text-white transition-colors min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                       title={tc("delete")}
                     >
@@ -156,10 +189,15 @@ export function MediaLibraryGrid({
                 </div>
 
                 <div className="p-2.5 space-y-0.5 text-left border-t border-border">
-                  <p className="text-xs font-semibold text-text truncate" title={file.filename}>
+                  <p
+                    className="text-xs font-semibold text-text truncate"
+                    title={file.filename}
+                  >
                     {file.filename}
                   </p>
-                  <p className="text-[10px] text-text-muted">{formatBytes(file.size)}</p>
+                  <p className="text-[10px] text-text-muted">
+                    {formatBytes(file.size)}
+                  </p>
                 </div>
               </div>
             ))}
