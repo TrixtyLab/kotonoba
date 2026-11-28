@@ -43,7 +43,9 @@ export function MediaToolbar({
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 className="text-xl font-bold text-text tracking-tight">{t("title")}</h1>
+        <h1 className="text-xl font-bold text-text tracking-tight">
+          {t("title")}
+        </h1>
         <p className="text-xs text-text-muted mt-0.5">{t("subtitle")}</p>
       </div>
 
@@ -81,14 +83,15 @@ export function MediaToolbar({
               <span className="text-text">{t("localFolder")}</span>
             </>
           )}
-          {typeof currentStorage?.usedBytes === "number" && (currentStorage?.quotaBytes ?? 0) > 0 && (
-            <span className="text-[11px] font-mono text-text-muted bg-surface-hover px-1.5 py-0.5 rounded">
-              {t("storageQuota", {
-                used: formatBytes(currentStorage.usedBytes),
-                quota: formatBytes(currentStorage.quotaBytes!),
-              })}
-            </span>
-          )}
+          {typeof currentStorage?.usedBytes === "number" &&
+            (currentStorage?.quotaBytes ?? 0) > 0 && (
+              <span className="text-[11px] font-mono text-text-muted bg-surface-hover px-1.5 py-0.5 rounded">
+                {t("storageQuota", {
+                  used: formatBytes(currentStorage.usedBytes),
+                  quota: formatBytes(currentStorage.quotaBytes!),
+                })}
+              </span>
+            )}
         </div>
 
         <Button
@@ -108,16 +111,6 @@ export function MediaToolbar({
           icon={<FolderPlus className="w-3.5 h-3.5 text-accent" />}
         >
           {t("newFolder")}
-        </Button>
-
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={onTriggerUpload}
-          disabled={isUploading}
-          icon={<Upload className="w-3.5 h-3.5" />}
-        >
-          {isUploading ? t("uploading") : t("uploadImage")}
         </Button>
       </div>
     </div>
