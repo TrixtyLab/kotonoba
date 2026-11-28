@@ -11,6 +11,7 @@ import type { MediaFileItem } from "@/components/admin/MediaManagerClient";
 
 /** Props for {@link MediaDialogs}. */
 export interface MediaDialogsProps {
+  siteDomain: string;
   currentFolder: string;
   newFolderModalOpen: boolean;
   onCloseNewFolderModal: () => void;
@@ -37,6 +38,7 @@ export interface MediaDialogsProps {
  * Dialog suite supporting media folder creation, asset relocation, image preview, and delete confirmation.
  */
 export function MediaDialogs({
+  siteDomain,
   currentFolder,
   newFolderModalOpen,
   onCloseNewFolderModal,
@@ -63,7 +65,11 @@ export function MediaDialogs({
 
   return (
     <>
-      <Modal isOpen={newFolderModalOpen} onClose={onCloseNewFolderModal} title={t("newFolder")}>
+      <Modal
+        isOpen={newFolderModalOpen}
+        onClose={onCloseNewFolderModal}
+        title={t("newFolder")}
+      >
         <div className="space-y-3 text-xs">
           <Input
             label={t("folderName")}
@@ -101,7 +107,12 @@ export function MediaDialogs({
               <Button variant="outline" size="sm" onClick={onCloseMoveModal}>
                 {tc("cancel")}
               </Button>
-              <Button variant="primary" size="sm" onClick={onMoveFile} loading={isMoving}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onMoveFile}
+                loading={isMoving}
+              >
                 {t("moveFile")}
               </Button>
             </div>
@@ -109,68 +120,73 @@ export function MediaDialogs({
         </Modal>
       )}
 
-      {previewFile && (() => {
-        const modalUrl = previewDisplayUrl || previewFile.url;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80  animate-fade-in">
-            <div className="w-full max-w-xl bg-surface border border-border rounded-xl p-5 shadow-xl space-y-3 animate-slide-up">
-              <div className="flex items-center justify-between pb-2 border-b border-border">
-                <h4 className="text-xs font-bold text-text truncate max-w-[80%]">
-                  {previewFile.filename}
-                </h4>
-                <button
-                  type="button"
-                  onClick={onClosePreviewModal}
-                  className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="max-h-[50vh] overflow-hidden rounded-lg bg-black/40 flex items-center justify-center p-2">
-                <img
-                  src={previewFile.url}
-                  alt={previewFile.filename}
-                  className="max-h-[45vh] object-contain rounded"
-                />
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
-                <span
-                  className="font-mono text-text-muted truncate min-w-0 flex-1 text-[11px]"
-                  title={modalUrl}
-                >
-                  {modalUrl}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onCopyUrl(modalUrl)}
-                    icon={<Copy className="w-3.5 h-3.5" />}
+      {previewFile &&
+        (() => {
+          const modalUrl = previewDisplayUrl || previewFile.url;
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80  animate-fade-in">
+              <div className="w-full max-w-xl bg-surface border border-border rounded-xl p-5 shadow-xl space-y-3 animate-slide-up">
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <h4 className="text-xs font-bold text-text truncate max-w-[80%]">
+                    {previewFile.filename}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={onClosePreviewModal}
+                    className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover"
                   >
-                    {t("copyUrl")}
-                  </Button>
-                  <a
-                    href={modalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-text hover:bg-surface-hover text-xs font-semibold transition-colors"
+                    ✕
+                  </button>
+                </div>
+
+                <div className="max-h-[50vh] overflow-hidden rounded-lg bg-black/40 flex items-center justify-center p-2">
+                  <img
+                    src={`//${siteDomain}${previewFile.url}`}
+                    alt={previewFile.filename}
+                    className="max-h-[45vh] object-contain rounded"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
+                  <span
+                    className="font-mono text-text-muted truncate min-w-0 flex-1 text-[11px]"
+                    title={modalUrl}
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    {tc("view")}
-                  </a>
+                    {modalUrl}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onCopyUrl(modalUrl)}
+                      icon={<Copy className="w-3.5 h-3.5" />}
+                    >
+                      {t("copyUrl")}
+                    </Button>
+                    <a
+                      href={modalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-text hover:bg-surface-hover text-xs font-semibold transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      {tc("view")}
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       <ConfirmModal
         isOpen={Boolean(deleteTarget)}
         title={deleteTarget?.isFolder ? t("deleteFolder") : t("deleteFile")}
-        message={deleteTarget?.isFolder ? t("confirmDeleteFolder") : t("confirmDeleteFile")}
+        message={
+          deleteTarget?.isFolder
+            ? t("confirmDeleteFolder")
+            : t("confirmDeleteFile")
+        }
         confirmText={tc("delete")}
         cancelText={tc("cancel")}
         variant="danger"

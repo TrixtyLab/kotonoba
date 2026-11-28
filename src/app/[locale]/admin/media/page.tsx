@@ -12,9 +12,6 @@ export default async function AdminMediaPage() {
   const storageInfo = getStorageStatus(site?.id);
 
   return (
-    <MediaManagerClient
-      siteDomain={site?.domain}
-      storageInfo={storageInfo}
-    />
+    <MediaManagerClient siteDomain={site?.domain} storageInfo={storageInfo} />
   );
 }

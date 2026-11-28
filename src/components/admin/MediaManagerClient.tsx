@@ -4,7 +4,10 @@ import React, { useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { MediaDialogs } from "@/components/admin/MediaDialogs";
 import { MediaLibraryGrid } from "@/components/admin/MediaLibraryGrid";
-import { MediaToolbar, type MediaStorageSummary } from "@/components/admin/MediaToolbar";
+import {
+  MediaToolbar,
+  type MediaStorageSummary,
+} from "@/components/admin/MediaToolbar";
 import { MediaBreadcrumbBar } from "@/components/admin/MediaBreadcrumbBar";
 import { useMediaLibrary } from "@/hooks/useMediaLibrary";
 import { formatBytes } from "@/lib/utils/media";
@@ -29,7 +32,7 @@ export interface MediaFolderItem {
 
 /** Configuration properties for the MediaManagerClient interface. */
 export interface MediaManagerClientProps {
-  siteDomain?: string | null;
+  siteDomain?: string;
   initialFiles?: MediaFileItem[];
   storageInfo?: MediaStorageSummary;
 }
@@ -38,11 +41,16 @@ export interface MediaManagerClientProps {
  * Administrative media asset manager with file uploading, cursor pagination, drag-and-drop ingestion,
  * folder navigation, item relocation, and bulk deletion.
  */
-export function MediaManagerClient({ siteDomain, storageInfo }: MediaManagerClientProps) {
+export function MediaManagerClient({
+  siteDomain,
+  storageInfo,
+}: MediaManagerClientProps) {
   const t = useTranslations("media");
   const tc = useTranslations("common");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const media = useMediaLibrary({ siteDomain, storageInfo, fileInputRef });
+
+  console.log(siteDomain);
 
   return (
     <div className="space-y-6">
@@ -94,13 +102,17 @@ export function MediaManagerClient({ siteDomain, storageInfo }: MediaManagerClie
         <div className="flex flex-col items-center justify-center space-y-1">
           <Upload className="w-5 h-5 text-accent mb-1" />
           <p className="text-xs font-semibold text-text">
-            {t("dragDropPrompt")} <span className="font-mono text-accent">/{media.currentFolder || t("root")}</span>
+            {t("dragDropPrompt")}{" "}
+            <span className="font-mono text-accent">
+              /{media.currentFolder || t("root")}
+            </span>
           </p>
           <p className="text-[11px] text-text-muted">{t("allowedFormats")}</p>
         </div>
       </div>
 
       <MediaLibraryGrid
+        siteDomain={siteDomain}
         currentFolder={media.currentFolder}
         filteredFolders={media.filteredFolders}
         filteredFiles={media.filteredFiles}
@@ -125,7 +137,9 @@ export function MediaManagerClient({ siteDomain, storageInfo }: MediaManagerClie
             variant="outline"
             size="sm"
             loading={media.isLoadingMore}
-            onClick={() => void media.fetchMedia(media.currentFolder, media.nextCursor)}
+            onClick={() =>
+              void media.fetchMedia(media.currentFolder, media.nextCursor)
+            }
           >
             {media.isLoadingMore ? tc("loadingMore") : tc("loadMore")}
           </Button>
@@ -133,6 +147,7 @@ export function MediaManagerClient({ siteDomain, storageInfo }: MediaManagerClie
       )}
 
       <MediaDialogs
+        siteDomain={siteDomain}
         currentFolder={media.currentFolder}
         newFolderModalOpen={media.newFolderModalOpen}
         onCloseNewFolderModal={() => media.setNewFolderModalOpen(false)}
@@ -146,7 +161,11 @@ export function MediaManagerClient({ siteDomain, storageInfo }: MediaManagerClie
         isMoving={media.isMoving}
         onMoveFile={media.handleMoveFile}
         previewFile={media.previewFile}
-        previewDisplayUrl={media.previewFile ? media.getFullMediaUrl(media.previewFile.url) : undefined}
+        previewDisplayUrl={
+          media.previewFile
+            ? media.getFullMediaUrl(media.previewFile.url)
+            : undefined
+        }
         onClosePreviewModal={() => media.setPreviewFile(null)}
         onCopyUrl={media.copyToClipboard}
         deleteTarget={media.deleteTarget}
