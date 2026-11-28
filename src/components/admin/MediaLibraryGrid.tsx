@@ -19,7 +19,7 @@ import type {
 
 /** Props for {@link MediaLibraryGrid}. */
 export interface MediaLibraryGridProps {
-  siteDomain: string;
+  siteDomain: string | undefined;
   currentFolder: string;
   filteredFolders: MediaFolderItem[];
   filteredFiles: MediaFileItem[];
